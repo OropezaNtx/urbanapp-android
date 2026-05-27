@@ -1,0 +1,88 @@
+package com.oropeza.urbanapp.asd.ui.viewmodel
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.oropeza.urbanapp.asd.AsdGraph
+import com.oropeza.urbanapp.asd.data.local.Trip
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import java.text.SimpleDateFormat
+import java.util.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+
+
+class AsdTripListVM : ViewModel() {
+    val trips = AsdGraph.repo.tripsFlow.stateIn(
+        scope = CoroutineScope(Dispatchers.Main),
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AsdTripListScreen(
+    onNewTrip: () -> Unit,
+    onOpenTrip: (Long) -> Unit,
+    onBackHome: () -> Unit
+) {
+    val vm: AsdTripListVM = viewModel()
+    val trips by vm.trips.collectAsState()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("ASD - Viajes") },
+                navigationIcon = {
+                    TextButton(onClick = onBackHome) { Text("Home") }
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = onNewTrip) { Text("+") }
+        }
+    ) { pad ->
+        LazyColumn(
+            modifier = Modifier
+                .padding(pad)
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(trips) { trip ->
+                TripCard(trip = trip, onClick = { onOpenTrip(trip.tripId) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun TripCard(trip: Trip, onClick: () -> Unit) {
+    val fmt = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale("es", "MX")) }
+    val start = fmt.format(Date(trip.startTime))
+    val end = trip.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO"
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(trip.routeName, style = MaterialTheme.typography.titleMedium)
+            Text(
+                "No. ${trip.routeNumber?.toString() ?: "-"} • ${trip.direction}  •  ${trip.company ?: "-"}  •  Eco: ${trip.vehicleEco ?: "-"}  •  Placa: ${trip.plateNumber ?: "-"}"
+            )
+            Text("Inicio: $start  •  Fin: $end", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
