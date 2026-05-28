@@ -1,17 +1,17 @@
 package com.oropeza.urbanapp.fov.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.oropeza.urbanapp.asd.data.local.DbProvider
 import com.oropeza.urbanapp.fov.data.FovRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
-import android.net.Uri
 import com.oropeza.urbanapp.fov.importer.FovExcelImporter
 import com.oropeza.urbanapp.fov.importer.FovImportResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class FovSessionVm(app: Application) : AndroidViewModel(app) {
@@ -22,7 +22,9 @@ class FovSessionVm(app: Application) : AndroidViewModel(app) {
     private val _selectedObservableId = MutableStateFlow<Int?>(null)
     val selectedObservableId: StateFlow<Int?> = _selectedObservableId
 
-    fun setSelectedObservableId(id: Int?) { _selectedObservableId.value = id }
+    fun setSelectedObservableId(id: Int?) {
+        _selectedObservableId.value = id
+    }
 
     suspend fun searchMaster(q: String) = repo.searchMasterRoutes(q)
 
@@ -71,7 +73,11 @@ class FovSessionVm(app: Application) : AndroidViewModel(app) {
         onError: (String) -> Unit
     ) = viewModelScope.launch {
         val id = _selectedObservableId.value
-        if (id == null) { onError("Selecciona una ruta observable (ID) primero."); return@launch }
+        if (id == null) {
+            onError("Selecciona una ruta observable (ID) primero.")
+            return@launch
+        }
+
         try {
             repo.addObservation(
                 sessionId = sessionId,
@@ -86,6 +92,19 @@ class FovSessionVm(app: Application) : AndroidViewModel(app) {
             onSaved()
         } catch (t: Throwable) {
             onError(t.message ?: "Error al guardar")
+        }
+    }
+
+    fun endSession(
+        sessionId: Long,
+        onDone: () -> Unit,
+        onError: (String) -> Unit
+    ) = viewModelScope.launch {
+        try {
+            repo.endSession(sessionId)
+            onDone()
+        } catch (t: Throwable) {
+            onError(t.message ?: "Error cerrando sesión FOV")
         }
     }
 
@@ -104,9 +123,7 @@ class FovSessionVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // Si tu lista se refresca por Flow, esto puede quedarse vacío.
-// Si tienes un loader manual, aquí lo llamas.
-    fun refreshIfNeeded() { /* no-op */ }
-
+    fun refreshIfNeeded() {
+        // No-op: la lista se actualiza por Flow.
+    }
 }
-
