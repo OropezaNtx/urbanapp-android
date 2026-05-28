@@ -50,6 +50,12 @@ class FovRepository(private val db: AppDatabase) {
         )
     }
 
+    suspend fun endSession(sessionId: Long): Boolean {
+        val session = sessionDao.getByIdOnce(sessionId) ?: error("Sesión FOV no encontrada")
+        if (session.endedAt != null) return true
+        return sessionDao.endSession(sessionId, System.currentTimeMillis()) > 0
+    }
+
     // ------------------------
     // Biblioteca global (master)
     // ------------------------
@@ -142,6 +148,8 @@ class FovRepository(private val db: AppDatabase) {
         observaciones: String?
     ): Long {
         val session = sessionDao.getByIdOnce(sessionId) ?: error("Sesión no encontrada")
+        if (session.endedAt != null) error("La sesión FOV ya está cerrada. No se pueden agregar más registros.")
+
         val poiKey = session.poiKey
 
         val poiItem = getPoiCatalogItem(poiKey, observableId)
@@ -173,7 +181,4 @@ class FovRepository(private val db: AppDatabase) {
             )
         )
     }
-
-
-
 }
