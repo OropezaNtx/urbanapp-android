@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.oropeza.urbanapp.asd.data.local.DbProvider
 import com.oropeza.urbanapp.fov.data.FovRepository
+import com.oropeza.urbanapp.fov.export.FovCsvExporter
 import com.oropeza.urbanapp.fov.importer.FovExcelImporter
 import com.oropeza.urbanapp.fov.importer.FovImportResult
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +106,22 @@ class FovSessionVm(app: Application) : AndroidViewModel(app) {
             onDone()
         } catch (t: Throwable) {
             onError(t.message ?: "Error cerrando sesión FOV")
+        }
+    }
+
+    fun exportSessionCsv(
+        sessionId: Long,
+        uri: Uri,
+        onDone: () -> Unit,
+        onError: (String) -> Unit
+    ) = viewModelScope.launch {
+        try {
+            val session = repo.getSessionOnce(sessionId)
+            val observations = repo.getObservationsOnce(sessionId)
+            FovCsvExporter.exportSession(getApplication(), uri, session, observations)
+            onDone()
+        } catch (t: Throwable) {
+            onError(t.message ?: "Error exportando sesión FOV")
         }
     }
 
