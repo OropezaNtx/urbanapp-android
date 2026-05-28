@@ -1,6 +1,8 @@
 package com.oropeza.urbanapp.fov.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -8,9 +10,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.data.local.FovPoiCatalogRow
 import com.oropeza.urbanapp.asd.data.local.FovRouteMaster
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -19,7 +18,6 @@ fun FovSessionDetailScreen(
     onBack: () -> Unit,
     vm: FovSessionVm = viewModel()
 ) {
-    // ✅ Flows nuevos (repo)
     val session by vm.repo.sessionFlow(sessionId).collectAsState(initial = null)
     val selectedId by vm.selectedObservableId.collectAsState()
     val observations by vm.repo.observationsFlow(sessionId).collectAsState(initial = emptyList())
@@ -35,25 +33,22 @@ fun FovSessionDetailScreen(
         return
     }
 
+    val isClosed = s.endedAt != null
     val poiCatalog by vm.repo.poiCatalogFlow(s.poiKey).collectAsState(initial = emptyList())
 
-    // -------------------------
-    // Búsqueda real en catálogo POI (JOIN)
-    // -------------------------
     var poiSearch by remember { mutableStateOf("") }
     var poiResults by remember { mutableStateOf<List<FovPoiCatalogRow>>(emptyList()) }
 
     LaunchedEffect(poiSearch, s.poiKey) {
         poiResults = if (poiSearch.trim().length >= 2) {
             vm.repo.searchPoiCatalog(s.poiKey, poiSearch)
-        } else emptyList()
+        } else {
+            emptyList()
+        }
     }
 
     val showingSearch = poiSearch.trim().length >= 2
 
-    // -------------------------
-    // Campos de captura
-    // -------------------------
     var eco by remember { mutableStateOf("") }
     var placa by remember { mutableStateOf("") }
     var ocupacion by remember { mutableStateOf("") }
@@ -61,13 +56,11 @@ fun FovSessionDetailScreen(
     var descTipoVehiculo by remember { mutableStateOf("") }
     var obs by remember { mutableStateOf("") }
 
-    // Dialog
     var showAddCatalog by remember { mutableStateOf(false) }
-
-    // Error UI
+    var showCloseConfirm by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var infoMsg by remember { mutableStateOf<String?>(null) }
 
-    // Cache para masters (vista rápida cuando no buscas)
     val masterCache = remember { mutableStateMapOf<String, FovRouteMaster>() }
 
     Scaffold(
@@ -76,8 +69,11 @@ fun FovSessionDetailScreen(
                 title = { Text("FOV: ${s.estacion} | ${s.ubicacion} | ${s.sentido}") },
                 navigationIcon = { IconButton(onClick = onBack) { Text("←") } },
                 actions = {
-                    // 🚫 Export lo activamos después para no meter más dependencias ahorita
-                    // TextButton(onClick = { /* TODO export */ }) { Text("Exportar") }
+                    if (!isClosed) {
+                        TextButton(onClick = { showCloseConfirm = true }) {
+                            Text("Cerrar")
+                        }
+                    }
                 }
             )
         }
@@ -89,14 +85,32 @@ fun FovSessionDetailScreen(
                 .verticalScroll(scroll)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
-        ){
-            // -------------------------
-            // Catálogo POI
-            // -------------------------
+        ) {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Estado de sesión", style = MaterialTheme.typography.titleMedium)
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(if (isClosed) "CERRADA" else "ABIERTA") }
+                    )
+                    Text("POI: ${s.poiKey}", style = MaterialTheme.typography.bodySmall)
+                    Text("Registros capturados: ${observations.size}", style = MaterialTheme.typography.bodySmall)
+                    if (isClosed) {
+                        Text("Esta sesión ya no acepta nuevas capturas.", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            infoMsg?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+            errorMsg?.let { Text("⚠ $it", color = MaterialTheme.colorScheme.error) }
+
             Text("Ruta observable (Catálogo del POI)", style = MaterialTheme.typography.titleMedium)
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { showAddCatalog = true }) { Text("No está en catálogo") }
+                Button(
+                    onClick = { showAddCatalog = true },
+                    enabled = !isClosed
+                ) { Text("No está en catálogo") }
                 Text("Seleccionado: ${selectedId ?: "—"}", modifier = Modifier.padding(top = 10.dp))
             }
 
@@ -104,13 +118,13 @@ fun FovSessionDetailScreen(
                 value = poiSearch,
                 onValueChange = { poiSearch = it },
                 label = { Text("Buscar en catálogo del POI (RUTA / Empresa / Derrotero)") },
+                enabled = !isClosed,
                 modifier = Modifier.fillMaxWidth()
             )
 
             if (poiCatalog.isEmpty()) {
                 Text("Catálogo vacío para este POI. Agrega o asigna una ruta.")
             } else if (!showingSearch) {
-                // Vista rápida (top 6) sin búsqueda
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     poiCatalog.take(6).forEach { item ->
                         val master = masterCache[item.routeUid]
@@ -123,7 +137,9 @@ fun FovSessionDetailScreen(
 
                         ElevatedCard(
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = { vm.setSelectedObservableId(item.observableId) }
+                            onClick = {
+                                if (!isClosed) vm.setSelectedObservableId(item.observableId)
+                            }
                         ) {
                             Column(Modifier.padding(10.dp)) {
                                 Text("ID ${item.observableId}", style = MaterialTheme.typography.titleSmall)
@@ -143,7 +159,6 @@ fun FovSessionDetailScreen(
                     }
                 }
             } else {
-                // ✅ Buscador real (JOIN)
                 if (poiResults.isEmpty()) {
                     Text("Sin resultados para \"$poiSearch\".", style = MaterialTheme.typography.bodySmall)
                 } else {
@@ -151,7 +166,9 @@ fun FovSessionDetailScreen(
                         poiResults.take(50).forEach { row ->
                             ElevatedCard(
                                 modifier = Modifier.fillMaxWidth(),
-                                onClick = { vm.setSelectedObservableId(row.observableId) }
+                                onClick = {
+                                    if (!isClosed) vm.setSelectedObservableId(row.observableId)
+                                }
                             ) {
                                 Column(Modifier.padding(10.dp)) {
                                     Text("ID ${row.observableId}", style = MaterialTheme.typography.titleSmall)
@@ -167,17 +184,14 @@ fun FovSessionDetailScreen(
 
             Divider()
 
-            // -------------------------
-            // Captura
-            // -------------------------
             Text("Captura rápida", style = MaterialTheme.typography.titleMedium)
 
-            OutlinedTextField(eco, { eco = it }, label = { Text("N° Económico") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(placa, { placa = it }, label = { Text("Placa (o S/P)") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(ocupacion, { ocupacion = it }, label = { Text("Grado de Ocupación") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(tipoVehiculo, { tipoVehiculo = it }, label = { Text("Tipo de Vehículo") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(descTipoVehiculo, { descTipoVehiculo = it }, label = { Text("Descriptor Tipo de Vehículo") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(obs, { obs = it }, label = { Text("Observaciones") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(eco, { eco = it }, label = { Text("N° Económico") }, enabled = !isClosed, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(placa, { placa = it }, label = { Text("Placa (o S/P)") }, enabled = !isClosed, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(ocupacion, { ocupacion = it }, label = { Text("Grado de Ocupación") }, enabled = !isClosed, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(tipoVehiculo, { tipoVehiculo = it }, label = { Text("Tipo de Vehículo") }, enabled = !isClosed, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(descTipoVehiculo, { descTipoVehiculo = it }, label = { Text("Descriptor Tipo de Vehículo") }, enabled = !isClosed, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(obs, { obs = it }, label = { Text("Observaciones") }, enabled = !isClosed, modifier = Modifier.fillMaxWidth())
 
             Button(
                 onClick = {
@@ -197,32 +211,39 @@ fun FovSessionDetailScreen(
                             descTipoVehiculo = ""
                             obs = ""
                             errorMsg = null
+                            infoMsg = "Registro guardado."
                         },
                         onError = { msg -> errorMsg = msg }
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = selectedId != null
+                enabled = !isClosed && selectedId != null
             ) { Text("Guardar y continuar") }
+
+            if (!isClosed) {
+                OutlinedButton(
+                    onClick = { showCloseConfirm = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Cerrar sesión FOV") }
+            }
 
             Divider()
 
-            // -------------------------
-            // Registros recientes + prefill
-            // -------------------------
             Text("Registros (${observations.size})", style = MaterialTheme.typography.titleMedium)
 
             observations.takeLast(8).reversed().forEach { r ->
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
-                        eco = r.eco.orEmpty()
-                        placa = r.placa.orEmpty()
-                        ocupacion = r.gradoOcupacion.orEmpty()
-                        tipoVehiculo = r.tipoVehiculo.orEmpty()
-                        descTipoVehiculo = r.descTipoVehiculo.orEmpty()
-                        obs = r.observaciones.orEmpty()
-                        vm.setSelectedObservableId(r.observableId)
+                        if (!isClosed) {
+                            eco = r.eco.orEmpty()
+                            placa = r.placa.orEmpty()
+                            ocupacion = r.gradoOcupacion.orEmpty()
+                            tipoVehiculo = r.tipoVehiculo.orEmpty()
+                            descTipoVehiculo = r.descTipoVehiculo.orEmpty()
+                            obs = r.observaciones.orEmpty()
+                            vm.setSelectedObservableId(r.observableId)
+                        }
                     }
                 ) {
                     Column(Modifier.padding(10.dp)) {
@@ -235,23 +256,43 @@ fun FovSessionDetailScreen(
                     }
                 }
             }
-
-            if (errorMsg != null) {
-                Text("⚠ ${errorMsg!!}", color = MaterialTheme.colorScheme.error)
-            }
         }
 
-        // -------------------------
-        // Dialog: Ruta no contemplada
-        // -------------------------
-        if (showAddCatalog) {
-            var tab by remember { mutableStateOf(0) } // 0=Buscar master, 1=Crear master
+        if (showCloseConfirm) {
+            AlertDialog(
+                onDismissRequest = { showCloseConfirm = false },
+                title = { Text("Cerrar sesión FOV") },
+                text = { Text("¿Seguro que quieres cerrar esta sesión? Después ya no se podrán agregar registros.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            vm.endSession(
+                                sessionId = sessionId,
+                                onDone = {
+                                    showCloseConfirm = false
+                                    errorMsg = null
+                                    infoMsg = "Sesión FOV cerrada."
+                                },
+                                onError = { msg ->
+                                    showCloseConfirm = false
+                                    errorMsg = msg
+                                }
+                            )
+                        }
+                    ) { Text("Sí, cerrar") }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showCloseConfirm = false }) {
+                        Text("Cancelar")
+                    }
+                }
+            )
+        }
 
-            // Buscar master
+        if (showAddCatalog) {
+            var tab by remember { mutableStateOf(0) }
             var q by remember { mutableStateOf("") }
             var results by remember { mutableStateOf<List<FovRouteMaster>>(emptyList()) }
-
-            // Crear master
             var rutaNew by remember { mutableStateOf("") }
             var empresaNew by remember { mutableStateOf("") }
             var derroteroNew by remember { mutableStateOf("") }
@@ -282,8 +323,7 @@ fun FovSessionDetailScreen(
 
                             if (results.isEmpty()) {
                                 Text(
-                                    "Sin resultados (escribe al menos 2 caracteres). " +
-                                            "Si no existe, créala en la pestaña 'Crear nueva'.",
+                                    "Sin resultados (escribe al menos 2 caracteres). Si no existe, créala en la pestaña 'Crear nueva'.",
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             } else {
