@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 class FovSessionVm(app: Application) : AndroidViewModel(app) {
     private val db = DbProvider.getInstance(app)
     val repo = FovRepository(db)
-    val sessionsWithCount = repo.sessionsWithCatalogCountFlow
+    val sessions = repo.sessionsWithCatalogCountFlow
 
     private val _selectedObservableId = MutableStateFlow<Int?>(null)
     val selectedObservableId: StateFlow<Int?> = _selectedObservableId

@@ -6,7 +6,7 @@ data class WaypointPair(val inId: Int, val outId: Int)
 @Dao
 interface TripDao {
     @Insert suspend fun insert(trip: Trip): Long
-    @Update suspend fun update(trip: Trip)
+    @Update suspend fun update(trip: Trip): Int
 
     @Query("SELECT * FROM Trip ORDER BY startTime DESC")
     fun getAll(): Flow<List<Trip>>
@@ -21,7 +21,7 @@ interface TripDao {
     suspend fun getNextWaypoint(tripId: Long): Int
 
     @Query("UPDATE Trip SET nextWaypointId = :value WHERE tripId = :tripId")
-    suspend fun updateNextWaypoint(tripId: Long, value: Int)
+    suspend fun updateNextWaypoint(tripId: Long, value: Int): Int
 
     // ✅ Par de IDs para banderas IN/OUT
     data class WaypointPair(val inId: Int, val outId: Int)
@@ -38,7 +38,7 @@ interface TripDao {
 @Dao
 interface StopDao {
     @Insert suspend fun insert(event: StopEvent): Long
-    @Update suspend fun update(event: StopEvent)
+    @Update suspend fun update(event: StopEvent): Int
 
     @Query("SELECT * FROM StopEvent WHERE tripId = :tripId ORDER BY timestamp ASC")
     fun getByTrip(tripId: Long): Flow<List<StopEvent>>
@@ -62,7 +62,7 @@ interface StopDao {
 @Dao
 interface DelayDao {
     @Insert suspend fun insert(e: DelayEvent): Long
-    @Update suspend fun update(e: DelayEvent)
+    @Update suspend fun update(e: DelayEvent): Int
 
     @Query("SELECT * FROM DelayEvent WHERE tripId = :tripId ORDER BY timestampStart ASC")
     fun getByTrip(tripId: Long): Flow<List<DelayEvent>>
@@ -98,7 +98,7 @@ interface CcSessionDao {
     suspend fun getByIdOnce(id: Long): CcSession?
 
     @Query("UPDATE CcSession SET endedAt = :endedAt WHERE sessionId = :sessionId")
-    suspend fun endSession(sessionId: Long, endedAt: Long)
+    suspend fun endSession(sessionId: Long, endedAt: Long): Int
 
 }
 
@@ -117,7 +117,7 @@ interface CcEventDao {
 @Dao
 interface FovPoiCatalogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(item: FovPoiCatalogItem)
+    suspend fun upsert(item: FovPoiCatalogItem): Long
 
     @Query("SELECT * FROM FovPoiCatalogItem WHERE poiKey = :poiKey AND active = 1 ORDER BY observableId ASC")
     fun getByPoi(poiKey: String): Flow<List<FovPoiCatalogItem>>
@@ -185,7 +185,7 @@ interface FovObservationDao {
 interface FovRouteMasterDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(item: FovRouteMaster)
+    suspend fun upsert(item: FovRouteMaster): Long
 
     @Query("SELECT * FROM FovRouteMaster WHERE routeUid = :uid LIMIT 1")
     suspend fun getByUidOnce(uid: String): FovRouteMaster?
@@ -238,5 +238,5 @@ interface FovSessionDao {
     suspend fun getByIdOnce(id: Long): FovSession?
 
     @Query("UPDATE FovSession SET endedAt = :endedAt WHERE sessionId = :sessionId")
-    suspend fun endSession(sessionId: Long, endedAt: Long)
+    suspend fun endSession(sessionId: Long, endedAt: Long): Int
 }

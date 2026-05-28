@@ -38,5 +38,5 @@ interface TrackDao {
     suspend fun getBetweenOnce(tripId: Long, fromMs: Long, toMs: Long): List<TrackPoint>
 
     @Query("DELETE FROM TrackPoint WHERE tripId = :tripId")
-    suspend fun deleteByTrip(tripId: Long)
+    suspend fun deleteByTrip(tripId: Long): Int
 }

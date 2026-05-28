@@ -21,10 +21,10 @@ fun FovSessionListScreen(
     onNew: () -> Unit,
     onOpen: (Long) -> Unit,
     onBackHome: () -> Unit,
-    vm: FovVm = viewModel()
+    vm: FovSessionVm = viewModel()
 ) {
     // ✅ Ahora consumimos sesiones + conteo de catálogo
-    val rows by vm.sessionsWithCount.collectAsState(initial = emptyList())
+    val sessions by vm.sessions.collectAsState(initial = emptyList())
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -84,13 +84,11 @@ fun FovSessionListScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            if (rows.isEmpty()) {
+            if (sessions.isEmpty()) {
                 Text("No hay sesiones aún.")
             } else {
-                rows.forEach { row ->
+                sessions.forEach { row ->
                     val s = row.s
-                    val count = row.catalogCount
-
                     ElevatedCard(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -102,15 +100,13 @@ fun FovSessionListScreen(
                                 style = MaterialTheme.typography.titleMedium
                             )
 
-                            Text("POI: ${s.poiKey}", style = MaterialTheme.typography.bodySmall)
-
-                            // ✅ Indicador simple del catálogo
-                            val badgeText = if (count > 0) "Catálogo: $count" else "Catálogo: VACÍO"
-                            val badgeColor =
-                                if (count > 0) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.error
-
-                            Text(badgeText, color = badgeColor, style = MaterialTheme.typography.bodySmall)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("POI: ${s.poiKey}", style = MaterialTheme.typography.bodySmall)
+                                Text("Catálogo: ${row.catalogCount} rutas", style = MaterialTheme.typography.bodySmall)
+                            }
 
                             Text("Creada: ${s.createdAt}", style = MaterialTheme.typography.bodySmall)
                             if (s.endedAt != null) Text("Cerrada", style = MaterialTheme.typography.bodySmall)
