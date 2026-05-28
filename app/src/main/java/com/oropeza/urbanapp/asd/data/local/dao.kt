@@ -170,6 +170,9 @@ interface FovObservationDao {
     @Query("SELECT * FROM FovObservation WHERE sessionId = :sessionId ORDER BY timeMs ASC")
     fun getBySession(sessionId: Long): Flow<List<FovObservation>>
 
+    @Query("SELECT * FROM FovObservation WHERE sessionId = :sessionId ORDER BY timeMs ASC")
+    suspend fun getBySessionOnce(sessionId: Long): List<FovObservation>
+
     @Query("SELECT MAX(seqInSession) FROM FovObservation WHERE sessionId = :sessionId")
     suspend fun getMaxSeq(sessionId: Long): Int?
 
