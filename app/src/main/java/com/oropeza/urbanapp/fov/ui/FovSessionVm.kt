@@ -116,8 +116,9 @@ class FovSessionVm(app: Application) : AndroidViewModel(app) {
         onError: (String) -> Unit
     ) = viewModelScope.launch {
         try {
-            val session = repo.getSessionOnce(sessionId)
-            val observations = repo.getObservationsOnce(sessionId)
+            val session = db.fovSessionDao().getByIdOnce(sessionId)
+                ?: error("Sesión FOV no encontrada")
+            val observations = db.fovObservationDao().getBySessionOnce(sessionId)
             FovCsvExporter.exportSession(getApplication(), uri, session, observations)
             onDone()
         } catch (t: Throwable) {
