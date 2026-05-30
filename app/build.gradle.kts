@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,6 +8,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val localProperties = Properties().apply {
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { load(it) }
+    }
+}
 
 android {
     namespace = "com.oropeza.urbanapp"
@@ -22,6 +30,8 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
     }
 
     buildTypes {
@@ -70,11 +80,10 @@ dependencies {
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.3")
 
-    // Firebase (opcional si usas Firebase Analytics o Auth más adelante)
+    // Firebase
     implementation(platform("com.google.firebase:firebase-bom:32.7.2"))
     implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
-
 
     // Tests
     testImplementation("junit:junit:4.13.2")
@@ -86,21 +95,20 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-
-
-    // Navigation (por si te falta)
-    implementation("androidx.navigation:navigation-compose:2.8.3")
-
     // Room
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     ksp("androidx.room:room-compiler:2.8.4")
-    
+
     // GPS
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
-    //FOV
+    // Maps reusable core
+    implementation("com.google.android.gms:play-services-maps:18.2.0")
+    implementation("com.google.maps.android:maps-compose:4.3.3")
+
+    // FOV
     implementation("org.apache.poi:poi-ooxml:5.2.5")
     implementation("com.google.code.gson:gson:2.10.1")
 }
