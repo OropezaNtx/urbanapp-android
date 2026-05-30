@@ -3,8 +3,12 @@ package com.oropeza.urbanapp.fov.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -21,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun FovSessionDetailScreenV2(
     sessionId: Long,
     onBack: () -> Unit,
+    onOpenMap: () -> Unit,
     vm: FovSessionVm = viewModel()
 ) {
     val session by vm.repo.sessionFlow(sessionId).collectAsState(initial = null)
@@ -41,6 +46,12 @@ fun FovSessionDetailScreenV2(
                     .padding(16.dp)
             ) {
                 Column(Modifier.padding(12.dp)) {
+                    Button(onClick = onOpenMap) {
+                        Text("Ver mapa")
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
                     FovExportCsvButton(
                         sessionId = sessionId,
                         estacion = s.estacion,
