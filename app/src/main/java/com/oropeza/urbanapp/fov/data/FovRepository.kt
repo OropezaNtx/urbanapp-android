@@ -5,7 +5,6 @@ import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import androidx.room.withTransaction
 
-
 class FovRepository(private val db: AppDatabase) {
 
     private val sessionDao = db.fovSessionDao()
@@ -16,10 +15,8 @@ class FovRepository(private val db: AppDatabase) {
     val sessionsFlow: Flow<List<FovSession>> = sessionDao.getAll()
     val sessionsWithCatalogCountFlow = sessionDao.getAllWithCatalogCount()
 
-
     fun sessionFlow(id: Long) = sessionDao.getById(id)
     fun observationsFlow(sessionId: Long) = obsDao.getBySession(sessionId)
-
     fun poiCatalogFlow(poiKey: String) = poiDao.getByPoi(poiKey)
 
     fun buildPoiKey(estacion: String, ubicacion: String, sentido: String): String {
@@ -56,9 +53,6 @@ class FovRepository(private val db: AppDatabase) {
         return sessionDao.endSession(sessionId, System.currentTimeMillis()) > 0
     }
 
-    // ------------------------
-    // Biblioteca global (master)
-    // ------------------------
     suspend fun createMasterRoute(
         ruta: String,
         numeroRutaEmpresa: String,
@@ -67,7 +61,7 @@ class FovRepository(private val db: AppDatabase) {
     ): FovRouteMaster {
         fun norm(s: String) = s.trim().uppercase()
         val key = "${norm(ruta)}|${norm(numeroRutaEmpresa)}|${norm(derroteroLetrero)}"
-        val stableUid = java.util.UUID.nameUUIDFromBytes(key.toByteArray(Charsets.UTF_8)).toString()
+        val stableUid = UUID.nameUUIDFromBytes(key.toByteArray(Charsets.UTF_8)).toString()
 
         val master = FovRouteMaster(
             routeUid = stableUid,
@@ -79,7 +73,6 @@ class FovRepository(private val db: AppDatabase) {
         masterDao.upsert(master)
         return master
     }
-
 
     suspend fun searchMasterRoutes(q: String): List<FovRouteMaster> {
         val query = q.trim()
@@ -133,9 +126,6 @@ class FovRepository(private val db: AppDatabase) {
             ?: error("Ruta master no encontrada.")
     }
 
-    // ------------------------
-    // Observaciones (registro)
-    // ------------------------
     suspend fun addObservation(
         sessionId: Long,
         observableId: Int,
@@ -145,13 +135,18 @@ class FovRepository(private val db: AppDatabase) {
         gradoOcupacion: String?,
         tipoVehiculo: String?,
         descTipoVehiculo: String?,
-        observaciones: String?
+        observaciones: String?,
+        lat: Double = 0.0,
+        lon: Double = 0.0,
+        accM: Double = 0.0,
+        provider: String = "",
+        fixTime: Long = 0L,
+        locationStatus: String = "NO_FIX"
     ): Long {
         val session = sessionDao.getByIdOnce(sessionId) ?: error("Sesión no encontrada")
         if (session.endedAt != null) error("La sesión FOV ya está cerrada. No se pueden agregar más registros.")
 
         val poiKey = session.poiKey
-
         val poiItem = getPoiCatalogItem(poiKey, observableId)
         val master = getMaster(poiItem.routeUid)
 
@@ -167,17 +162,21 @@ class FovRepository(private val db: AppDatabase) {
                 poiKey = poiKey,
                 observableId = observableId,
                 routeUid = master.routeUid,
-
                 ruta = master.ruta,
                 numeroRutaEmpresa = master.numeroRutaEmpresa,
                 derroteroLetrero = master.derroteroLetrero,
-
                 eco = eco?.trim()?.ifBlank { null },
                 placa = placa?.trim()?.ifBlank { null },
                 gradoOcupacion = gradoOcupacion?.trim()?.ifBlank { null },
                 tipoVehiculo = tipoVehiculo?.trim()?.ifBlank { null },
                 descTipoVehiculo = descTipoVehiculo?.trim()?.ifBlank { null },
-                observaciones = observaciones?.trim()?.ifBlank { null }
+                observaciones = observaciones?.trim()?.ifBlank { null },
+                lat = lat,
+                lon = lon,
+                accM = accM,
+                provider = provider,
+                fixTime = fixTime,
+                locationStatus = locationStatus
             )
         )
     }
