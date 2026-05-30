@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.oropeza.urbanapp.asd.data.local.DbProvider
+import com.oropeza.urbanapp.asd.location.LocationProvider
 import com.oropeza.urbanapp.fov.data.FovRepository
 import com.oropeza.urbanapp.fov.export.FovCsvExporter
 import com.oropeza.urbanapp.fov.importer.FovExcelImporter
@@ -17,6 +18,7 @@ import kotlinx.coroutines.withContext
 
 class FovSessionVm(app: Application) : AndroidViewModel(app) {
     private val db = DbProvider.getInstance(app)
+    private val locationProvider = LocationProvider(app)
     val repo = FovRepository(db)
     val sessions = repo.sessionsWithCatalogCountFlow
 
@@ -80,6 +82,13 @@ class FovSessionVm(app: Application) : AndroidViewModel(app) {
         }
 
         try {
+            val fix = locationProvider.getBestFixForEvent(
+                targetAccM = 10.0,
+                fallbackAccM = 25.0,
+                timeoutMs = 6_000L,
+                highAccuracy = true
+            )
+
             repo.addObservation(
                 sessionId = sessionId,
                 observableId = id,
@@ -88,7 +97,13 @@ class FovSessionVm(app: Application) : AndroidViewModel(app) {
                 gradoOcupacion = ocupacion,
                 tipoVehiculo = tipoVehiculo,
                 descTipoVehiculo = descTipoVehiculo,
-                observaciones = observaciones
+                observaciones = observaciones,
+                lat = fix.lat,
+                lon = fix.lon,
+                accM = fix.accM,
+                provider = fix.provider,
+                fixTime = fix.fixTime,
+                locationStatus = fix.status
             )
             onSaved()
         } catch (t: Throwable) {
