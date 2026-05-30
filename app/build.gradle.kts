@@ -15,6 +15,8 @@ val localProperties = Properties().apply {
     }
 }
 
+val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY", "")
+
 android {
     namespace = "com.oropeza.urbanapp"
     compileSdk = 34
@@ -31,7 +33,8 @@ android {
             useSupportLibrary = true
         }
 
-        manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+        buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
     }
 
     buildTypes {
@@ -55,6 +58,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
