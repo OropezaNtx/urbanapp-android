@@ -16,6 +16,7 @@ import com.oropeza.urbanapp.cc.ui.CcNewSessionScreen
 import com.oropeza.urbanapp.cc.ui.CcSessionDetailScreen
 
 // ✅ FOV
+import com.oropeza.urbanapp.fov.ui.FovMapScreen
 import com.oropeza.urbanapp.fov.ui.FovNewSessionScreen
 import com.oropeza.urbanapp.fov.ui.FovSessionDetailScreenV2
 import com.oropeza.urbanapp.fov.ui.FovSessionListScreen
@@ -114,6 +115,18 @@ fun AppNavHost(navController: NavHostController) {
         ) { backStack ->
             val sessionId = backStack.arguments?.getLong("sessionId") ?: 0L
             FovSessionDetailScreenV2(
+                sessionId = sessionId,
+                onBack = { navController.popBackStack() },
+                onOpenMap = { navController.navigate("fov_map/$sessionId") }
+            )
+        }
+
+        composable(
+            route = "fov_map/{sessionId}",
+            arguments = listOf(navArgument("sessionId") { type = NavType.LongType })
+        ) { backStack ->
+            val sessionId = backStack.arguments?.getLong("sessionId") ?: 0L
+            FovMapScreen(
                 sessionId = sessionId,
                 onBack = { navController.popBackStack() }
             )
