@@ -1,16 +1,21 @@
 package com.oropeza.urbanapp.fov.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
@@ -28,9 +35,36 @@ fun FovSessionDetailScreenV2(
     onOpenMap: () -> Unit,
     vm: FovSessionVm = viewModel()
 ) {
+    val context = LocalContext.current
     val session by vm.repo.sessionFlow(sessionId).collectAsState(initial = null)
     var exportMsg by remember { mutableStateOf<String?>(null) }
     var exportError by remember { mutableStateOf<String?>(null) }
+
+    fun hasLocationPermission(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
+        return fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED
+    }
+
+    var locationGranted by remember { mutableStateOf(hasLocationPermission()) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+    }
+
+    LaunchedEffect(Unit) {
+        if (!locationGranted) {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
 
     Box {
         FovSessionDetailScreen(
@@ -67,6 +101,27 @@ fun FovSessionDetailScreenV2(
                             exportError = msg
                         }
                     )
+
+                    if (!locationGranted) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "GPS sin permiso. Las nuevas capturas no tendrán ubicación.",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                permissionLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION
+                                    )
+                                )
+                            }
+                        ) {
+                            Text("Permitir GPS")
+                        }
+                    }
 
                     exportMsg?.let {
                         Text(it, color = MaterialTheme.colorScheme.primary)
