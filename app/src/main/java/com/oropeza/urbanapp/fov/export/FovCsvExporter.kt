@@ -26,9 +26,9 @@ object FovCsvExporter {
         }
     }
 
-    private fun fmtDate(ms: Long?): String = if (ms == null) "" else df.format(Date(ms))
-    private fun fmtTime(ms: Long?): String = if (ms == null) "" else tf.format(Date(ms))
-    private fun fmtDateTime(ms: Long?): String = if (ms == null) "" else dtf.format(Date(ms))
+    private fun fmtDate(ms: Long?): String = if (ms == null || ms == 0L) "" else df.format(Date(ms))
+    private fun fmtTime(ms: Long?): String = if (ms == null || ms == 0L) "" else tf.format(Date(ms))
+    private fun fmtDateTime(ms: Long?): String = if (ms == null || ms == 0L) "" else dtf.format(Date(ms))
 
     suspend fun exportSession(
         context: Context,
@@ -61,6 +61,12 @@ object FovCsvExporter {
             "tipoVehiculo",
             "descTipoVehiculo",
             "observaciones",
+            "lat",
+            "lon",
+            "accM",
+            "provider",
+            "fixTime",
+            "locationStatus",
             "createdAtSession",
             "endedAtSession",
             "statusSession"
@@ -92,6 +98,12 @@ object FovCsvExporter {
                 o.tipoVehiculo ?: "",
                 o.descTipoVehiculo ?: "",
                 o.observaciones ?: "",
+                if (o.lat == 0.0) "" else o.lat,
+                if (o.lon == 0.0) "" else o.lon,
+                if (o.accM == 0.0 || o.accM >= 9999.0) "" else o.accM,
+                o.provider,
+                fmtDateTime(o.fixTime),
+                o.locationStatus,
                 fmtDateTime(session.createdAt),
                 fmtDateTime(session.endedAt),
                 if (session.endedAt == null) "ABIERTA" else "CERRADA"
