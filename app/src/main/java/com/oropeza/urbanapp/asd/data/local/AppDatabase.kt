@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
         FovPoiCatalogItem::class,
         FovObservation::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
