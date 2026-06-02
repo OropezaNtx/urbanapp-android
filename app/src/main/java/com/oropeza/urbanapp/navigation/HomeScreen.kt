@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
+    onOpenDashboard: () -> Unit,
     onOpenAsd: () -> Unit,
     onOpenCc: () -> Unit,
     onOpenFov: () -> Unit
@@ -25,7 +26,11 @@ fun HomeScreen(
             Text("Pantalla principal", style = MaterialTheme.typography.titleLarge)
             Text("Selecciona un módulo:")
 
-            Button(onClick = onOpenAsd, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = onOpenDashboard, modifier = Modifier.fillMaxWidth()) {
+                Text("Dashboard Operativo")
+            }
+
+            OutlinedButton(onClick = onOpenAsd, modifier = Modifier.fillMaxWidth()) {
                 Text("Ascensos y Descensos (ASD)")
             }
 
