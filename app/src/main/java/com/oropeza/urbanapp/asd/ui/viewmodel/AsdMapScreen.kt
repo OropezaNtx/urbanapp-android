@@ -81,6 +81,14 @@ fun AsdMapScreen(
         )
     }
 
+    val timelineItems = remember(trip, stopEvents) {
+        buildAsdTimeline(
+            startTime = trip?.startTime,
+            events = stopEvents,
+            endTime = trip?.endTime
+        )
+    }
+
     val startPoint = remember(rawPoints) {
         rawPoints.firstOrNull()?.copy(title = "Inicio ASD")
     }
@@ -110,6 +118,13 @@ fun AsdMapScreen(
             AsdMapLegend(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
+                    .padding(12.dp)
+            )
+
+            AsdTimelineCard(
+                items = timelineItems,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
                     .padding(12.dp)
             )
 
@@ -148,6 +163,53 @@ private fun AsdMapLegend(modifier: Modifier = Modifier) {
             Text("🟣 Demora", style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+@Composable
+private fun AsdTimelineCard(
+    items: List<String>,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) return
+
+    Card(modifier = modifier) {
+        Column(Modifier.padding(10.dp)) {
+            Text("Secuencia", style = MaterialTheme.typography.titleSmall)
+            items.take(6).forEach { item ->
+                Text(item, style = MaterialTheme.typography.bodySmall)
+            }
+            if (items.size > 6) {
+                Text("+${items.size - 6} eventos mas", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+private fun buildAsdTimeline(
+    startTime: Long?,
+    events: List<StopEvent>,
+    endTime: Long?
+): List<String> {
+    val items = mutableListOf<Pair<Long, String>>()
+
+    startTime?.let { items.add(it to "${formattedTime(it)} Inicio") }
+    events.forEach { event ->
+        items.add(event.timestamp to "${formattedTime(event.timestamp)} ${event.timelineLabel()}")
+    }
+    endTime?.let { items.add(it to "${formattedTime(it)} Fin") }
+
+    return items.sortedBy { it.first }.map { it.second }
+}
+
+private fun StopEvent.timelineLabel(): String {
+    val label = when (eventCategory()) {
+        AsdEventCategory.BOARDING -> "Ascenso"
+        AsdEventCategory.ALIGHTING -> "Descenso"
+        AsdEventCategory.DELAY -> "Demora"
+        AsdEventCategory.OTHER -> stopType.uppercase()
+    }
+    val place = stopName?.takeIf { it.isNotBlank() }?.let { " - $it" } ?: ""
+    return "$label$place"
 }
 
 private fun List<TrackPoint>.toSmoothedMapPoints(): List<UrbanMapPoint> {
