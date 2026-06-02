@@ -80,6 +80,7 @@ fun AsdMapScreen(
                 points = points,
                 startPoint = startPoint,
                 endPoint = endPoint,
+                showPointMarkers = false,
                 emptyMessage = "Este viaje aun no tiene trackpoints con GPS valido."
             )
 
