@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
+import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.core.map.UrbanMapPoint
 import com.oropeza.urbanapp.core.map.UrbanMapScreen
@@ -33,6 +34,7 @@ import kotlin.math.sqrt
 class AsdMapVm : ViewModel() {
     fun tripFlow(tripId: Long) = AsdGraph.repo.tripFlow(tripId)
     fun trackPointsFlow(tripId: Long) = AsdGraph.repo.trackPointsFlow(tripId)
+    fun stopsFlow(tripId: Long) = AsdGraph.repo.stopsFlow(tripId)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,6 +46,7 @@ fun AsdMapScreen(
 ) {
     val trip by vm.tripFlow(tripId).collectAsState(initial = null)
     val trackPoints by vm.trackPointsFlow(tripId).collectAsState(initial = emptyList())
+    val stopEvents by vm.stopsFlow(tripId).collectAsState(initial = emptyList())
 
     val validTrackPoints = remember(trackPoints) {
         trackPoints
@@ -55,8 +58,8 @@ fun AsdMapScreen(
         validTrackPoints.map { point -> point.toUrbanMapPoint() }
     }
 
-    val metrics = remember(validTrackPoints) {
-        AsdMapMetrics.from(validTrackPoints)
+    val metrics = remember(validTrackPoints, stopEvents) {
+        AsdMapMetrics.from(validTrackPoints, stopEvents)
     }
 
     val startPoint = remember(points) {
@@ -95,6 +98,9 @@ fun AsdMapScreen(
                     Text("Distancia: ${metrics.distanceText}", style = MaterialTheme.typography.bodySmall)
                     Text("Duracion: ${metrics.durationText}", style = MaterialTheme.typography.bodySmall)
                     Text("Precision prom: ${metrics.accuracyText}", style = MaterialTheme.typography.bodySmall)
+                    Text("Eventos: ${metrics.eventCount}", style = MaterialTheme.typography.bodySmall)
+                    Text("Ascensos: ${metrics.boardingCount}  Descensos: ${metrics.alightingCount}", style = MaterialTheme.typography.bodySmall)
+                    Text("Demoras: ${metrics.delayCount}", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -118,12 +124,16 @@ private fun TrackPoint.toUrbanMapPoint(): UrbanMapPoint {
 
 private data class AsdMapMetrics(
     val pointCount: Int,
+    val eventCount: Int,
+    val boardingCount: Int,
+    val alightingCount: Int,
+    val delayCount: Int,
     val distanceText: String,
     val durationText: String,
     val accuracyText: String
 ) {
     companion object {
-        fun from(points: List<TrackPoint>): AsdMapMetrics {
+        fun from(points: List<TrackPoint>, events: List<StopEvent>): AsdMapMetrics {
             val distanceM = points.zipWithNext().sumOf { (a, b) ->
                 haversineMeters(a.lat, a.lon, b.lat, b.lon)
             }
@@ -135,6 +145,10 @@ private data class AsdMapMetrics(
             val avgAcc = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.averageOrNull()
             return AsdMapMetrics(
                 pointCount = points.size,
+                eventCount = events.size,
+                boardingCount = events.count { it.stopType.equals("ASCENSO", ignoreCase = true) },
+                alightingCount = events.count { it.stopType.equals("DESCENSO", ignoreCase = true) },
+                delayCount = events.count { it.stopType.equals("BANDERA", ignoreCase = true) && !it.delayCodes.isNullOrBlank() },
                 distanceText = distanceText(distanceM),
                 durationText = durationText(durationMs),
                 accuracyText = avgAcc?.let { "${it.roundToInt()}m" } ?: "-"
