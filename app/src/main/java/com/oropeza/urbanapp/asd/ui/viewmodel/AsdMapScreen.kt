@@ -109,6 +109,7 @@ fun AsdMapScreen(
                     Text("Eventos: ${metrics.eventCount}", style = MaterialTheme.typography.bodySmall)
                     Text("Ascensos: ${metrics.boardingCount}  Descensos: ${metrics.alightingCount}", style = MaterialTheme.typography.bodySmall)
                     Text("Demoras: ${metrics.delayCount}", style = MaterialTheme.typography.bodySmall)
+                    Text("Pax +${metrics.boardingPax} / -${metrics.alightingPax}", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -131,21 +132,21 @@ private fun TrackPoint.toUrbanMapPoint(): UrbanMapPoint {
 }
 
 private fun StopEvent.toUrbanMapPoint(): UrbanMapPoint {
-    val type = stopType.uppercase()
-    val label = when (type) {
-        "ASCENSO" -> "Ascenso"
-        "DESCENSO" -> "Descenso"
-        "BANDERA" -> if (!delayCodes.isNullOrBlank()) "Demora" else "Bandera"
-        else -> type
+    val category = eventCategory()
+    val label = when (category) {
+        AsdEventCategory.BOARDING -> "Ascenso"
+        AsdEventCategory.ALIGHTING -> "Descenso"
+        AsdEventCategory.DELAY -> "Demora"
+        AsdEventCategory.OTHER -> stopType.uppercase()
     }
     return UrbanMapPoint(
         id = "event-$eventId",
         title = "$label ${stopName ?: ""}".trim(),
-        subtitle = "${delayCodes ?: ""} | $locationStatus | acc ${stopAccM}m",
+        subtitle = eventSubtitle(),
         lat = stopLat,
         lon = stopLon,
         accuracyM = stopAccM,
-        status = if (type == "BANDERA" && !delayCodes.isNullOrBlank()) "BANDERA" else type,
+        status = category.mapStatus,
         module = "ASD_EVENT",
         timestampMs = timestamp,
         metadata = mapOf(
@@ -156,12 +157,48 @@ private fun StopEvent.toUrbanMapPoint(): UrbanMapPoint {
     )
 }
 
+private fun StopEvent.eventSubtitle(): String {
+    val paxUp = paxMenUp + paxWomenUp
+    val paxDown = paxMenDown + paxWomenDown
+    val parts = buildList {
+        if (paxUp > 0) add("Suben: $paxUp")
+        if (paxDown > 0) add("Bajan: $paxDown")
+        if (!delayCodes.isNullOrBlank()) add("Demora: $delayCodes")
+        add(locationStatus)
+        add("acc ${stopAccM}m")
+    }
+    return parts.joinToString(" | ")
+}
+
+private enum class AsdEventCategory(val mapStatus: String) {
+    BOARDING("ASCENSO"),
+    ALIGHTING("DESCENSO"),
+    DELAY("BANDERA"),
+    OTHER("OTHER")
+}
+
+private fun StopEvent.eventCategory(): AsdEventCategory {
+    val type = stopType.trim().uppercase()
+    val hasBoarding = paxMenUp + paxWomenUp > 0
+    val hasAlighting = paxMenDown + paxWomenDown > 0
+    val hasDelay = !delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")
+
+    return when {
+        type in setOf("ASCENSO", "SUBE", "BOARDING") || hasBoarding -> AsdEventCategory.BOARDING
+        type in setOf("DESCENSO", "BAJA", "ALIGHTING") || hasAlighting -> AsdEventCategory.ALIGHTING
+        hasDelay -> AsdEventCategory.DELAY
+        else -> AsdEventCategory.OTHER
+    }
+}
+
 private data class AsdMapMetrics(
     val pointCount: Int,
     val eventCount: Int,
     val boardingCount: Int,
     val alightingCount: Int,
     val delayCount: Int,
+    val boardingPax: Int,
+    val alightingPax: Int,
     val distanceText: String,
     val durationText: String,
     val accuracyText: String
@@ -180,9 +217,11 @@ private data class AsdMapMetrics(
             return AsdMapMetrics(
                 pointCount = points.size,
                 eventCount = events.size,
-                boardingCount = events.count { it.stopType.equals("ASCENSO", ignoreCase = true) },
-                alightingCount = events.count { it.stopType.equals("DESCENSO", ignoreCase = true) },
-                delayCount = events.count { it.stopType.equals("BANDERA", ignoreCase = true) && !it.delayCodes.isNullOrBlank() },
+                boardingCount = events.count { it.eventCategory() == AsdEventCategory.BOARDING },
+                alightingCount = events.count { it.eventCategory() == AsdEventCategory.ALIGHTING },
+                delayCount = events.count { it.eventCategory() == AsdEventCategory.DELAY },
+                boardingPax = events.sumOf { it.paxMenUp + it.paxWomenUp },
+                alightingPax = events.sumOf { it.paxMenDown + it.paxWomenDown },
                 distanceText = distanceText(distanceM),
                 durationText = durationText(durationMs),
                 accuracyText = avgAcc?.let { "${it.roundToInt()}m" } ?: "-"
