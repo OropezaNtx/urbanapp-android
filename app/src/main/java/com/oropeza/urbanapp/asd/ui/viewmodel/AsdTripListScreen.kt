@@ -34,6 +34,7 @@ class AsdTripListVM : ViewModel() {
 fun AsdTripListScreen(
     onNewTrip: () -> Unit,
     onOpenTrip: (Long) -> Unit,
+    onOpenMap: (Long) -> Unit,
     onBackHome: () -> Unit
 ) {
     val vm: AsdTripListVM = viewModel()
@@ -60,14 +61,22 @@ fun AsdTripListScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(trips) { trip ->
-                TripCard(trip = trip, onClick = { onOpenTrip(trip.tripId) })
+                TripCard(
+                    trip = trip,
+                    onClick = { onOpenTrip(trip.tripId) },
+                    onOpenMap = { onOpenMap(trip.tripId) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun TripCard(trip: Trip, onClick: () -> Unit) {
+private fun TripCard(
+    trip: Trip,
+    onClick: () -> Unit,
+    onOpenMap: () -> Unit
+) {
     val fmt = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale("es", "MX")) }
     val start = fmt.format(Date(trip.startTime))
     val end = trip.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO"
@@ -77,12 +86,21 @@ private fun TripCard(trip: Trip, onClick: () -> Unit) {
             .fillMaxWidth()
             .clickable { onClick() }
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(trip.routeName, style = MaterialTheme.typography.titleMedium)
             Text(
                 "No. ${trip.routeNumber?.toString() ?: "-"} • ${trip.direction}  •  ${trip.company ?: "-"}  •  Eco: ${trip.vehicleEco ?: "-"}  •  Placa: ${trip.plateNumber ?: "-"}"
             )
             Text("Inicio: $start  •  Fin: $end", style = MaterialTheme.typography.bodySmall)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onClick) {
+                    Text("Detalle")
+                }
+                Button(onClick = onOpenMap) {
+                    Text("Mapa")
+                }
+            }
         }
     }
 }
