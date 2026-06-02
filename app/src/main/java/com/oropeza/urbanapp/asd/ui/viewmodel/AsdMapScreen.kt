@@ -107,6 +107,12 @@ fun AsdMapScreen(
                 emptyMessage = "Este viaje aun no tiene trackpoints con GPS valido."
             )
 
+            AsdMapLegend(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+            )
+
             Card(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -125,6 +131,21 @@ fun AsdMapScreen(
                     Text("Pax +${metrics.boardingPax} / -${metrics.alightingPax}", style = MaterialTheme.typography.bodySmall)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AsdMapLegend(modifier: Modifier = Modifier) {
+    Card(modifier = modifier) {
+        Column(Modifier.padding(10.dp)) {
+            Text("Leyenda", style = MaterialTheme.typography.titleSmall)
+            Text("🔵 Ruta", style = MaterialTheme.typography.bodySmall)
+            Text("🟢 Inicio", style = MaterialTheme.typography.bodySmall)
+            Text("🔴 Fin", style = MaterialTheme.typography.bodySmall)
+            Text("🔷 Ascenso", style = MaterialTheme.typography.bodySmall)
+            Text("🟠 Descenso", style = MaterialTheme.typography.bodySmall)
+            Text("🟣 Demora", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
