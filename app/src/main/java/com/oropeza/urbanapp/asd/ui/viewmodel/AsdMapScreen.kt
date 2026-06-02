@@ -22,6 +22,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
+import com.oropeza.urbanapp.asd.location.LatLng
+import com.oropeza.urbanapp.asd.location.PolylineSmoother
 import com.oropeza.urbanapp.core.map.UrbanMapPoint
 import com.oropeza.urbanapp.core.map.UrbanMapScreen
 import java.text.SimpleDateFormat
@@ -56,8 +58,12 @@ fun AsdMapScreen(
             .sortedBy { it.timeMs }
     }
 
-    val points = remember(validTrackPoints) {
+    val rawPoints = remember(validTrackPoints) {
         validTrackPoints.map { point -> point.toUrbanMapPoint() }
+    }
+
+    val mapPoints = remember(validTrackPoints) {
+        validTrackPoints.toSmoothedMapPoints()
     }
 
     val eventMarkers = remember(stopEvents) {
@@ -67,16 +73,20 @@ fun AsdMapScreen(
             .map { event -> event.toUrbanMapPoint() }
     }
 
-    val metrics = remember(validTrackPoints, stopEvents) {
-        AsdMapMetrics.from(validTrackPoints, stopEvents)
+    val metrics = remember(validTrackPoints, stopEvents, mapPoints) {
+        AsdMapMetrics.from(
+            points = validTrackPoints,
+            events = stopEvents,
+            displayedPointCount = mapPoints.size
+        )
     }
 
-    val startPoint = remember(points) {
-        points.firstOrNull()?.copy(title = "Inicio ASD")
+    val startPoint = remember(rawPoints) {
+        rawPoints.firstOrNull()?.copy(title = "Inicio ASD")
     }
 
-    val endPoint = remember(points) {
-        points.lastOrNull()?.copy(title = "Ultimo punto ASD")?.takeIf { points.size >= 2 }
+    val endPoint = remember(rawPoints) {
+        rawPoints.lastOrNull()?.copy(title = "Ultimo punto ASD")?.takeIf { rawPoints.size >= 2 }
     }
 
     Scaffold(
@@ -89,7 +99,7 @@ fun AsdMapScreen(
     ) { pad ->
         Box(Modifier.padding(pad)) {
             UrbanMapScreen(
-                points = points,
+                points = mapPoints,
                 eventMarkers = eventMarkers,
                 startPoint = startPoint,
                 endPoint = endPoint,
@@ -105,6 +115,7 @@ fun AsdMapScreen(
                 Column(Modifier.padding(10.dp)) {
                     Text("Resumen ASD", style = MaterialTheme.typography.titleSmall)
                     Text("Puntos: ${metrics.pointCount}", style = MaterialTheme.typography.bodySmall)
+                    Text("Dibujados: ${metrics.displayedPointCount}", style = MaterialTheme.typography.bodySmall)
                     Text("Distancia: ${metrics.distanceText}", style = MaterialTheme.typography.bodySmall)
                     Text("Duracion: ${metrics.durationText}", style = MaterialTheme.typography.bodySmall)
                     Text("Precision prom: ${metrics.accuracyText}", style = MaterialTheme.typography.bodySmall)
@@ -115,6 +126,26 @@ fun AsdMapScreen(
                 }
             }
         }
+    }
+}
+
+private fun List<TrackPoint>.toSmoothedMapPoints(): List<UrbanMapPoint> {
+    if (isEmpty()) return emptyList()
+    if (size < 5) return map { it.toUrbanMapPoint() }
+
+    val raw = map { LatLng(it.lat, it.lon) }
+    val smooth = PolylineSmoother.movingAverage(raw, window = 3)
+    val simplified = PolylineSmoother.douglasPeucker(smooth, epsilonMeters = 2.5)
+    val simplifiedKeys = simplified.mapIndexed { index, point -> index to point }
+
+    return simplifiedKeys.map { (index, point) ->
+        val source = this[index.coerceAtMost(lastIndex)]
+        source.toUrbanMapPoint().copy(
+            id = "smooth-${source.id}-$index",
+            lat = point.lat,
+            lon = point.lon,
+            title = "Ruta suavizada"
+        )
     }
 }
 
@@ -203,6 +234,7 @@ private fun StopEvent.eventCategory(): AsdEventCategory {
 
 private data class AsdMapMetrics(
     val pointCount: Int,
+    val displayedPointCount: Int,
     val eventCount: Int,
     val boardingCount: Int,
     val alightingCount: Int,
@@ -214,7 +246,7 @@ private data class AsdMapMetrics(
     val accuracyText: String
 ) {
     companion object {
-        fun from(points: List<TrackPoint>, events: List<StopEvent>): AsdMapMetrics {
+        fun from(points: List<TrackPoint>, events: List<StopEvent>, displayedPointCount: Int): AsdMapMetrics {
             val distanceM = points.zipWithNext().sumOf { (a, b) ->
                 haversineMeters(a.lat, a.lon, b.lat, b.lon)
             }
@@ -226,6 +258,7 @@ private data class AsdMapMetrics(
             val avgAcc = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.averageOrNull()
             return AsdMapMetrics(
                 pointCount = points.size,
+                displayedPointCount = displayedPointCount,
                 eventCount = events.size,
                 boardingCount = events.count { it.eventCategory() == AsdEventCategory.BOARDING },
                 alightingCount = events.count { it.eventCategory() == AsdEventCategory.ALIGHTING },
