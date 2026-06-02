@@ -17,6 +17,7 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.*
+import com.oropeza.urbanapp.BuildConfig
 import kotlin.math.roundToLong
 
 @Composable
@@ -29,6 +30,8 @@ fun UrbanMapScreen(
     endPoint: UrbanMapPoint? = null,
     onPointClick: (UrbanMapPoint) -> Unit = {}
 ) {
+    val isMapsApiKeyConfigured = BuildConfig.MAPS_API_KEY.isNotBlank()
+
     val validPoints = remember(points) {
         points
             .filter { it.hasValidCoordinates }
@@ -148,6 +151,26 @@ fun UrbanMapScreen(
                         onPointClick(point)
                     }
                 )
+            }
+        }
+
+        if (!isMapsApiKeyConfigured) {
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(12.dp)
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(
+                        "Google Maps sin API Key",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        "Agrega MAPS_API_KEY en local.properties y recompila.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
 
