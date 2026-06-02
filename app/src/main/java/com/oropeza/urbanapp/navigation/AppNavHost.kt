@@ -50,6 +50,7 @@ fun AppNavHost(navController: NavHostController) {
             AsdTripListScreen(
                 onNewTrip = { navController.navigate("asd_new") },
                 onOpenTrip = { tripId -> navController.navigate("asd_detail/$tripId") },
+                onOpenMap = { tripId -> navController.navigate("asd_map/$tripId") },
                 onBackHome = { navController.popBackStack("home", inclusive = false) }
             )
         }
