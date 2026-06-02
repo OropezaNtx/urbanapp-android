@@ -49,6 +49,10 @@ class TrackingService : Service() {
     private val jumpM = 40.0
     private val jumpAccM = 20.0
 
+    // Guardado inteligente: evita cientos de puntos estando detenido.
+    private val minSaveDistanceM = 3.0
+    private val maxSaveIntervalMs = 8_000L
+
     private enum class Mode { ACQUIRE, TRACK, STILL }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -71,6 +75,10 @@ class TrackingService : Service() {
     private var lastAcceptedTimeMs: Long? = null
     private var lastAcceptedLat: Double? = null
     private var lastAcceptedLon: Double? = null
+
+    private var lastSavedTimeMs: Long? = null
+    private var lastSavedLat: Double? = null
+    private var lastSavedLon: Double? = null
 
     private var stillCounter = 0
 
@@ -130,6 +138,9 @@ class TrackingService : Service() {
         lastAcceptedTimeMs = null
         lastAcceptedLat = null
         lastAcceptedLon = null
+        lastSavedTimeMs = null
+        lastSavedLat = null
+        lastSavedLon = null
 
         kalmanTrack.reset()
         currentMode = null
@@ -171,6 +182,9 @@ class TrackingService : Service() {
         lastAcceptedTimeMs = null
         lastAcceptedLat = null
         lastAcceptedLon = null
+        lastSavedTimeMs = null
+        lastSavedLat = null
+        lastSavedLon = null
 
         try { headingProvider.stop() } catch (_: Exception) {}
 
@@ -204,15 +218,15 @@ class TrackingService : Service() {
                 Mode.TRACK -> Params(
                     intervalMs = 1500L,
                     minUpdateMs = 750L,
-                    minDistanceM = 0f,      // ✅ NO brincar puntos
-                    maxWaitTimeMs = 0L,     // ✅ NO batching
+                    minDistanceM = 0f,
+                    maxWaitTimeMs = 0L,
                     highAccuracy = true
                 )
                 Mode.STILL -> Params(
                     intervalMs = 5000L,
                     minUpdateMs = 2500L,
-                    minDistanceM = 0f,      // ✅ también en STILL
-                    maxWaitTimeMs = 0L,     // ✅ NO batching
+                    minDistanceM = 0f,
+                    maxWaitTimeMs = 0L,
                     highAccuracy = true
                 )
             }
@@ -276,6 +290,9 @@ class TrackingService : Service() {
                 lastAcceptedTimeMs = null
                 lastAcceptedLat = null
                 lastAcceptedLon = null
+                lastSavedTimeMs = null
+                lastSavedLat = null
+                lastSavedLon = null
                 stillCounter = 0
 
                 Log.i(TAG, "Recording ARMED (acc <= $requiredAccM x $goodFixNeeded)")
@@ -329,8 +346,8 @@ class TrackingService : Service() {
         lastAcceptedLat = latF
         lastAcceptedLon = lonF
 
-        // 5) Guardar punto
-        if (currentMode != Mode.ACQUIRE && accM <= usableAccM) {
+        // 5) Guardar punto con reducción de ruido
+        if (currentMode != Mode.ACQUIRE && accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, timeMs)) {
             val modeTag = currentMode?.name ?: "NA"
             val p = TrackPoint(
                 tripId = tripId,
@@ -340,11 +357,27 @@ class TrackingService : Service() {
                 accM = accM,
                 provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag"
             )
+            lastSavedTimeMs = timeMs
+            lastSavedLat = latF
+            lastSavedLon = lonF
             scope.launch {
                 try { AsdGraph.db.trackDao().insert(p) }
                 catch (e: Exception) { Log.e(TAG, "Error insertando TrackPoint", e) }
             }
         }
+    }
+
+    private fun shouldSaveTrackPoint(lat: Double, lon: Double, timeMs: Long): Boolean {
+        val savedTime = lastSavedTimeMs
+        val savedLat = lastSavedLat
+        val savedLon = lastSavedLon
+
+        if (savedTime == null || savedLat == null || savedLon == null) return true
+
+        val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
+        val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
+
+        return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -358,6 +391,8 @@ class TrackingService : Service() {
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return r * c
     }
+
+    private fun buildNotification(text: android.app.Notification): android.app.Notification = text
 
     private fun buildNotification(text: String): android.app.Notification {
         val builder = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
@@ -382,5 +417,4 @@ class TrackingService : Service() {
             nm.createNotificationChannel(channel)
         }
     }
-
 }
