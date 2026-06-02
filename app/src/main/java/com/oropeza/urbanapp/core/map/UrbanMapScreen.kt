@@ -26,6 +26,7 @@ fun UrbanMapScreen(
     modifier: Modifier = Modifier,
     emptyMessage: String = "No hay puntos con ubicación válida.",
     showRouteLine: Boolean = true,
+    showPointMarkers: Boolean = true,
     startPoint: UrbanMapPoint? = null,
     endPoint: UrbanMapPoint? = null,
     onPointClick: (UrbanMapPoint) -> Unit = {}
@@ -109,24 +110,26 @@ fun UrbanMapScreen(
                 )
             }
 
-            markerGroups.forEach { group ->
-                val representative = group.points.first()
+            if (showPointMarkers) {
+                markerGroups.forEach { group ->
+                    val representative = group.points.first()
 
-                Marker(
-                    state = MarkerState(position = group.position),
-                    title = if (group.points.size == 1) representative.title else "${group.points.size} registros aquí",
-                    snippet = if (group.points.size == 1) {
-                        representative.subtitle
-                    } else {
-                        group.points.take(3).joinToString("\n") { it.title }
-                    },
-                    icon = BitmapDescriptorFactory.defaultMarker(markerHueFor(representative)),
-                    onClick = {
-                        selectedPoint = representative
-                        onPointClick(representative)
-                        false
-                    }
-                )
+                    Marker(
+                        state = MarkerState(position = group.position),
+                        title = if (group.points.size == 1) representative.title else "${group.points.size} registros aquí",
+                        snippet = if (group.points.size == 1) {
+                            representative.subtitle
+                        } else {
+                            group.points.take(3).joinToString("\n") { it.title }
+                        },
+                        icon = BitmapDescriptorFactory.defaultMarker(markerHueFor(representative)),
+                        onClick = {
+                            selectedPoint = representative
+                            onPointClick(representative)
+                            false
+                        }
+                    )
+                }
             }
 
             validStartPoint?.let { point ->
