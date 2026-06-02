@@ -9,6 +9,7 @@ import androidx.navigation.navArgument
 import com.oropeza.urbanapp.dashboard.OperationalDashboardScreen
 import com.oropeza.urbanapp.ui.screens.LoginScreen
 import com.oropeza.urbanapp.ui.screens.SignUpScreen
+import com.oropeza.urbanapp.asd.ui.viewmodel.AsdMapScreen
 import com.oropeza.urbanapp.asd.ui.viewmodel.AsdNewTripScreen
 import com.oropeza.urbanapp.asd.ui.viewmodel.AsdTripDetailScreen
 import com.oropeza.urbanapp.asd.ui.viewmodel.AsdTripListScreen
@@ -69,6 +70,17 @@ fun AppNavHost(navController: NavHostController) {
         ) { backStack ->
             val tripId = backStack.arguments?.getLong("tripId") ?: 0L
             AsdTripDetailScreen(tripId = tripId, onBack = { navController.popBackStack() })
+        }
+
+        composable(
+            route = "asd_map/{tripId}",
+            arguments = listOf(navArgument("tripId") { type = NavType.LongType })
+        ) { backStack ->
+            val tripId = backStack.arguments?.getLong("tripId") ?: 0L
+            AsdMapScreen(
+                tripId = tripId,
+                onBack = { navController.popBackStack() }
+            )
         }
 
         // CC routes
