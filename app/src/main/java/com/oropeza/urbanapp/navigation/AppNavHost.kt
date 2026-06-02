@@ -6,6 +6,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.oropeza.urbanapp.dashboard.OperationalDashboardScreen
 import com.oropeza.urbanapp.ui.screens.LoginScreen
 import com.oropeza.urbanapp.ui.screens.SignUpScreen
 import com.oropeza.urbanapp.asd.ui.viewmodel.AsdNewTripScreen
@@ -30,9 +31,16 @@ fun AppNavHost(navController: NavHostController) {
 
         composable("home") {
             HomeScreen(
+                onOpenDashboard = { navController.navigate("dashboard") },
                 onOpenAsd = { navController.navigate("asd_list") },
                 onOpenCc = { navController.navigate("cc_list") },
                 onOpenFov = { navController.navigate("fov_list") }
+            )
+        }
+
+        composable("dashboard") {
+            OperationalDashboardScreen(
+                onBack = { navController.popBackStack() }
             )
         }
 
