@@ -24,6 +24,8 @@ import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.core.map.UrbanMapPoint
 import com.oropeza.urbanapp.core.map.UrbanMapScreen
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -152,7 +154,8 @@ private fun StopEvent.toUrbanMapPoint(): UrbanMapPoint {
         metadata = mapOf(
             "tripId" to tripId.toString(),
             "stopType" to stopType,
-            "count" to count.toString()
+            "count" to count.toString(),
+            "time" to formattedTime(timestamp)
         )
     )
 }
@@ -161,13 +164,20 @@ private fun StopEvent.eventSubtitle(): String {
     val paxUp = paxMenUp + paxWomenUp
     val paxDown = paxMenDown + paxWomenDown
     val parts = buildList {
-        if (paxUp > 0) add("Suben: $paxUp")
-        if (paxDown > 0) add("Bajan: $paxDown")
+        add("Hora: ${formattedTime(timestamp)}")
+        if (paxUp > 0) add("Suben: $paxUp (H:$paxMenUp M:$paxWomenUp)")
+        if (paxDown > 0) add("Bajan: $paxDown (H:$paxMenDown M:$paxWomenDown)")
         if (!delayCodes.isNullOrBlank()) add("Demora: $delayCodes")
+        if (!otherDelayDesc.isNullOrBlank()) add(otherDelayDesc)
+        if (!notes.isNullOrBlank()) add("Notas: $notes")
         add(locationStatus)
-        add("acc ${stopAccM}m")
+        add("GPS ±${stopAccM.roundToInt()}m")
     }
     return parts.joinToString(" | ")
+}
+
+private fun formattedTime(timeMs: Long): String {
+    return SimpleDateFormat("HH:mm:ss", Locale("es", "MX")).format(Date(timeMs))
 }
 
 private enum class AsdEventCategory(val mapStatus: String) {
