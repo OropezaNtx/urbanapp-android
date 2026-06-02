@@ -37,6 +37,8 @@ fun FovSessionDetailScreenV2(
 ) {
     val context = LocalContext.current
     val session by vm.repo.sessionFlow(sessionId).collectAsState(initial = null)
+    val observations by vm.repo.observationsFlow(sessionId).collectAsState(initial = emptyList())
+
     var exportMsg by remember { mutableStateOf<String?>(null) }
     var exportError by remember { mutableStateOf<String?>(null) }
 
@@ -74,60 +76,69 @@ fun FovSessionDetailScreenV2(
         )
 
         session?.let { s ->
-            ElevatedCard(
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
             ) {
-                Column(Modifier.padding(12.dp)) {
-                    Button(onClick = onOpenMap) {
-                        Text("Ver mapa")
-                    }
+                FovSessionSummaryCard(
+                    session = s,
+                    observations = observations
+                )
 
-                    Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(8.dp))
 
-                    FovExportCsvButton(
-                        sessionId = sessionId,
-                        estacion = s.estacion,
-                        ubicacion = s.ubicacion,
-                        sentido = s.sentido,
-                        vm = vm,
-                        onSuccess = {
-                            exportError = null
-                            exportMsg = "CSV exportado correctamente."
-                        },
-                        onError = { msg ->
-                            exportMsg = null
-                            exportError = msg
+                ElevatedCard {
+                    Column(Modifier.padding(12.dp)) {
+                        Button(onClick = onOpenMap) {
+                            Text("Ver mapa")
                         }
-                    )
 
-                    if (!locationGranted) {
                         Spacer(Modifier.height(8.dp))
-                        Text(
-                            "GPS sin permiso. Las nuevas capturas no tendrán ubicación.",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        OutlinedButton(
-                            onClick = {
-                                permissionLauncher.launch(
-                                    arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION
-                                    )
-                                )
-                            }
-                        ) {
-                            Text("Permitir GPS")
-                        }
-                    }
 
-                    exportMsg?.let {
-                        Text(it, color = MaterialTheme.colorScheme.primary)
-                    }
-                    exportError?.let {
-                        Text("Error: $it", color = MaterialTheme.colorScheme.error)
+                        FovExportCsvButton(
+                            sessionId = sessionId,
+                            estacion = s.estacion,
+                            ubicacion = s.ubicacion,
+                            sentido = s.sentido,
+                            vm = vm,
+                            onSuccess = {
+                                exportError = null
+                                exportMsg = "CSV exportado correctamente."
+                            },
+                            onError = { msg ->
+                                exportMsg = null
+                                exportError = msg
+                            }
+                        )
+
+                        if (!locationGranted) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "GPS sin permiso. Las nuevas capturas no tendrán ubicación.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    permissionLauncher.launch(
+                                        arrayOf(
+                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                            Manifest.permission.ACCESS_COARSE_LOCATION
+                                        )
+                                    )
+                                }
+                            ) {
+                                Text("Permitir GPS")
+                            }
+                        }
+
+                        exportMsg?.let {
+                            Text(it, color = MaterialTheme.colorScheme.primary)
+                        }
+                        exportError?.let {
+                            Text("Error: $it", color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }
