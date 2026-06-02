@@ -25,6 +25,8 @@ fun UrbanMapScreen(
     modifier: Modifier = Modifier,
     emptyMessage: String = "No hay puntos con ubicación válida.",
     showRouteLine: Boolean = true,
+    startPoint: UrbanMapPoint? = null,
+    endPoint: UrbanMapPoint? = null,
     onPointClick: (UrbanMapPoint) -> Unit = {}
 ) {
     val validPoints = remember(points) {
@@ -33,7 +35,18 @@ fun UrbanMapScreen(
             .sortedWith(compareBy<UrbanMapPoint> { it.timestampMs ?: Long.MAX_VALUE }.thenBy { it.id })
     }
 
-    if (validPoints.isEmpty()) {
+    val validStartPoint = remember(startPoint) { startPoint?.takeIf { it.hasValidCoordinates } }
+    val validEndPoint = remember(endPoint) { endPoint?.takeIf { it.hasValidCoordinates } }
+
+    val allCameraPoints = remember(validPoints, validStartPoint, validEndPoint) {
+        buildList {
+            addAll(validPoints)
+            validStartPoint?.let { add(it) }
+            validEndPoint?.let { add(it) }
+        }
+    }
+
+    if (allCameraPoints.isEmpty()) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Card(Modifier.padding(16.dp)) {
                 Text(emptyMessage, modifier = Modifier.padding(16.dp))
@@ -50,6 +63,11 @@ fun UrbanMapScreen(
             .distinctBy { coordinateKey(it.latitude, it.longitude) }
     }
 
+    val cameraPositions = remember(allCameraPoints) {
+        allCameraPoints.map { LatLng(it.lat, it.lon) }
+            .distinctBy { coordinateKey(it.latitude, it.longitude) }
+    }
+
     val markerGroups = remember(validPoints) {
         validPoints.groupBy { coordinateKey(it.lat, it.lon) }
             .values
@@ -61,14 +79,14 @@ fun UrbanMapScreen(
             }
     }
 
-    LaunchedEffect(routePositions) {
-        if (routePositions.size == 1) {
+    LaunchedEffect(cameraPositions) {
+        if (cameraPositions.size == 1) {
             cameraPositionState.animate(
-                CameraUpdateFactory.newLatLngZoom(routePositions.first(), 17f)
+                CameraUpdateFactory.newLatLngZoom(cameraPositions.first(), 17f)
             )
         } else {
             val builder = LatLngBounds.Builder()
-            routePositions.forEach { builder.include(it) }
+            cameraPositions.forEach { builder.include(it) }
             cameraPositionState.animate(
                 CameraUpdateFactory.newLatLngBounds(builder.build(), 120)
             )
@@ -107,6 +125,30 @@ fun UrbanMapScreen(
                     }
                 )
             }
+
+            validStartPoint?.let { point ->
+                SpecialMarker(
+                    point = point,
+                    title = "Inicio",
+                    hue = BitmapDescriptorFactory.HUE_GREEN,
+                    onClick = {
+                        selectedPoint = point
+                        onPointClick(point)
+                    }
+                )
+            }
+
+            validEndPoint?.let { point ->
+                SpecialMarker(
+                    point = point,
+                    title = "Fin",
+                    hue = BitmapDescriptorFactory.HUE_RED,
+                    onClick = {
+                        selectedPoint = point
+                        onPointClick(point)
+                    }
+                )
+            }
         }
 
         Card(
@@ -118,7 +160,7 @@ fun UrbanMapScreen(
                 Text("Puntos: ${validPoints.size}", style = MaterialTheme.typography.titleSmall)
                 Text("Ubicaciones: ${markerGroups.size}", style = MaterialTheme.typography.bodySmall)
                 Text(
-                    "Lat: ${validPoints.first().lat} | Lon: ${validPoints.first().lon}",
+                    "Lat: ${allCameraPoints.first().lat} | Lon: ${allCameraPoints.first().lon}",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -144,6 +186,25 @@ fun UrbanMapScreen(
     }
 }
 
+@Composable
+private fun SpecialMarker(
+    point: UrbanMapPoint,
+    title: String,
+    hue: Float,
+    onClick: () -> Unit
+) {
+    Marker(
+        state = MarkerState(position = LatLng(point.lat, point.lon)),
+        title = title,
+        snippet = point.subtitle,
+        icon = BitmapDescriptorFactory.defaultMarker(hue),
+        onClick = {
+            onClick()
+            false
+        }
+    )
+}
+
 private data class UrbanMapMarkerGroup(
     val position: LatLng,
     val points: List<UrbanMapPoint>
@@ -157,8 +218,8 @@ private fun coordinateKey(lat: Double, lon: Double): String {
 
 private fun markerHueFor(point: UrbanMapPoint): Float {
     return when (point.status?.uppercase()) {
-        "OK", "GPS", "FUSED" -> BitmapDescriptorFactory.HUE_GREEN
-        "LOW_ACCURACY", "APPROX", "NETWORK" -> BitmapDescriptorFactory.HUE_YELLOW
+        "OK", "GPS", "FUSED", "FIX_OK" -> BitmapDescriptorFactory.HUE_GREEN
+        "LOW_ACCURACY", "APPROX", "NETWORK", "FIX_USABLE" -> BitmapDescriptorFactory.HUE_YELLOW
         "NO_FIX", "INVALID" -> BitmapDescriptorFactory.HUE_RED
         else -> BitmapDescriptorFactory.HUE_RED
     }
