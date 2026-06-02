@@ -27,6 +27,7 @@ fun UrbanMapScreen(
     emptyMessage: String = "No hay puntos con ubicación válida.",
     showRouteLine: Boolean = true,
     showPointMarkers: Boolean = true,
+    eventMarkers: List<UrbanMapPoint> = emptyList(),
     startPoint: UrbanMapPoint? = null,
     endPoint: UrbanMapPoint? = null,
     onPointClick: (UrbanMapPoint) -> Unit = {}
@@ -39,12 +40,19 @@ fun UrbanMapScreen(
             .sortedWith(compareBy<UrbanMapPoint> { it.timestampMs ?: Long.MAX_VALUE }.thenBy { it.id })
     }
 
+    val validEventMarkers = remember(eventMarkers) {
+        eventMarkers
+            .filter { it.hasValidCoordinates }
+            .sortedWith(compareBy<UrbanMapPoint> { it.timestampMs ?: Long.MAX_VALUE }.thenBy { it.id })
+    }
+
     val validStartPoint = remember(startPoint) { startPoint?.takeIf { it.hasValidCoordinates } }
     val validEndPoint = remember(endPoint) { endPoint?.takeIf { it.hasValidCoordinates } }
 
-    val allCameraPoints = remember(validPoints, validStartPoint, validEndPoint) {
+    val allCameraPoints = remember(validPoints, validEventMarkers, validStartPoint, validEndPoint) {
         buildList {
             addAll(validPoints)
+            addAll(validEventMarkers)
             validStartPoint?.let { add(it) }
             validEndPoint?.let { add(it) }
         }
@@ -83,6 +91,17 @@ fun UrbanMapScreen(
             }
     }
 
+    val eventGroups = remember(validEventMarkers) {
+        validEventMarkers.groupBy { coordinateKey(it.lat, it.lon) }
+            .values
+            .map { group ->
+                UrbanMapMarkerGroup(
+                    position = LatLng(group.first().lat, group.first().lon),
+                    points = group
+                )
+            }
+    }
+
     LaunchedEffect(cameraPositions) {
         if (cameraPositions.size == 1) {
             cameraPositionState.animate(
@@ -111,26 +130,18 @@ fun UrbanMapScreen(
             }
 
             if (showPointMarkers) {
-                markerGroups.forEach { group ->
-                    val representative = group.points.first()
-
-                    Marker(
-                        state = MarkerState(position = group.position),
-                        title = if (group.points.size == 1) representative.title else "${group.points.size} registros aquí",
-                        snippet = if (group.points.size == 1) {
-                            representative.subtitle
-                        } else {
-                            group.points.take(3).joinToString("\n") { it.title }
-                        },
-                        icon = BitmapDescriptorFactory.defaultMarker(markerHueFor(representative)),
-                        onClick = {
-                            selectedPoint = representative
-                            onPointClick(representative)
-                            false
-                        }
-                    )
-                }
+                RenderMarkerGroups(
+                    groups = markerGroups,
+                    onSelected = { selectedPoint = it },
+                    onPointClick = onPointClick
+                )
             }
+
+            RenderMarkerGroups(
+                groups = eventGroups,
+                onSelected = { selectedPoint = it },
+                onPointClick = onPointClick
+            )
 
             validStartPoint?.let { point ->
                 SpecialMarker(
@@ -185,6 +196,9 @@ fun UrbanMapScreen(
             Column(Modifier.padding(10.dp)) {
                 Text("Puntos: ${validPoints.size}", style = MaterialTheme.typography.titleSmall)
                 Text("Ubicaciones: ${markerGroups.size}", style = MaterialTheme.typography.bodySmall)
+                if (validEventMarkers.isNotEmpty()) {
+                    Text("Eventos: ${validEventMarkers.size}", style = MaterialTheme.typography.bodySmall)
+                }
                 Text(
                     "Lat: ${allCameraPoints.first().lat} | Lon: ${allCameraPoints.first().lon}",
                     style = MaterialTheme.typography.bodySmall
@@ -209,6 +223,32 @@ fun UrbanMapScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RenderMarkerGroups(
+    groups: List<UrbanMapMarkerGroup>,
+    onSelected: (UrbanMapPoint) -> Unit,
+    onPointClick: (UrbanMapPoint) -> Unit
+) {
+    groups.forEach { group ->
+        val representative = group.points.first()
+        Marker(
+            state = MarkerState(position = group.position),
+            title = if (group.points.size == 1) representative.title else "${group.points.size} registros aquí",
+            snippet = if (group.points.size == 1) {
+                representative.subtitle
+            } else {
+                group.points.take(3).joinToString("\n") { it.title }
+            },
+            icon = BitmapDescriptorFactory.defaultMarker(markerHueFor(representative)),
+            onClick = {
+                onSelected(representative)
+                onPointClick(representative)
+                false
+            }
+        )
     }
 }
 
@@ -245,6 +285,9 @@ private fun coordinateKey(lat: Double, lon: Double): String {
 private fun markerHueFor(point: UrbanMapPoint): Float {
     return when (point.status?.uppercase()) {
         "OK", "GPS", "FUSED", "FIX_OK" -> BitmapDescriptorFactory.HUE_GREEN
+        "ASCENSO" -> BitmapDescriptorFactory.HUE_AZURE
+        "DESCENSO" -> BitmapDescriptorFactory.HUE_ORANGE
+        "BANDERA" -> BitmapDescriptorFactory.HUE_VIOLET
         "LOW_ACCURACY", "APPROX", "NETWORK", "FIX_USABLE" -> BitmapDescriptorFactory.HUE_YELLOW
         "NO_FIX", "INVALID" -> BitmapDescriptorFactory.HUE_RED
         else -> BitmapDescriptorFactory.HUE_RED
