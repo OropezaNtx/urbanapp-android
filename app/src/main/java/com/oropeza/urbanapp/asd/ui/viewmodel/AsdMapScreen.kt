@@ -58,6 +58,13 @@ fun AsdMapScreen(
         validTrackPoints.map { point -> point.toUrbanMapPoint() }
     }
 
+    val eventMarkers = remember(stopEvents) {
+        stopEvents
+            .filter { it.stopLat != 0.0 && it.stopLon != 0.0 }
+            .sortedBy { it.timestamp }
+            .map { event -> event.toUrbanMapPoint() }
+    }
+
     val metrics = remember(validTrackPoints, stopEvents) {
         AsdMapMetrics.from(validTrackPoints, stopEvents)
     }
@@ -81,6 +88,7 @@ fun AsdMapScreen(
         Box(Modifier.padding(pad)) {
             UrbanMapScreen(
                 points = points,
+                eventMarkers = eventMarkers,
                 startPoint = startPoint,
                 endPoint = endPoint,
                 showPointMarkers = false,
@@ -119,6 +127,32 @@ private fun TrackPoint.toUrbanMapPoint(): UrbanMapPoint {
         module = "ASD_TRACK",
         timestampMs = timeMs,
         metadata = mapOf("tripId" to tripId.toString())
+    )
+}
+
+private fun StopEvent.toUrbanMapPoint(): UrbanMapPoint {
+    val type = stopType.uppercase()
+    val label = when (type) {
+        "ASCENSO" -> "Ascenso"
+        "DESCENSO" -> "Descenso"
+        "BANDERA" -> if (!delayCodes.isNullOrBlank()) "Demora" else "Bandera"
+        else -> type
+    }
+    return UrbanMapPoint(
+        id = "event-$eventId",
+        title = "$label ${stopName ?: ""}".trim(),
+        subtitle = "${delayCodes ?: ""} | $locationStatus | acc ${stopAccM}m",
+        lat = stopLat,
+        lon = stopLon,
+        accuracyM = stopAccM,
+        status = if (type == "BANDERA" && !delayCodes.isNullOrBlank()) "BANDERA" else type,
+        module = "ASD_EVENT",
+        timestampMs = timestamp,
+        metadata = mapOf(
+            "tripId" to tripId.toString(),
+            "stopType" to stopType,
+            "count" to count.toString()
+        )
     )
 }
 
