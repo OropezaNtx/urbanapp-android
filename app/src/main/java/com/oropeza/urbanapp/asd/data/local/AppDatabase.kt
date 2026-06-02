@@ -2,6 +2,7 @@ package com.oropeza.urbanapp.asd.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import com.oropeza.urbanapp.dashboard.OperationalDashboardDao
 
 @Database(
     entities = [
@@ -31,4 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun fovRouteMasterDao(): FovRouteMasterDao
     abstract fun fovPoiCatalogDao(): FovPoiCatalogDao
     abstract fun fovObservationDao(): FovObservationDao
+
+    // ✅ Dashboard operativo
+    abstract fun operationalDashboardDao(): OperationalDashboardDao
 }
