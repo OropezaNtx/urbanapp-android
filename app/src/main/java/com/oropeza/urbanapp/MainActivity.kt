@@ -17,7 +17,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             UrbanAppTheme {
                 val navController = rememberNavController()
-                Surface(color = MaterialTheme.colorScheme.background) {
+                Surface(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     AppNavHost(navController = navController)
                 }
             }

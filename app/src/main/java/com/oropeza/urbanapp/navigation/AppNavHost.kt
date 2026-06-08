@@ -25,7 +25,7 @@ import com.oropeza.urbanapp.fov.ui.FovSessionListScreen
 
 @Composable
 fun AppNavHost(navController: NavHostController) {
-    NavHost(navController = navController, startDestination = "home") {
+    NavHost(navController = navController, startDestination = "asd_list") {
 
         composable("login") { LoginScreen(navController) }
         composable("signup") { SignUpScreen(navController) }
