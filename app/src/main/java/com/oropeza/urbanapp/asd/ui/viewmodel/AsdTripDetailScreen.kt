@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -94,7 +96,8 @@ class AsdTripDetailVM : ViewModel() {
         hasLuggage: Boolean,
         delayCodes: String?,
         otherDelayDesc: String?,
-        fix: LocationFix
+        stopFix: LocationFix,
+        startFix: LocationFix = stopFix
     ) = AsdGraph.repo.addStopDetailed(
         tripId = tripId,
         stopType = stopType,
@@ -110,17 +113,17 @@ class AsdTripDetailVM : ViewModel() {
         delayCodes = delayCodes,
         otherDelayDesc = otherDelayDesc,
         eventTimestampMs = stopTimeMs,
-        stopLat = fix.lat,
-        stopLon = fix.lon,
-        stopAccM = fix.accM,
-        stopProvider = fix.provider,
-        stopFixTime = fix.fixTime,
-        locationStatus = fix.status,
-        startLat = fix.lat,
-        startLon = fix.lon,
-        startAccM = fix.accM,
-        startProvider = fix.provider,
-        startFixTime = fix.fixTime
+        stopLat = stopFix.lat,
+        stopLon = stopFix.lon,
+        stopAccM = stopFix.accM,
+        stopProvider = stopFix.provider,
+        stopFixTime = stopFix.fixTime,
+        locationStatus = stopFix.status,
+        startLat = startFix.lat,
+        startLon = startFix.lon,
+        startAccM = startFix.accM,
+        startProvider = startFix.provider,
+        startFixTime = startFix.fixTime
     )
 
     suspend fun endTripWithFix(tripId: Long, fix: LocationFix): Boolean = AsdGraph.repo.endTripWithFix(
@@ -164,12 +167,29 @@ fun AsdTripDetailScreen(
     var stopName by rememberSaveable { mutableStateOf("") }
     var notes by rememberSaveable { mutableStateOf("") }
 
+    var activeDelayStartMs by rememberSaveable { mutableStateOf(0L) }
+    var activeDelayLat by rememberSaveable { mutableStateOf(0.0) }
+    var activeDelayLon by rememberSaveable { mutableStateOf(0.0) }
+    var activeDelayAccM by rememberSaveable { mutableStateOf(0.0) }
+    var activeDelayProvider by rememberSaveable { mutableStateOf("") }
+    var activeDelayFixTime by rememberSaveable { mutableStateOf(0L) }
+    var activeDelayStatus by rememberSaveable { mutableStateOf("GPS_PENDING") }
+    var tickMs by remember { mutableStateOf(System.currentTimeMillis()) }
+
     var loadingGps by remember { mutableStateOf(false) }
     var gpsMsg by remember { mutableStateOf<String?>(null) }
     var snackbarText by remember { mutableStateOf<String?>(null) }
     var distanceKm by remember { mutableStateOf<Double?>(null) }
     var distanceLoading by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val isDelayActive = activeDelayStartMs > 0L
+    LaunchedEffect(activeDelayStartMs) {
+        while (activeDelayStartMs > 0L) {
+            tickMs = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000L)
+        }
+    }
 
     LaunchedEffect(snackbarText) {
         snackbarText?.let {
@@ -210,6 +230,16 @@ fun AsdTripDetailScreen(
         notes = ""
     }
 
+    fun clearActiveDelay() {
+        activeDelayStartMs = 0L
+        activeDelayLat = 0.0
+        activeDelayLon = 0.0
+        activeDelayAccM = 0.0
+        activeDelayProvider = ""
+        activeDelayFixTime = 0L
+        activeDelayStatus = "GPS_PENDING"
+    }
+
     fun currentFix(now: Long): LocationFix {
         val p = lastPoint
         return if (p != null && p.lat != 0.0 && p.lon != 0.0) {
@@ -219,13 +249,86 @@ fun AsdTripDetailScreen(
         }
     }
 
+    fun activeStartFix(): LocationFix = LocationFix(activeDelayLat, activeDelayLon, activeDelayAccM, activeDelayProvider.ifBlank { "pending" }, activeDelayFixTime, activeDelayStatus)
+
     fun inferredStopType(): String {
         val hasPax = menUp + womenUp + menDown + womenDown > 0
-        val hasDelay = selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank()
+        val hasDelay = selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank() || isDelayActive
         return if (hasPax) "ASD" else if (hasDelay) "DEMORA" else "ASD"
     }
 
+    fun selectedDelayText(): String? = selectedDelayCodes.joinToString("/").ifBlank { null }
+
+    fun startActiveDelay() {
+        if (!requestPermsIfNeeded()) {
+            snackbarText = "Permiso de ubicación requerido."
+            return
+        }
+        val totalPax = menUp + womenUp + menDown + womenDown
+        val hasDelayCode = selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank() || totalPax > 0
+        if (!hasDelayCode) {
+            snackbarText = "Selecciona una demora o registra subidas/bajadas para iniciar."
+            return
+        }
+        val now = System.currentTimeMillis()
+        val fix = currentFix(now)
+        activeDelayStartMs = now
+        activeDelayLat = fix.lat
+        activeDelayLon = fix.lon
+        activeDelayAccM = fix.accM
+        activeDelayProvider = fix.provider
+        activeDelayFixTime = fix.fixTime
+        activeDelayStatus = fix.status
+        snackbarText = "Demora iniciada ✅"
+    }
+
+    fun closeActiveDelay(summary: AsdDemoSummary) {
+        if (!isDelayActive) return
+        if (!requestPermsIfNeeded()) {
+            snackbarText = "Permiso de ubicación requerido."
+            return
+        }
+        val up = menUp + womenUp
+        val down = menDown + womenDown
+        if (down > summary.onBoard + up) {
+            snackbarText = "No puedes bajar $down personas si solo van ${summary.onBoard + up} a bordo."
+            return
+        }
+        val now = System.currentTimeMillis()
+        val endFix = currentFix(now)
+        scope.launch {
+            try {
+                vm.addStopDetailed(
+                    tripId = tripId,
+                    stopType = inferredStopType(),
+                    stopTimeMs = activeDelayStartMs,
+                    startTimeMs = now,
+                    stopName = stopName.trim().ifBlank { null },
+                    notes = notes.trim().ifBlank { null },
+                    menUp = menUp,
+                    womenUp = womenUp,
+                    menDown = menDown,
+                    womenDown = womenDown,
+                    hasLuggage = hasLuggage,
+                    delayCodes = selectedDelayText(),
+                    otherDelayDesc = otherDelayDesc.trim().ifBlank { null },
+                    stopFix = activeStartFix(),
+                    startFix = endFix
+                )
+                clearActiveDelay()
+                resetCaptureForm()
+                snackbarText = "Demora cerrada y guardada ✅"
+            } catch (e: Exception) {
+                snackbarText = e.message ?: "Error al cerrar demora."
+            }
+        }
+    }
+
     fun saveInlineEvent(summary: AsdDemoSummary) {
+        if (isDelayActive) {
+            closeActiveDelay(summary)
+            return
+        }
         if (!requestPermsIfNeeded()) {
             snackbarText = "Permiso de ubicación requerido."
             return
@@ -244,7 +347,6 @@ fun AsdTripDetailScreen(
         }
         val now = System.currentTimeMillis()
         val fix = currentFix(now)
-        val delayText = selectedDelayCodes.joinToString("/").ifBlank { null }
         scope.launch {
             try {
                 vm.addStopDetailed(
@@ -259,9 +361,9 @@ fun AsdTripDetailScreen(
                     menDown = menDown,
                     womenDown = womenDown,
                     hasLuggage = hasLuggage,
-                    delayCodes = delayText,
+                    delayCodes = selectedDelayText(),
                     otherDelayDesc = otherDelayDesc.trim().ifBlank { null },
-                    fix = fix
+                    stopFix = fix
                 )
                 snackbarText = if (fix.status == "GPS_PENDING") "Evento guardado ✅ GPS pendiente" else "Evento guardado ✅ ${fix.status} ±${fix.accM.toInt()}m"
                 resetCaptureForm()
@@ -301,6 +403,7 @@ fun AsdTripDetailScreen(
         val summary = remember(stops, pointCount) { AsdDemoSummary.from(stops, pointCount) }
         val lastAgeMs = lastPoint?.let { System.currentTimeMillis() - it.timeMs } ?: Long.MAX_VALUE
         val trackingAlive = lastPoint != null && lastAgeMs in 0..12_000L
+        val activeElapsedSec = if (isDelayActive) ((tickMs - activeDelayStartMs).coerceAtLeast(0L) / 1000L) else 0L
 
         LaunchedEffect(tripId, isEnded) {
             if (!isEnded) {
@@ -315,6 +418,8 @@ fun AsdTripDetailScreen(
             item {
                 InlineAsdCaptureCard(
                     isEnded = isEnded,
+                    isDelayActive = isDelayActive,
+                    activeElapsedSec = activeElapsedSec,
                     menUp = menUp,
                     womenUp = womenUp,
                     menDown = menDown,
@@ -335,6 +440,9 @@ fun AsdTripDetailScreen(
                     onHasLuggageChange = { hasLuggage = it },
                     onStopNameChange = { stopName = it },
                     onNotesChange = { notes = it },
+                    onStartDelay = { startActiveDelay() },
+                    onCloseDelay = { closeActiveDelay(summary) },
+                    onCancelDelay = { clearActiveDelay(); resetCaptureForm(); snackbarText = "Demora cancelada" },
                     onSave = { saveInlineEvent(summary) },
                     onClear = { resetCaptureForm() }
                 )
@@ -381,6 +489,10 @@ fun AsdTripDetailScreen(
                             snackbarText = "Permiso de ubicación requerido."
                             return@TripActionsCard
                         }
+                        if (isDelayActive) {
+                            snackbarText = "Cierra o cancela la demora activa antes de cerrar el viaje."
+                            return@TripActionsCard
+                        }
                         scope.launch {
                             try {
                                 loadingGps = true
@@ -407,6 +519,8 @@ fun AsdTripDetailScreen(
 @Composable
 private fun InlineAsdCaptureCard(
     isEnded: Boolean,
+    isDelayActive: Boolean,
+    activeElapsedSec: Long,
     menUp: Int,
     womenUp: Int,
     menDown: Int,
@@ -427,6 +541,9 @@ private fun InlineAsdCaptureCard(
     onHasLuggageChange: (Boolean) -> Unit,
     onStopNameChange: (String) -> Unit,
     onNotesChange: (String) -> Unit,
+    onStartDelay: () -> Unit,
+    onCloseDelay: () -> Unit,
+    onCancelDelay: () -> Unit,
     onSave: () -> Unit,
     onClear: () -> Unit
 ) {
@@ -435,11 +552,24 @@ private fun InlineAsdCaptureCard(
     val estimatedOnBoard = (currentOnBoard + totalUp - totalDown).coerceAtLeast(0)
     val willAutoAddAd = totalUp + totalDown > 0 && !selectedDelayCodes.contains("AD")
     val delayCodes = listOf("AD", "C", "S", "TM", "CND", "O")
+    val green = Color(0xFF00C853)
 
-    Card {
+    Card(border = if (isDelayActive) BorderStroke(3.dp, green) else null) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Registro operativo ASD", style = MaterialTheme.typography.titleMedium)
             Text("Captura subidas, bajadas y demoras en un solo punto.", style = MaterialTheme.typography.bodySmall)
+            if (isDelayActive) {
+                Card(border = BorderStroke(2.dp, green)) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("DEMORA ACTIVA", color = green, style = MaterialTheme.typography.titleMedium)
+                        Text("Tiempo: ${formatElapsed(activeElapsedSec)}")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(onClick = onCloseDelay, modifier = Modifier.weight(1f), enabled = !isEnded) { Text("Cerrar") }
+                            OutlinedButton(onClick = onCancelDelay, modifier = Modifier.weight(1f), enabled = !isEnded) { Text("Cancelar") }
+                        }
+                    }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 SummaryMetric("Suben", totalUp.toString(), Modifier.weight(1f))
                 SummaryMetric("Bajan", totalDown.toString(), Modifier.weight(1f))
@@ -469,11 +599,21 @@ private fun InlineAsdCaptureCard(
             OutlinedTextField(notes, onNotesChange, label = { Text("Observaciones") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
             Text(lastPoint?.let { "GPS usado: último punto guardado ±${it.accM.toInt()}m" } ?: "GPS usado: pendiente si aún no hay punto guardado", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f), enabled = !isEnded) { Text("Limpiar") }
-                Button(onClick = onSave, modifier = Modifier.weight(1f), enabled = !isEnded) { Text("Guardar punto") }
+                OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f), enabled = !isEnded && !isDelayActive) { Text("Limpiar") }
+                Button(onClick = onSave, modifier = Modifier.weight(1f), enabled = !isEnded) { Text(if (isDelayActive) "Cerrar demora" else "Guardar punto") }
+            }
+            if (!isDelayActive) {
+                OutlinedButton(onClick = onStartDelay, modifier = Modifier.fillMaxWidth(), enabled = !isEnded) { Text("Iniciar demora") }
             }
         }
     }
+}
+
+private fun formatElapsed(totalSec: Long): String {
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }
 
 @Composable
@@ -483,19 +623,11 @@ private fun CounterBox(label: String, value: Int, onChange: (Int) -> Unit, modif
             Text(label, style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { onChange((value - 1).coerceAtLeast(0)) }, modifier = Modifier.weight(1f)) { Text("−") }
-                OutlinedTextField(
-                    value = value.toString(),
-                    onValueChange = { onChange(it.filter { ch -> ch.isDigit() }.take(3).toIntOrNull() ?: 0) },
-                    modifier = Modifier.weight(1.2f),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
+                OutlinedTextField(value = value.toString(), onValueChange = { onChange(it.filter { ch -> ch.isDigit() }.take(3).toIntOrNull() ?: 0) }, modifier = Modifier.weight(1.2f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedButton(onClick = { onChange(value + 1) }, modifier = Modifier.weight(1f)) { Text("+") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                listOf(3, 5, 10).forEach { quickValue ->
-                    AssistChip(onClick = { onChange(quickValue) }, label = { Text(quickValue.toString()) })
-                }
+                listOf(3, 5, 10).forEach { quickValue -> AssistChip(onClick = { onChange(quickValue) }, label = { Text(quickValue.toString()) }) }
             }
         }
     }
