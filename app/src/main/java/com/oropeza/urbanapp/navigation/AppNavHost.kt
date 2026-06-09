@@ -70,7 +70,11 @@ fun AppNavHost(navController: NavHostController) {
             arguments = listOf(navArgument("tripId") { type = NavType.LongType })
         ) { backStack ->
             val tripId = backStack.arguments?.getLong("tripId") ?: 0L
-            AsdTripDetailScreen(tripId = tripId, onBack = { navController.popBackStack() })
+            AsdTripDetailScreen(
+                tripId = tripId,
+                onBack = { navController.popBackStack() },
+                onOpenMap = { id -> navController.navigate("asd_map/$id") }
+            )
         }
 
         composable(
