@@ -3,6 +3,7 @@ package com.oropeza.urbanapp.asd.ui.viewmodel
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
@@ -13,7 +14,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -51,6 +54,8 @@ fun AsdMapScreen(
     val trip by vm.tripFlow(tripId).collectAsState(initial = null)
     val trackPoints by vm.trackPointsFlow(tripId).collectAsState(initial = emptyList())
     val stopEvents by vm.stopsFlow(tripId).collectAsState(initial = emptyList())
+
+    var locateRequestKey by remember { mutableIntStateOf(0) }
 
     val validTrackPoints = remember(trackPoints) {
         trackPoints
@@ -94,7 +99,15 @@ fun AsdMapScreen(
     }
 
     val endPoint = remember(rawPoints) {
-        rawPoints.lastOrNull()?.copy(title = "Ultimo punto ASD")?.takeIf { rawPoints.size >= 2 }
+        rawPoints.lastOrNull()?.copy(title = "Último punto ASD")?.takeIf { rawPoints.size >= 2 }
+    }
+
+    val locatePoint = remember(rawPoints) {
+        rawPoints.lastOrNull()?.copy(
+            id = "asd-current-location",
+            title = "Ubicación actual / último GPS",
+            subtitle = "Último punto registrado del recorrido"
+        )
     }
 
     Scaffold(
@@ -111,8 +124,10 @@ fun AsdMapScreen(
                 eventMarkers = eventMarkers,
                 startPoint = startPoint,
                 endPoint = endPoint,
+                focusPoint = locatePoint,
+                focusRequestKey = locateRequestKey,
                 showPointMarkers = false,
-                emptyMessage = "Este viaje aun no tiene trackpoints con GPS valido."
+                emptyMessage = "Este viaje aún no tiene trackpoints con GPS válido."
             )
 
             AsdMapLegend(
@@ -120,6 +135,16 @@ fun AsdMapScreen(
                     .align(Alignment.TopEnd)
                     .padding(12.dp)
             )
+
+            Button(
+                enabled = locatePoint != null,
+                onClick = { locateRequestKey++ },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(12.dp)
+            ) {
+                Text("Ubicarme")
+            }
 
             AsdTimelineCard(
                 items = timelineItems,
@@ -138,8 +163,8 @@ fun AsdMapScreen(
                     Text("Puntos: ${metrics.pointCount}", style = MaterialTheme.typography.bodySmall)
                     Text("Dibujados: ${metrics.displayedPointCount}", style = MaterialTheme.typography.bodySmall)
                     Text("Distancia: ${metrics.distanceText}", style = MaterialTheme.typography.bodySmall)
-                    Text("Duracion: ${metrics.durationText}", style = MaterialTheme.typography.bodySmall)
-                    Text("Precision prom: ${metrics.accuracyText}", style = MaterialTheme.typography.bodySmall)
+                    Text("Duración: ${metrics.durationText}", style = MaterialTheme.typography.bodySmall)
+                    Text("Precisión prom: ${metrics.accuracyText}", style = MaterialTheme.typography.bodySmall)
                     Text("Eventos: ${metrics.eventCount}", style = MaterialTheme.typography.bodySmall)
                     Text("Ascensos: ${metrics.boardingCount}  Descensos: ${metrics.alightingCount}", style = MaterialTheme.typography.bodySmall)
                     Text("Demoras: ${metrics.delayCount}", style = MaterialTheme.typography.bodySmall)
@@ -179,7 +204,7 @@ private fun AsdTimelineCard(
                 Text(item, style = MaterialTheme.typography.bodySmall)
             }
             if (items.size > 6) {
-                Text("+${items.size - 6} eventos mas", style = MaterialTheme.typography.bodySmall)
+                Text("+${items.size - 6} eventos más", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
