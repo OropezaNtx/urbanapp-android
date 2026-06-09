@@ -48,7 +48,7 @@ object KmlExporter {
             val smooth = if (raw.size >= 3) PolylineSmoother.movingAverage(raw, window = 3) else raw
 
             out.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
-            out.appendLine("""<kml xmlns="http://www.opengis.net/kml/2.2">"")
+            out.appendLine("""<kml xmlns="http://www.opengis.net/kml/2.2">""")
             out.appendLine("<Document>")
             out.appendLine("<name>${esc(tripName)}</name>")
             out.appendLine("<description>${esc("UrbanApp ASD | Inicio: ${fmtIso(trip.startTime)}")}</description>")
@@ -83,26 +83,24 @@ object KmlExporter {
     }
 
     private fun writeStyles(out: java.io.Writer) {
-        out.appendLine("""
-            <Style id="routeStyle">
-              <LineStyle><color>ffff6500</color><width>5</width></LineStyle>
-            </Style>
-            <Style id="boardingStyle">
-              <IconStyle><color>ffffaa00</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/blu-circle.png</href></Icon></IconStyle>
-            </Style>
-            <Style id="alightingStyle">
-              <IconStyle><color>ff00a5ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/orange-circle.png</href></Icon></IconStyle>
-            </Style>
-            <Style id="delayStyle">
-              <IconStyle><color>ffff00ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/purple-circle.png</href></Icon></IconStyle>
-            </Style>
-            <Style id="combinedStyle">
-              <IconStyle><color>ffff00ff</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/purple-stars.png</href></Icon></IconStyle>
-            </Style>
-            <Style id="eventStyle">
-              <IconStyle><scale>1.0</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle>
-            </Style>
-        """.trimIndent())
+        out.appendLine("<Style id=\"routeStyle\">")
+        out.appendLine("<LineStyle><color>ffff6500</color><width>5</width></LineStyle>")
+        out.appendLine("</Style>")
+        out.appendLine("<Style id=\"boardingStyle\">")
+        out.appendLine("<IconStyle><color>ffffaa00</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/blu-circle.png</href></Icon></IconStyle>")
+        out.appendLine("</Style>")
+        out.appendLine("<Style id=\"alightingStyle\">")
+        out.appendLine("<IconStyle><color>ff00a5ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/orange-circle.png</href></Icon></IconStyle>")
+        out.appendLine("</Style>")
+        out.appendLine("<Style id=\"delayStyle\">")
+        out.appendLine("<IconStyle><color>ffff00ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/purple-circle.png</href></Icon></IconStyle>")
+        out.appendLine("</Style>")
+        out.appendLine("<Style id=\"combinedStyle\">")
+        out.appendLine("<IconStyle><color>ffff00ff</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/purple-stars.png</href></Icon></IconStyle>")
+        out.appendLine("</Style>")
+        out.appendLine("<Style id=\"eventStyle\">")
+        out.appendLine("<IconStyle><scale>1.0</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle>")
+        out.appendLine("</Style>")
     }
 
     private fun writeStopPlacemark(out: java.io.Writer, stop: StopEvent) {
