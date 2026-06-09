@@ -48,7 +48,7 @@ object KmlExporter {
             val smooth = if (raw.size >= 3) PolylineSmoother.movingAverage(raw, window = 3) else raw
 
             out.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
-            out.appendLine("""<kml xmlns="http://www.opengis.net/kml/2.2">""")
+            out.appendLine("""<kml xmlns="http://www.opengis.net/kml/2.2">"")
             out.appendLine("<Document>")
             out.appendLine("<name>${esc(tripName)}</name>")
             out.appendLine("<description>${esc("UrbanApp ASD | Inicio: ${fmtIso(trip.startTime)}")}</description>")
@@ -96,6 +96,9 @@ object KmlExporter {
             <Style id="delayStyle">
               <IconStyle><color>ffff00ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/purple-circle.png</href></Icon></IconStyle>
             </Style>
+            <Style id="combinedStyle">
+              <IconStyle><color>ffff00ff</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/purple-stars.png</href></Icon></IconStyle>
+            </Style>
             <Style id="eventStyle">
               <IconStyle><scale>1.0</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle>
             </Style>
@@ -108,6 +111,7 @@ object KmlExporter {
             "ASCENSO" -> "#boardingStyle"
             "DESCENSO" -> "#alightingStyle"
             "DEMORA" -> "#delayStyle"
+            "ASD + DEMORA" -> "#combinedStyle"
             else -> "#eventStyle"
         }
         val title = buildString {
@@ -123,14 +127,21 @@ object KmlExporter {
         out.appendLine("</Placemark>")
     }
 
+    private fun StopEvent.hasBoarding(): Boolean = paxMenUp + paxWomenUp > 0
+    private fun StopEvent.hasAlighting(): Boolean = paxMenDown + paxWomenDown > 0
+    private fun StopEvent.hasDelay(): Boolean {
+        val type = stopType.trim().uppercase(Locale("es", "MX"))
+        return !delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")
+    }
+
     private fun StopEvent.category(): String {
         val type = stopType.trim().uppercase(Locale("es", "MX"))
-        val hasBoarding = paxMenUp + paxWomenUp > 0
-        val hasAlighting = paxMenDown + paxWomenDown > 0
-        val hasDelay = !delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")
+        val hasPax = hasBoarding() || hasAlighting()
+        val hasDelay = hasDelay()
         return when {
-            type in setOf("ASCENSO", "SUBE", "BOARDING") || hasBoarding -> "ASCENSO"
-            type in setOf("DESCENSO", "BAJA", "ALIGHTING") || hasAlighting -> "DESCENSO"
+            hasPax && hasDelay -> "ASD + DEMORA"
+            type in setOf("ASCENSO", "SUBE", "BOARDING") || hasBoarding() -> "ASCENSO"
+            type in setOf("DESCENSO", "BAJA", "ALIGHTING") || hasAlighting() -> "DESCENSO"
             hasDelay -> "DEMORA"
             else -> type.ifBlank { "EVENTO" }
         }
