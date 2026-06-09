@@ -29,6 +29,8 @@ class AsdRepository(private val db: AppDatabase) {
     suspend fun trackPointsOnce(tripId: Long): List<TrackPoint> = trackDao.getByTripOnce(tripId)
     suspend fun insertTrackPoint(p: TrackPoint): Long = trackDao.insert(p)
 
+    private fun cleanText(value: String?): String? = value?.trim()?.uppercase()?.ifBlank { null }
+
     suspend fun completePendingGpsEvents(tripId: Long, point: TrackPoint): Int {
         if (point.lat == 0.0 || point.lon == 0.0) return 0
         if (point.accM <= 0.0 || point.accM > 60.0) return 0
@@ -74,20 +76,20 @@ class AsdRepository(private val db: AppDatabase) {
 
         val tripId = tripDao.insert(
             Trip(
-                planningRouteId = planningRouteId.trim(),
-                routeName = routeName.trim(),
-                company = company?.trim()?.ifBlank { null },
-                vehicleEco = vehicleEco?.trim()?.ifBlank { null },
-                direction = direction,
+                planningRouteId = planningRouteId.trim().uppercase(),
+                routeName = routeName.trim().uppercase(),
+                company = cleanText(company),
+                vehicleEco = cleanText(vehicleEco),
+                direction = direction.trim().uppercase(),
                 startTime = start,
-                notes = notes?.trim()?.ifBlank { null },
+                notes = cleanText(notes),
                 nextWaypointId = 1,
                 routeNumber = routeNumber,
-                esFs = esFs?.trim()?.ifBlank { null },
-                baseStart = baseStart?.trim()?.ifBlank { null },
-                baseEnd = baseEnd?.trim()?.ifBlank { null },
-                plateNumber = plateNumber?.trim()?.ifBlank { null },
-                vehicleType = vehicleType?.trim()?.ifBlank { null },
+                esFs = cleanText(esFs),
+                baseStart = cleanText(baseStart),
+                baseEnd = cleanText(baseEnd),
+                plateNumber = cleanText(plateNumber),
+                vehicleType = cleanText(vehicleType),
                 seatCapacity = seatCapacity
             )
         )
@@ -97,11 +99,11 @@ class AsdRepository(private val db: AppDatabase) {
             stopType = "BANDERA",
             stopTimeMs = start,
             startTimeMs = start,
-            stopName = "ASD/INICIO",
+            stopName = "AD/INICIO",
             notes = null,
             menUp = 0, womenUp = 0, menDown = 0, womenDown = 0,
             hasLuggage = false,
-            delayCodes = "ASD/INICIO",
+            delayCodes = "AD/INICIO",
             otherDelayDesc = null,
             eventTimestampMs = start,
             stopLat = stopLat,
@@ -135,11 +137,11 @@ class AsdRepository(private val db: AppDatabase) {
             stopType = "BANDERA",
             stopTimeMs = endMs,
             startTimeMs = endMs,
-            stopName = "ASD/FINAL",
+            stopName = "AD/FINAL",
             notes = null,
             menUp = 0, womenUp = 0, menDown = 0, womenDown = 0,
             hasLuggage = false,
-            delayCodes = "ASD/FINAL",
+            delayCodes = "AD/FINAL",
             otherDelayDesc = null,
             eventTimestampMs = endMs,
             stopLat = stopLat,
@@ -236,8 +238,8 @@ class AsdRepository(private val db: AppDatabase) {
                 timestamp = now,
                 stopType = stopType.uppercase(),
                 count = count.coerceAtLeast(0),
-                stopName = stopName?.trim()?.ifBlank { null },
-                notes = notes?.trim()?.ifBlank { null },
+                stopName = cleanText(stopName),
+                notes = cleanText(notes),
                 waypointStopId = pair.inId,
                 waypointStartId = pair.outId,
                 stopTime = stopTimeMs,
@@ -259,7 +261,7 @@ class AsdRepository(private val db: AppDatabase) {
                 paxWomenDown = cleanWomenDown,
                 hasLuggage = hasLuggage,
                 delayCodes = normalizedDelayCodes,
-                otherDelayDesc = otherDelayDesc?.trim()?.ifBlank { null }
+                otherDelayDesc = cleanText(otherDelayDesc)
             )
         )
     }
@@ -294,7 +296,7 @@ class AsdRepository(private val db: AppDatabase) {
                 stopType = "BANDERA",
                 count = 0,
                 stopName = null,
-                notes = notes?.trim()?.ifBlank { null },
+                notes = cleanText(notes),
                 waypointStopId = pair.inId,
                 waypointStartId = pair.outId,
                 stopTime = now,
@@ -310,7 +312,7 @@ class AsdRepository(private val db: AppDatabase) {
                 startProvider = "",
                 startFixTime = 0L,
                 locationStatus = locationStatus,
-                delayCodes = delayType.trim().ifBlank { null },
+                delayCodes = cleanText(delayType),
                 otherDelayDesc = null,
                 hasLuggage = false,
                 paxMenUp = 0, paxWomenUp = 0, paxMenDown = 0, paxWomenDown = 0
