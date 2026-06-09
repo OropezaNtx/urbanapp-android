@@ -1,9 +1,12 @@
 package com.oropeza.urbanapp.asd.location
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import kotlinx.coroutines.CoroutineScope
@@ -13,17 +16,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import androidx.core.app.NotificationCompat
-
 
 class TrackingService : Service() {
 
@@ -37,21 +34,18 @@ class TrackingService : Service() {
         private const val TAG = "TrackingService"
     }
 
-    // =========================
-    // Config afinable
-    // =========================
-    private val requiredAccM = 20.0
-    private val usableAccM = 35.0
-    private val kalmanUseAccM = 35.0
-    private val goodFixNeeded = 2
+    // Configuración de campo: teléfonos dedicados, captura continua y GPS usable rápido.
+    private val requiredAccM = 25.0
+    private val usableAccM = 45.0
+    private val kalmanUseAccM = 45.0
+    private val goodFixNeeded = 1
 
     private val maxSpeedMs = 45.0
-    private val jumpM = 40.0
-    private val jumpAccM = 20.0
+    private val jumpM = 45.0
+    private val jumpAccM = 25.0
 
-    // Guardado inteligente: evita cientos de puntos estando detenido.
-    private val minSaveDistanceM = 3.0
-    private val maxSaveIntervalMs = 8_000L
+    private val minSaveDistanceM = 2.0
+    private val maxSaveIntervalMs = 5_000L
 
     private enum class Mode { ACQUIRE, TRACK, STILL }
 
@@ -62,15 +56,9 @@ class TrackingService : Service() {
     private lateinit var gps: LocationProvider
     private lateinit var headingProvider: HeadingProvider
 
-    // =========================
-    // Estado de calidad / armado
-    // =========================
     private var goodFixStreak = 0
     private var recordingArmed = false
 
-    // =========================
-    // Estado outliers / movimiento
-    // =========================
     private var lastAcceptedElapsedNanos: Long? = null
     private var lastAcceptedTimeMs: Long? = null
     private var lastAcceptedLat: Double? = null
@@ -81,33 +69,22 @@ class TrackingService : Service() {
     private var lastSavedLon: Double? = null
 
     private var stillCounter = 0
-
-    // =========================
-    // Filtro adaptativo
-    // =========================
     private val kalmanTrack = KalmanLatLonFilter()
 
-    // Control del stream actual
     private var updatesJob: Job? = null
     private var currentMode: Mode? = null
 
     override fun onCreate() {
         super.onCreate()
-
         gps = LocationProvider(this)
         headingProvider = HeadingProvider(this)
         headingProvider.start()
-
         createNotificationChannel()
-        startForeground(NOTIF_ID, buildNotification("Tracking activo"))
+        startForeground(NOTIF_ID, buildNotification("Tracking ASD activo"))
     }
 
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent == null) {
-            stopTracking()
-            return START_NOT_STICKY
-        }
+        if (intent == null) return START_STICKY
 
         when (intent.action) {
             ACTION_START -> {
@@ -122,18 +99,16 @@ class TrackingService : Service() {
             ACTION_STOP -> stopTracking()
         }
 
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun startTracking(tripId: Long) {
-        if (job != null) return
+        if (job != null && currentTripId == tripId) return
 
         currentTripId = tripId
-
         recordingArmed = false
         goodFixStreak = 0
         stillCounter = 0
-
         lastAcceptedElapsedNanos = null
         lastAcceptedTimeMs = null
         lastAcceptedLat = null
@@ -141,7 +116,6 @@ class TrackingService : Service() {
         lastSavedTimeMs = null
         lastSavedLat = null
         lastSavedLon = null
-
         kalmanTrack.reset()
         currentMode = null
         updatesJob = null
@@ -151,9 +125,7 @@ class TrackingService : Service() {
                 Log.w(TAG, "Sin permisos de ubicación. No se inicia tracking.")
                 return@launch
             }
-
             switchMode(Mode.ACQUIRE)
-
             while (true) delay(1000L)
         }
 
@@ -167,17 +139,13 @@ class TrackingService : Service() {
     private fun stopTracking() {
         updatesJob?.cancel()
         updatesJob = null
-
         job?.cancel()
         job = null
-
         currentTripId = null
-
         kalmanTrack.reset()
         recordingArmed = false
         goodFixStreak = 0
         stillCounter = 0
-
         lastAcceptedElapsedNanos = null
         lastAcceptedTimeMs = null
         lastAcceptedLat = null
@@ -185,9 +153,7 @@ class TrackingService : Service() {
         lastSavedTimeMs = null
         lastSavedLat = null
         lastSavedLon = null
-
         try { headingProvider.stop() } catch (_: Exception) {}
-
         stopSelf()
     }
 
@@ -206,25 +172,24 @@ class TrackingService : Service() {
         updatesJob?.cancel()
         updatesJob = scope.launch {
             val tripId = currentTripId ?: return@launch
-
             val params = when (mode) {
                 Mode.ACQUIRE -> Params(
+                    intervalMs = 800L,
+                    minUpdateMs = 400L,
+                    minDistanceM = 0f,
+                    maxWaitTimeMs = 0L,
+                    highAccuracy = true
+                )
+                Mode.TRACK -> Params(
                     intervalMs = 1000L,
                     minUpdateMs = 500L,
                     minDistanceM = 0f,
                     maxWaitTimeMs = 0L,
                     highAccuracy = true
                 )
-                Mode.TRACK -> Params(
-                    intervalMs = 1500L,
-                    minUpdateMs = 750L,
-                    minDistanceM = 0f,
-                    maxWaitTimeMs = 0L,
-                    highAccuracy = true
-                )
                 Mode.STILL -> Params(
-                    intervalMs = 5000L,
-                    minUpdateMs = 2500L,
+                    intervalMs = 3000L,
+                    minUpdateMs = 1500L,
                     minDistanceM = 0f,
                     maxWaitTimeMs = 0L,
                     highAccuracy = true
@@ -274,18 +239,15 @@ class TrackingService : Service() {
     ) {
         val timeMs = if (timeFromLoc > 0L) timeFromLoc else System.currentTimeMillis()
 
-        // ✅ Dedupe real (evita inserts con mismo fix)
         val lastEN = lastAcceptedElapsedNanos
         if (lastEN != null && elapsedNanos > 0L && elapsedNanos == lastEN) return
 
-        // 1) Arming
         if (accM <= requiredAccM) goodFixStreak++ else goodFixStreak = 0
 
         if (!recordingArmed) {
             if (goodFixStreak >= goodFixNeeded) {
                 recordingArmed = true
                 kalmanTrack.reset()
-
                 lastAcceptedElapsedNanos = null
                 lastAcceptedTimeMs = null
                 lastAcceptedLat = null
@@ -294,29 +256,26 @@ class TrackingService : Service() {
                 lastSavedLat = null
                 lastSavedLon = null
                 stillCounter = 0
-
-                Log.i(TAG, "Recording ARMED (acc <= $requiredAccM x $goodFixNeeded)")
+                Log.i(TAG, "Recording ARMED rápido (acc <= $requiredAccM)")
                 switchMode(Mode.TRACK)
-            } else {
+            } else if (accM > usableAccM) {
                 if (currentMode != Mode.ACQUIRE) switchMode(Mode.ACQUIRE)
                 return
             }
         }
 
-        // 2) No aceptar accuracy horrible
-        if (accM > 60.0) return
+        if (accM > 80.0) return
 
         val lastT = lastAcceptedTimeMs
         val lastLat = lastAcceptedLat
         val lastLon = lastAcceptedLon
         val isFirst = (lastT == null || lastLat == null || lastLon == null)
 
-        // 3) Outliers + detección detenido
         if (!isFirst) {
             val dtSec = if (elapsedNanos > 0L && lastAcceptedElapsedNanos != null) {
-                (((elapsedNanos - lastAcceptedElapsedNanos!!).coerceAtLeast(1L)).toDouble() / 1_000_000_000.0)
+                ((elapsedNanos - lastAcceptedElapsedNanos!!).coerceAtLeast(1L)).toDouble() / 1_000_000_000.0
             } else {
-                (((timeMs - lastT!!).coerceAtLeast(1L)).toDouble() / 1000.0)
+                ((timeMs - lastT!!).coerceAtLeast(1L)).toDouble() / 1000.0
             }
 
             val distM = haversineMeters(lastLat!!, lastLon!!, lat, lon)
@@ -326,15 +285,12 @@ class TrackingService : Service() {
             if (distM > jumpM && accM > jumpAccM) return
 
             if (distM < 1.2 && accM <= usableAccM) stillCounter++ else stillCounter = 0
-
             if (stillCounter >= 8 && currentMode != Mode.STILL) switchMode(Mode.STILL)
             if (stillCounter == 0 && currentMode == Mode.STILL) switchMode(Mode.TRACK)
         }
 
-        // 4) Kalman condicional
         val useKalman = accM <= kalmanUseAccM
         val isStationary = (currentMode == Mode.STILL) || (stillCounter >= 3)
-
         val (latF, lonF) = if (useKalman) {
             kalmanTrack.update(lat = lat, lon = lon, accM = accM, timeMs = timeMs, isStationary = isStationary)
         } else {
@@ -346,16 +302,17 @@ class TrackingService : Service() {
         lastAcceptedLat = latF
         lastAcceptedLon = lonF
 
-        // 5) Guardar punto con reducción de ruido
-        if (currentMode != Mode.ACQUIRE && accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, timeMs)) {
+        val canSave = accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, timeMs)
+        if (canSave) {
             val modeTag = currentMode?.name ?: "NA"
+            val qualityTag = if (recordingArmed) "ARMED" else "QUICK"
             val p = TrackPoint(
                 tripId = tripId,
                 timeMs = timeMs,
                 lat = latF,
                 lon = lonF,
                 accM = accM,
-                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag"
+                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag"
             )
             lastSavedTimeMs = timeMs
             lastSavedLat = latF
@@ -371,12 +328,10 @@ class TrackingService : Service() {
         val savedTime = lastSavedTimeMs
         val savedLat = lastSavedLat
         val savedLon = lastSavedLon
-
         if (savedTime == null || savedLat == null || savedLon == null) return true
 
         val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
         val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
-
         return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
     }
 
@@ -384,36 +339,32 @@ class TrackingService : Service() {
         val r = 6_371_000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
-        val a =
-            sin(dLat / 2) * sin(dLat / 2) +
-                    cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                    sin(dLon / 2) * sin(dLon / 2)
+        val a = sin(dLat / 2) * sin(dLat / 2) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLon / 2) * sin(dLon / 2)
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return r * c
     }
 
-    private fun buildNotification(text: android.app.Notification): android.app.Notification = text
-
     private fun buildNotification(text: String): android.app.Notification {
-        val builder = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentTitle("UrbanApp ASD")
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
-
-        return builder.build()
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
     }
 
     private fun createNotificationChannel() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = android.app.NotificationChannel(
+            val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Tracking",
-                android.app.NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_LOW
             )
-            val nm = getSystemService(android.app.NotificationManager::class.java)
+            val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(channel)
         }
     }
