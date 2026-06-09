@@ -6,6 +6,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.google.firebase.auth.FirebaseAuth
 import com.oropeza.urbanapp.dashboard.OperationalDashboardScreen
 import com.oropeza.urbanapp.ui.screens.LoginScreen
 import com.oropeza.urbanapp.ui.screens.SignUpScreen
@@ -25,7 +26,9 @@ import com.oropeza.urbanapp.fov.ui.FovSessionListScreen
 
 @Composable
 fun AppNavHost(navController: NavHostController) {
-    NavHost(navController = navController, startDestination = "login") {
+    val startDestination = if (FirebaseAuth.getInstance().currentUser != null) "home" else "login"
+
+    NavHost(navController = navController, startDestination = startDestination) {
 
         composable("login") { LoginScreen(navController) }
         composable("signup") { SignUpScreen(navController) }
