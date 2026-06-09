@@ -185,7 +185,7 @@ private fun AsdMapLegend(modifier: Modifier = Modifier) {
             Text("🔴 Fin", style = MaterialTheme.typography.bodySmall)
             Text("🔷 Ascenso", style = MaterialTheme.typography.bodySmall)
             Text("🟠 Descenso", style = MaterialTheme.typography.bodySmall)
-            Text("🟣 Demora", style = MaterialTheme.typography.bodySmall)
+            Text("🟣 Demora / combinado", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -227,14 +227,8 @@ private fun buildAsdTimeline(
 }
 
 private fun StopEvent.timelineLabel(): String {
-    val label = when (eventCategory()) {
-        AsdEventCategory.BOARDING -> "Ascenso"
-        AsdEventCategory.ALIGHTING -> "Descenso"
-        AsdEventCategory.DELAY -> "Demora"
-        AsdEventCategory.OTHER -> stopType.uppercase()
-    }
     val place = stopName?.takeIf { it.isNotBlank() }?.let { " - $it" } ?: ""
-    return "$label$place"
+    return "${displayLabel()}$place"
 }
 
 private fun List<TrackPoint>.toSmoothedMapPoints(): List<UrbanMapPoint> {
@@ -274,15 +268,9 @@ private fun TrackPoint.toUrbanMapPoint(): UrbanMapPoint {
 
 private fun StopEvent.toUrbanMapPoint(): UrbanMapPoint {
     val category = eventCategory()
-    val label = when (category) {
-        AsdEventCategory.BOARDING -> "Ascenso"
-        AsdEventCategory.ALIGHTING -> "Descenso"
-        AsdEventCategory.DELAY -> "Demora"
-        AsdEventCategory.OTHER -> stopType.uppercase()
-    }
     return UrbanMapPoint(
         id = "event-$eventId",
-        title = "$label ${stopName ?: ""}".trim(),
+        title = "${displayLabel()} ${stopName ?: ""}".trim(),
         subtitle = eventSubtitle(),
         lat = stopLat,
         lon = stopLon,
@@ -323,20 +311,42 @@ private enum class AsdEventCategory(val mapStatus: String) {
     BOARDING("ASCENSO"),
     ALIGHTING("DESCENSO"),
     DELAY("BANDERA"),
+    COMBINED("BANDERA"),
     OTHER("OTHER")
 }
 
+private fun StopEvent.hasBoarding(): Boolean = paxMenUp + paxWomenUp > 0
+private fun StopEvent.hasAlighting(): Boolean = paxMenDown + paxWomenDown > 0
+private fun StopEvent.hasDelay(): Boolean {
+    val type = stopType.trim().uppercase(Locale("es", "MX"))
+    return !delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")
+}
+
 private fun StopEvent.eventCategory(): AsdEventCategory {
-    val type = stopType.trim().uppercase()
-    val hasBoarding = paxMenUp + paxWomenUp > 0
-    val hasAlighting = paxMenDown + paxWomenDown > 0
-    val hasDelay = !delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")
+    val type = stopType.trim().uppercase(Locale("es", "MX"))
+    val hasPax = hasBoarding() || hasAlighting()
+    val hasDelay = hasDelay()
 
     return when {
-        type in setOf("ASCENSO", "SUBE", "BOARDING") || hasBoarding -> AsdEventCategory.BOARDING
-        type in setOf("DESCENSO", "BAJA", "ALIGHTING") || hasAlighting -> AsdEventCategory.ALIGHTING
+        hasPax && hasDelay -> AsdEventCategory.COMBINED
+        type in setOf("ASCENSO", "SUBE", "BOARDING") || hasBoarding() -> AsdEventCategory.BOARDING
+        type in setOf("DESCENSO", "BAJA", "ALIGHTING") || hasAlighting() -> AsdEventCategory.ALIGHTING
         hasDelay -> AsdEventCategory.DELAY
         else -> AsdEventCategory.OTHER
+    }
+}
+
+private fun StopEvent.displayLabel(): String {
+    val hasUp = hasBoarding()
+    val hasDown = hasAlighting()
+    val hasDelay = hasDelay()
+    return when {
+        (hasUp || hasDown) && hasDelay -> "ASD + Demora"
+        hasUp && hasDown -> "ASD"
+        hasUp -> "Ascenso"
+        hasDown -> "Descenso"
+        hasDelay -> "Demora"
+        else -> stopType.uppercase(Locale("es", "MX"))
     }
 }
 
@@ -368,9 +378,9 @@ private data class AsdMapMetrics(
                 pointCount = points.size,
                 displayedPointCount = displayedPointCount,
                 eventCount = events.size,
-                boardingCount = events.count { it.eventCategory() == AsdEventCategory.BOARDING },
-                alightingCount = events.count { it.eventCategory() == AsdEventCategory.ALIGHTING },
-                delayCount = events.count { it.eventCategory() == AsdEventCategory.DELAY },
+                boardingCount = events.count { it.hasBoarding() },
+                alightingCount = events.count { it.hasAlighting() },
+                delayCount = events.count { it.hasDelay() },
                 boardingPax = events.sumOf { it.paxMenUp + it.paxWomenUp },
                 alightingPax = events.sumOf { it.paxMenDown + it.paxWomenDown },
                 distanceText = distanceText(distanceM),
