@@ -23,8 +23,7 @@ class AsdRepository(private val db: AppDatabase) {
     fun trackLastPointFlow(tripId: Long) = trackDao.getLatestFlow(tripId)
     fun trackCountFlow(tripId: Long) = trackDao.countFlow(tripId)
 
-    suspend fun getTrackPointsBetweenOnce(tripId: Long, fromMs: Long, toMs: Long) =
-        trackDao.getBetweenOnce(tripId, fromMs, toMs)
+    suspend fun getTrackPointsBetweenOnce(tripId: Long, fromMs: Long, toMs: Long) = trackDao.getBetweenOnce(tripId, fromMs, toMs)
 
     fun trackPointsFlow(tripId: Long): Flow<List<TrackPoint>> = trackDao.getByTrip(tripId)
     suspend fun trackPointsOnce(tripId: Long): List<TrackPoint> = trackDao.getByTripOnce(tripId)
@@ -32,10 +31,42 @@ class AsdRepository(private val db: AppDatabase) {
 
     private fun cleanText(value: String?): String? = value?.trim()?.uppercase()?.ifBlank { null }
 
+    suspend fun updateTripHeader(
+        tripId: Long,
+        routeName: String,
+        company: String?,
+        vehicleEco: String?,
+        direction: String,
+        routeNumber: Int?,
+        esFs: String?,
+        baseStart: String?,
+        baseEnd: String?,
+        plateNumber: String?,
+        vehicleType: String?,
+        seatCapacity: Int?,
+        notes: String?
+    ): Boolean {
+        val current = tripDao.getByIdOnce(tripId) ?: return false
+        val updated = current.copy(
+            routeName = routeName.trim().uppercase().ifBlank { current.routeName },
+            company = cleanText(company),
+            vehicleEco = cleanText(vehicleEco),
+            direction = direction.trim().uppercase().ifBlank { current.direction },
+            routeNumber = routeNumber,
+            esFs = cleanText(esFs),
+            baseStart = cleanText(baseStart),
+            baseEnd = cleanText(baseEnd),
+            plateNumber = cleanText(plateNumber),
+            vehicleType = cleanText(vehicleType),
+            seatCapacity = seatCapacity,
+            notes = cleanText(notes)
+        )
+        return tripDao.update(updated) > 0
+    }
+
     suspend fun completePendingGpsEvents(tripId: Long, point: TrackPoint): Int {
         if (point.lat == 0.0 || point.lon == 0.0) return 0
         if (point.accM <= 0.0 || point.accM > 60.0) return 0
-
         val pending = stopDao.getPendingGpsEvents(tripId, limit = 10)
         var updated = 0
         pending.forEach { event ->
@@ -74,7 +105,6 @@ class AsdRepository(private val db: AppDatabase) {
         seatCapacity: Int? = null
     ): Long {
         val start = System.currentTimeMillis()
-
         val tripId = tripDao.insert(
             Trip(
                 planningRouteId = planningRouteId.trim().uppercase(),
@@ -94,7 +124,6 @@ class AsdRepository(private val db: AppDatabase) {
                 seatCapacity = seatCapacity
             )
         )
-
         addStopDetailed(
             tripId = tripId,
             stopType = "BANDERA",
@@ -114,25 +143,14 @@ class AsdRepository(private val db: AppDatabase) {
             stopFixTime = stopFixTime,
             locationStatus = locationStatus
         )
-
         return tripId
     }
 
-    suspend fun endTripWithFix(
-        tripId: Long,
-        stopLat: Double,
-        stopLon: Double,
-        stopAccM: Double,
-        stopProvider: String,
-        stopFixTime: Long,
-        locationStatus: String
-    ): Boolean {
+    suspend fun endTripWithFix(tripId: Long, stopLat: Double, stopLon: Double, stopAccM: Double, stopProvider: String, stopFixTime: Long, locationStatus: String): Boolean {
         val trip = tripDao.getByIdOnce(tripId) ?: return false
         val activeDelay = delayDao.getActiveDelay(tripId)
         if (activeDelay != null) return false
-
         val endMs = System.currentTimeMillis()
-
         addStopDetailed(
             tripId = tripId,
             stopType = "BANDERA",
@@ -152,7 +170,6 @@ class AsdRepository(private val db: AppDatabase) {
             stopFixTime = stopFixTime,
             locationStatus = locationStatus
         )
-
         tripDao.update(trip.copy(endTime = endMs))
         return true
     }
@@ -170,15 +187,8 @@ class AsdRepository(private val db: AppDatabase) {
     }
 
     private fun normalizeDelayCodes(delayCodes: String?, up: Int, down: Int): String? {
-        val codes = delayCodes
-            ?.split("/", ",", "|", ";")
-            ?.map { it.trim().uppercase() }
-            ?.filter { it.isNotBlank() }
-            ?.toMutableList()
-            ?: mutableListOf()
-
+        val codes = delayCodes?.split("/", ",", "|", ";")?.map { it.trim().uppercase() }?.filter { it.isNotBlank() }?.toMutableList() ?: mutableListOf()
         if ((up > 0 || down > 0) && !codes.contains("AD")) codes.add(0, "AD")
-
         return codes.distinct().joinToString("/").ifBlank { null }
     }
 
@@ -217,12 +227,10 @@ class AsdRepository(private val db: AppDatabase) {
         val up = cleanMenUp + cleanWomenUp
         val down = cleanMenDown + cleanWomenDown
         val normalizedDelayCodes = normalizeDelayCodes(delayCodes, up, down)
-
         if (stopType.equals("DESCENSO", ignoreCase = true)) {
             val onboard = computeOnBoard(tripId)
             if (down > onboard) throw IllegalStateException("No puedes bajar $down si solo van $onboard a bordo.")
         }
-
         val pair = tripDao.reserveWaypointPair(tripId)
         val count = when (stopType.uppercase()) {
             "ASCENSO" -> up
@@ -230,7 +238,6 @@ class AsdRepository(private val db: AppDatabase) {
             "ASD" -> up + down
             else -> 0
         }
-
         val event = StopEvent(
             tripId = tripId,
             timestamp = now,
@@ -261,7 +268,6 @@ class AsdRepository(private val db: AppDatabase) {
             delayCodes = normalizedDelayCodes,
             otherDelayDesc = cleanText(otherDelayDesc)
         )
-
         val insertedId = stopDao.insert(event)
         AsdOnlineBackup.backupStopEvent(event.copy(eventId = insertedId))
     }
@@ -272,23 +278,12 @@ class AsdRepository(private val db: AppDatabase) {
         return if (latOk && lonOk) lat to lon else 0.0 to 0.0
     }
 
-    suspend fun startDelay(
-        tripId: Long,
-        delayType: String,
-        notes: String?,
-        startLat: Double,
-        startLon: Double,
-        startAccM: Double = 0.0,
-        startProvider: String = "",
-        startFixTime: Long = 0L,
-        locationStatus: String = "NO_FIX"
-    ): Boolean {
+    suspend fun startDelay(tripId: Long, delayType: String, notes: String?, startLat: Double, startLon: Double, startAccM: Double = 0.0, startProvider: String = "", startFixTime: Long = 0L, locationStatus: String = "NO_FIX"): Boolean {
         val active = stopDao.getActiveBandera(tripId)
         if (active != null) return false
         val (lat, lon) = normalizeCoord(startLat, startLon)
         val pair = tripDao.reserveWaypointPair(tripId)
         val now = System.currentTimeMillis()
-
         val event = StopEvent(
             tripId = tripId,
             timestamp = now,
@@ -321,19 +316,10 @@ class AsdRepository(private val db: AppDatabase) {
         return true
     }
 
-    suspend fun stopDelay(
-        tripId: Long,
-        endLat: Double,
-        endLon: Double,
-        endAccM: Double = 0.0,
-        endProvider: String = "",
-        endFixTime: Long = 0L,
-        locationStatus: String = "NO_FIX"
-    ): Boolean {
+    suspend fun stopDelay(tripId: Long, endLat: Double, endLon: Double, endAccM: Double = 0.0, endProvider: String = "", endFixTime: Long = 0L, locationStatus: String = "NO_FIX"): Boolean {
         val active = stopDao.getActiveBandera(tripId) ?: return false
         val (lat, lon) = normalizeCoord(endLat, endLon)
         val now = System.currentTimeMillis()
-
         val updated = active.copy(
             startTime = now,
             startLat = lat,
@@ -351,22 +337,13 @@ class AsdRepository(private val db: AppDatabase) {
     val ccSessionsFlow: Flow<List<CcSession>> = ccSessionDao.getAll()
     fun ccSessionFlow(id: Long): Flow<CcSession?> = ccSessionDao.getById(id)
     fun ccEventsFlow(sessionId: Long): Flow<List<CcEvent>> = ccEventDao.getBySession(sessionId)
-
     suspend fun getLatestCcSession(): CcSession? = ccSessionDao.getLatestOnce()
     suspend fun createCcSession(s: CcSession): Long = ccSessionDao.insert(s)
-
-    suspend fun nextCcSeq(sessionId: Long): Int {
-        val max = ccEventDao.getMaxSeq(sessionId) ?: 0
-        return max + 1
-    }
-
+    suspend fun nextCcSeq(sessionId: Long): Int = (ccEventDao.getMaxSeq(sessionId) ?: 0) + 1
     suspend fun addCcEvent(e: CcEvent): Long = ccEventDao.insert(e)
-
     suspend fun getTripOnce(id: Long) = tripDao.getByIdOnce(id)
     suspend fun getStopsOnce(tripId: Long) = stopDao.getByTripOnce(tripId)
     suspend fun getDelaysOnce(tripId: Long) = delayDao.getByTripOnce(tripId)
     suspend fun getTrackPointsOnce(tripId: Long) = trackDao.getByTripOnce(tripId)
-    suspend fun endCcSession(sessionId: Long) {
-        ccSessionDao.endSession(sessionId, System.currentTimeMillis())
-    }
+    suspend fun endCcSession(sessionId: Long) { ccSessionDao.endSession(sessionId, System.currentTimeMillis()) }
 }
