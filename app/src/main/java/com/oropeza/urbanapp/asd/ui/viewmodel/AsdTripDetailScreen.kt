@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -273,6 +274,7 @@ fun AsdTripDetailScreen(
 
     fun selectedDelayText(): String? = selectedDelayCodes.joinToString("/").ifBlank { null }
     fun upper(value: String): String = value.uppercase(Locale("es", "MX"))
+    fun hasValidDelayCause(): Boolean = (menUp + womenUp + menDown + womenDown > 0) || selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank()
 
     fun closeActiveDelay(summary: AsdDemoSummary) {
         if (!isDelayActive) return
@@ -282,6 +284,10 @@ fun AsdTripDetailScreen(
         }
         val up = menUp + womenUp
         val down = menDown + womenDown
+        if (!hasValidDelayCause()) {
+            snackbarText = "El registro debe tener ascenso/descenso o una demora seleccionada."
+            return
+        }
         if (down > summary.onBoard + up) {
             snackbarText = "No puedes bajar $down personas si solo van ${summary.onBoard + up} a bordo."
             return
@@ -329,8 +335,8 @@ fun AsdTripDetailScreen(
         val down = menDown + womenDown
         val hasDelay = selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank()
         val hasPax = up + down > 0
-        if (!hasPax && !hasDelay && stopName.isBlank() && notes.isBlank()) {
-            snackbarText = "Captura al menos un ascenso, descenso, demora u observación."
+        if (!hasPax && !hasDelay) {
+            snackbarText = "El registro debe tener ascenso/descenso o una demora seleccionada."
             return
         }
         if (down > summary.onBoard + up) {
@@ -383,7 +389,7 @@ fun AsdTripDetailScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(trip?.routeName ?: "ASD") }, navigationIcon = { TextButton(onClick = onBack) { Text("Atrás") } }) },
+        topBar = { TopAppBar(title = { Text((trip?.routeName ?: "ASD").uppercase(Locale("es", "MX"))) }, navigationIcon = { TextButton(onClick = onBack) { Text("ATRÁS") } }) },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { pad ->
         val t = trip
@@ -396,6 +402,8 @@ fun AsdTripDetailScreen(
         val lastAgeMs = lastPoint?.let { System.currentTimeMillis() - it.timeMs } ?: Long.MAX_VALUE
         val trackingAlive = lastPoint != null && lastAgeMs in 0..12_000L
         val activeElapsedSec = if (isDelayActive) ((tickMs - activeDelayStartMs).coerceAtLeast(0L) / 1000L) else 0L
+        val captureOnBoard = (summary.onBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0)
+        val exceedsCapacity = t.seatCapacity?.let { it > 0 && captureOnBoard > it } ?: false
 
         LaunchedEffect(tripId, isEnded) {
             if (!isEnded) {
@@ -417,6 +425,8 @@ fun AsdTripDetailScreen(
                     menDown = menDown,
                     womenDown = womenDown,
                     currentOnBoard = summary.onBoard,
+                    seatCapacity = t.seatCapacity,
+                    exceedsCapacity = exceedsCapacity,
                     selectedDelayCodes = selectedDelayCodes,
                     otherDelayDesc = otherDelayDesc,
                     hasLuggage = hasLuggage,
@@ -438,7 +448,7 @@ fun AsdTripDetailScreen(
                     onClear = { resetCaptureForm() }
                 )
             }
-            gpsMsg?.let { item { Text(it) } }
+            gpsMsg?.let { item { Text(it.uppercase(Locale("es", "MX"))) } }
             if (loadingGps) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
             item { TripHeaderCard(t.routeName.uppercase(Locale("es", "MX")), t.direction.uppercase(Locale("es", "MX")), fmt.format(Date(t.startTime)), t.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO", t.vehicleEco?.uppercase(Locale("es", "MX")), t.plateNumber?.uppercase(Locale("es", "MX")), isEnded) }
             item { DemoSummaryCard(summary) }
@@ -499,8 +509,8 @@ fun AsdTripDetailScreen(
                 )
             }
             item { ExportActionsCard({ exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") }, { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") }, { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") }, { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }) }
-            item { Text("Eventos registrados", style = MaterialTheme.typography.titleMedium) }
-            if (stops.isEmpty()) item { Card { Text("Aún no hay eventos. Usa el bloque superior para registrar.", modifier = Modifier.padding(12.dp)) } }
+            item { Text("EVENTOS REGISTRADOS", style = MaterialTheme.typography.titleMedium) }
+            if (stops.isEmpty()) item { Card { Text("AÚN NO HAY EVENTOS. USA EL BLOQUE SUPERIOR PARA REGISTRAR.", modifier = Modifier.padding(12.dp)) } }
             else items(stops) { EventCard(it, fmt) }
         }
     }
@@ -517,6 +527,8 @@ private fun InlineAsdCaptureCard(
     menDown: Int,
     womenDown: Int,
     currentOnBoard: Int,
+    seatCapacity: Int?,
+    exceedsCapacity: Boolean,
     selectedDelayCodes: Set<String>,
     otherDelayDesc: String,
     hasLuggage: Boolean,
@@ -563,23 +575,26 @@ private fun InlineAsdCaptureCard(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 SummaryMetric("SUBEN", totalUp.toString(), Modifier.weight(1f))
                 SummaryMetric("BAJAN", totalDown.toString(), Modifier.weight(1f))
-                SummaryMetric("A BORDO", estimatedOnBoard.toString(), Modifier.weight(1f))
+                SummaryMetric("A BORDO", estimatedOnBoard.toString(), Modifier.weight(1f), isError = exceedsCapacity)
+            }
+            if (exceedsCapacity) {
+                Text("⚠ A BORDO SUPERA LA CAPACIDAD DE LA UNIDAD (${seatCapacity ?: 0}).", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
             }
             if (willAutoAddAd) AssistChip(onClick = {}, label = { Text("AD SE AGREGARÁ AUTOMÁTICAMENTE") })
 
             Text("SUBEN", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                CounterBox("HOMBRES", menUp, onMenUpChange, Modifier.weight(1f))
-                CounterBox("MUJERES", womenUp, onWomenUpChange, Modifier.weight(1f))
+                CounterBox("👨 HOMBRES", menUp, onMenUpChange, Modifier.weight(1f))
+                CounterBox("👩 MUJERES", womenUp, onWomenUpChange, Modifier.weight(1f))
             }
             Text("BAJAN", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                CounterBox("HOMBRES", menDown, onMenDownChange, Modifier.weight(1f))
-                CounterBox("MUJERES", womenDown, onWomenDownChange, Modifier.weight(1f))
+                CounterBox("👨 HOMBRES", menDown, onMenDownChange, Modifier.weight(1f))
+                CounterBox("👩 MUJERES", womenDown, onWomenDownChange, Modifier.weight(1f))
             }
             Text("DEMORAS", style = MaterialTheme.typography.titleSmall)
             DelayCodeGrid(delayCodes, selectedDelayCodes, onToggleDelayCode)
-            Text("AD SE AGREGA SOLO SI HAY ASCENSO O DESCENSO. MARCA C, S, TM, CND U O SI APLICA.", style = MaterialTheme.typography.bodySmall)
+            Text("AD SE AGREGA SOLO SI HAY ASCENSO O DESCENSO. SI NO HAY PASAJEROS, SELECCIONA C, S, TM, CND U O.", style = MaterialTheme.typography.bodySmall)
             if (selectedDelayCodes.contains("O")) OutlinedTextField(otherDelayDesc, onOtherDelayDescChange, label = { Text("DESCRIPCIÓN DE OTRO") }, modifier = Modifier.fillMaxWidth())
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange)
@@ -607,11 +622,25 @@ private fun formatElapsed(totalSec: Long): String {
 private fun CounterBox(label: String, value: Int, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
     Card(modifier = modifier) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = { onChange((value - 1).coerceAtLeast(0)) }, modifier = Modifier.weight(1f)) { Text("−") }
-                OutlinedTextField(value = value.toString(), onValueChange = { onChange(it.filter { ch -> ch.isDigit() }.take(3).toIntOrNull() ?: 0) }, modifier = Modifier.weight(1.2f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                OutlinedButton(onClick = { onChange(value + 1) }, modifier = Modifier.weight(1f)) { Text("+") }
+                OutlinedButton(
+                    onClick = { onChange((value - 1).coerceAtLeast(0)) },
+                    modifier = Modifier.size(48.dp),
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text("−", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                OutlinedTextField(
+                    value = value.toString(),
+                    onValueChange = { onChange(it.filter { ch -> ch.isDigit() }.take(3).toIntOrNull() ?: 0) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                OutlinedButton(
+                    onClick = { onChange(value + 1) },
+                    modifier = Modifier.size(48.dp),
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text("+", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                 listOf(3, 5, 10).forEach { quickValue -> AssistChip(onClick = { onChange(quickValue) }, label = { Text(quickValue.toString()) }) }
@@ -640,8 +669,13 @@ private fun DemoSummaryCard(summary: AsdDemoSummary) {
 }
 
 @Composable
-private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) { Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.titleLarge); Text(label, style = MaterialTheme.typography.bodySmall) } }
+private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier, isError: Boolean = false) {
+    Card(modifier = modifier) {
+        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, style = MaterialTheme.typography.titleLarge, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified, fontWeight = if (isError) FontWeight.Bold else FontWeight.Normal)
+            Text(label, style = MaterialTheme.typography.bodySmall, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified)
+        }
+    }
 }
 
 @Composable
@@ -668,7 +702,7 @@ private fun ExportActionsCard(onExportCsv: () -> Unit, onExportTrack: () -> Unit
 private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) {
     val up = event.paxMenUp + event.paxWomenUp
     val down = event.paxMenDown + event.paxWomenDown
-    Card { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("${event.stopType} • ${fmt.format(Date(event.timestamp))}", style = MaterialTheme.typography.titleSmall); if (!event.stopName.isNullOrBlank()) Text("PARADA: ${event.stopName}"); Text("SUBEN: $up (H:${event.paxMenUp} M:${event.paxWomenUp})"); Text("BAJAN: $down (H:${event.paxMenDown} M:${event.paxWomenDown})"); Text("DEMORAS: ${event.delayCodes ?: "-"}"); Text("MALETA/BULTO: ${if (event.hasLuggage) "SÍ" else "NO"}"); if (!event.notes.isNullOrBlank()) Text("NOTAS: ${event.notes}"); if (event.stopLat != 0.0 || event.stopLon != 0.0) Text("GPS: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}M)") else Text("GPS: PENDIENTE") } }
+    Card { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("${event.stopType} • ${fmt.format(Date(event.timestamp))}", style = MaterialTheme.typography.titleSmall); if (!event.stopName.isNullOrBlank()) Text("PARADA: ${event.stopName}"); Text("SUBEN: $up (H:${event.paxMenUp} M:${event.paxWomenUp})"); Text("BAJAN: $down (H:${event.paxMenDown} M:${event.paxWomenDown})"); Text("DEMORAS: ${event.delayCodes ?: "-"}"); Text("MALETA/BULTO: ${if (event.hasLuggage) "SÍ" else "NO"}"); if (!event.notes.isNullOrBlank()) Text("NOTAS: ${event.notes}"); Text("WP INICIO: ${event.waypointStopId} • WP CIERRE: ${event.waypointStartId}"); if (event.stopLat != 0.0 || event.stopLon != 0.0) Text("GPS: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}M)") else Text("GPS: PENDIENTE") } }
 }
 
 private data class AsdDemoSummary(val events: Int, val boardings: Int, val alightings: Int, val delays: Int, val onBoard: Int, val trackPoints: Int) {
