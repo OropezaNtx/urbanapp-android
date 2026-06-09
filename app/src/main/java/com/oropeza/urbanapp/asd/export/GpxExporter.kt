@@ -29,14 +29,27 @@ object GpxExporter {
             .replace("\"", "&quot;")
             .replace("'", "&apos;")
 
-    private fun safeType(t: String?): String =
-        (t ?: "EVENTO").trim().ifBlank { "EVENTO" }.uppercase(Locale("es", "MX"))
+    private fun StopEvent.hasBoarding(): Boolean = paxMenUp + paxWomenUp > 0
+    private fun StopEvent.hasAlighting(): Boolean = paxMenDown + paxWomenDown > 0
+    private fun StopEvent.hasDelay(): Boolean {
+        val type = stopType.trim().uppercase(Locale("es", "MX"))
+        return !delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")
+    }
 
-    /**
-     * Exporta 1 GPX por viaje:
-     * - Track con trkpt (suavizado sin perder timestamps)
-     * - Waypoints: 2 por StopEvent (IN/OUT) usando waypointStopId/waypointStartId
-     */
+    private fun StopEvent.displayType(): String {
+        val type = stopType.trim().uppercase(Locale("es", "MX"))
+        val hasPax = hasBoarding() || hasAlighting()
+        val hasDelay = hasDelay()
+        return when {
+            hasPax && hasDelay -> "ASD_DEMORA"
+            hasBoarding() && hasAlighting() -> "ASD"
+            hasBoarding() -> "ASCENSO"
+            hasAlighting() -> "DESCENSO"
+            hasDelay -> "DEMORA"
+            else -> type.ifBlank { "EVENTO" }
+        }
+    }
+
     suspend fun exportTripGpx(
         context: Context,
         uri: Uri,
@@ -49,30 +62,24 @@ object GpxExporter {
         requireNotNull(os) { "No se pudo abrir OutputStream para: $uri" }
 
         os.bufferedWriter(Charsets.UTF_8).use { out ->
-
             val trackName = "${trip.routeName} - ${trip.direction} (Trip ${trip.tripId})"
 
             out.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
-            out.appendLine("""<gpx version="1.1" creator="UrbanApp ASD" xmlns="http://www.topografix.com/GPX/1/1">""")
+            out.appendLine("""<gpx version="1.1" creator="UrbanApp ASD" xmlns="http://www.topografix.com/GPX/1/1">"")
 
-            // ===== metadata =====
             out.appendLine("<metadata>")
             out.appendLine("<name>${esc(trackName)}</name>")
             out.appendLine("<time>${esc(fmtIso(trip.startTime))}</time>")
             out.appendLine("</metadata>")
 
-            // ===== WAYPOINTS (banderas IN/OUT) =====
-            // Ordenados por timestamp (inicio del evento)
             val orderedStops = stops.sortedBy { it.timestamp }
 
             for (s in orderedStops) {
-                val type = safeType(s.stopType)
+                val type = s.displayType()
 
-                // --- IN (parada/inicio) ---
                 val hasIn = (s.stopLat != 0.0 || s.stopLon != 0.0) && s.waypointStopId > 0 && s.stopTime > 0L
                 if (hasIn) {
                     val name = "WP${s.waypointStopId}-$type-IN"
-
                     val desc = buildString {
                         append("Tipo: $type")
                         if (!s.delayCodes.isNullOrBlank()) append("\nDemora: ${s.delayCodes}")
@@ -90,8 +97,8 @@ object GpxExporter {
                         }
 
                         append("\nAcc: ±${"%.1f".format(Locale.US, s.stopAccM)} m")
-                        if (!s.stopProvider.isNullOrBlank()) append("\nProv: ${s.stopProvider}")
-                        if (!s.locationStatus.isNullOrBlank()) append("\nStatus: ${s.locationStatus}")
+                        if (s.stopProvider.isNotBlank()) append("\nProv: ${s.stopProvider}")
+                        if (s.locationStatus.isNotBlank()) append("\nStatus: ${s.locationStatus}")
                     }
 
                     out.appendLine("""<wpt lat="${s.stopLat}" lon="${s.stopLon}">""")
@@ -102,16 +109,14 @@ object GpxExporter {
                     out.appendLine("</wpt>")
                 }
 
-                // --- OUT (arranque/fin) ---
                 val hasOut = (s.startLat != 0.0 || s.startLon != 0.0) && s.waypointStartId > 0 && s.startTime > 0L
                 if (hasOut) {
                     val name = "WP${s.waypointStartId}-$type-OUT"
-
                     val desc = buildString {
                         append("Tipo: $type")
                         append("\nAcc: ±${"%.1f".format(Locale.US, s.startAccM)} m")
-                        if (!s.startProvider.isNullOrBlank()) append("\nProv: ${s.startProvider}")
-                        if (!s.locationStatus.isNullOrBlank()) append("\nStatus: ${s.locationStatus}")
+                        if (s.startProvider.isNotBlank()) append("\nProv: ${s.startProvider}")
+                        if (s.locationStatus.isNotBlank()) append("\nStatus: ${s.locationStatus}")
                     }
 
                     out.appendLine("""<wpt lat="${s.startLat}" lon="${s.startLon}">""")
@@ -123,18 +128,13 @@ object GpxExporter {
                 }
             }
 
-            // ===== TRACK =====
             out.appendLine("<trk>")
             out.appendLine("<name>${esc(trackName)}</name>")
 
             val orderedPts = points.sortedBy { it.timeMs }
             if (orderedPts.isNotEmpty()) {
-
-                // ✅ Suavizado que NO cambia cantidad de puntos (mantiene timestamps)
                 val raw = orderedPts.map { LatLng(it.lat, it.lon) }
                 val smooth = PolylineSmoother.movingAverage(raw, window = 3)
-
-                // Segmentación por gaps (túnel/pérdida de señal)
                 val gapMs = 12_000L
 
                 out.appendLine("<trkseg>")
@@ -149,7 +149,6 @@ object GpxExporter {
 
                     val p = orderedPts[i]
                     val s = smooth[i]
-
                     out.appendLine("""<trkpt lat="${s.lat}" lon="${s.lon}">""")
                     out.appendLine("<time>${esc(fmtIso(p.timeMs))}</time>")
                     out.appendLine("</trkpt>")
