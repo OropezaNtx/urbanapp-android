@@ -166,6 +166,21 @@ class AsdRepository(private val db: AppDatabase) {
         return onboard
     }
 
+    private fun normalizeDelayCodes(delayCodes: String?, up: Int, down: Int): String? {
+        val codes = delayCodes
+            ?.split("/", ",", "|", ";")
+            ?.map { it.trim().uppercase() }
+            ?.filter { it.isNotBlank() }
+            ?.toMutableList()
+            ?: mutableListOf()
+
+        if ((up > 0 || down > 0) && !codes.contains("AD")) {
+            codes.add(0, "AD")
+        }
+
+        return codes.distinct().joinToString("/").ifBlank { null }
+    }
+
     suspend fun addStopDetailed(
         tripId: Long,
         stopType: String,
@@ -194,8 +209,13 @@ class AsdRepository(private val db: AppDatabase) {
         startFixTime: Long = 0L
     ) {
         val now = eventTimestampMs ?: System.currentTimeMillis()
-        val up = max(0, menUp) + max(0, womenUp)
-        val down = max(0, menDown) + max(0, womenDown)
+        val cleanMenUp = max(0, menUp)
+        val cleanWomenUp = max(0, womenUp)
+        val cleanMenDown = max(0, menDown)
+        val cleanWomenDown = max(0, womenDown)
+        val up = cleanMenUp + cleanWomenUp
+        val down = cleanMenDown + cleanWomenDown
+        val normalizedDelayCodes = normalizeDelayCodes(delayCodes, up, down)
 
         if (stopType.equals("DESCENSO", ignoreCase = true)) {
             val onboard = computeOnBoard(tripId)
@@ -233,12 +253,12 @@ class AsdRepository(private val db: AppDatabase) {
                 startProvider = startProvider,
                 startFixTime = startFixTime,
                 locationStatus = locationStatus,
-                paxMenUp = max(0, menUp),
-                paxWomenUp = max(0, womenUp),
-                paxMenDown = max(0, menDown),
-                paxWomenDown = max(0, womenDown),
+                paxMenUp = cleanMenUp,
+                paxWomenUp = cleanWomenUp,
+                paxMenDown = cleanMenDown,
+                paxWomenDown = cleanWomenDown,
                 hasLuggage = hasLuggage,
-                delayCodes = delayCodes?.trim()?.ifBlank { null },
+                delayCodes = normalizedDelayCodes,
                 otherDelayDesc = otherDelayDesc?.trim()?.ifBlank { null }
             )
         )
