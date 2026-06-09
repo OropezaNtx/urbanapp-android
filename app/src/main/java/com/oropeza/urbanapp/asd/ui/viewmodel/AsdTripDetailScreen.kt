@@ -9,11 +9,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,9 +31,6 @@ import com.oropeza.urbanapp.asd.location.LocationFix
 import com.oropeza.urbanapp.asd.location.LocationProvider
 import com.oropeza.urbanapp.asd.location.PolylineSmoother
 import com.oropeza.urbanapp.asd.location.TrackingService
-import com.oropeza.urbanapp.asd.ui.EventKind
-import com.oropeza.urbanapp.asd.ui.UnifiedEventDialog
-import com.oropeza.urbanapp.asd.ui.UnifiedEventInput
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -181,9 +181,16 @@ fun AsdTripDetailScreen(
     val fmt = remember { SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale("es", "MX")) }
     val fileFmt = remember { SimpleDateFormat("yyyyMMdd_HHmm", Locale("es", "MX")) }
 
-    var showDialog by remember { mutableStateOf(false) }
-    var stopClickTime by remember { mutableStateOf(0L) }
-    var pendingStopFix by remember { mutableStateOf<LocationFix?>(null) }
+    var menUp by rememberSaveable { mutableStateOf(0) }
+    var womenUp by rememberSaveable { mutableStateOf(0) }
+    var menDown by rememberSaveable { mutableStateOf(0) }
+    var womenDown by rememberSaveable { mutableStateOf(0) }
+    var selectedDelayCodes by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var otherDelayDesc by rememberSaveable { mutableStateOf("") }
+    var hasLuggage by rememberSaveable { mutableStateOf(false) }
+    var stopName by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
+
     var loadingGps by remember { mutableStateOf(false) }
     var gpsMsg by remember { mutableStateOf<String?>(null) }
     var snackbarText by remember { mutableStateOf<String?>(null) }
@@ -281,14 +288,115 @@ fun AsdTripDetailScreen(
         })
     }
 
-    fun mapStopType(input: UnifiedEventInput): String = when (input.kind) {
-        EventKind.ASCENSO -> "ASCENSO"
-        EventKind.DESCENSO -> "DESCENSO"
-        EventKind.DEMORA -> "DEMORA"
+    fun resetCaptureForm() {
+        menUp = 0
+        womenUp = 0
+        menDown = 0
+        womenDown = 0
+        selectedDelayCodes = emptySet()
+        otherDelayDesc = ""
+        hasLuggage = false
+        stopName = ""
+        notes = ""
     }
 
-    fun delayCodesString(input: UnifiedEventInput): String? =
-        input.delaySet.joinToString(separator = "/") { it.trim() }.trim().ifBlank { null }
+    fun currentFixFromLastPoint(now: Long): LocationFix {
+        val p = lastPoint
+        return if (p != null && p.lat != 0.0 && p.lon != 0.0) {
+            LocationFix(
+                lat = p.lat,
+                lon = p.lon,
+                accM = p.accM,
+                provider = p.provider,
+                fixTime = p.timeMs,
+                status = if (p.accM <= 20.0) "FIX_USABLE" else "GPS_LAST"
+            )
+        } else {
+            LocationFix(
+                lat = 0.0,
+                lon = 0.0,
+                accM = 0.0,
+                provider = "pending",
+                fixTime = now,
+                status = "GPS_PENDING"
+            )
+        }
+    }
+
+    fun inferredStopType(): String {
+        val hasPax = menUp + womenUp + menDown + womenDown > 0
+        val hasDelay = selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank()
+        return when {
+            hasPax -> "ASD"
+            hasDelay -> "DEMORA"
+            else -> "ASD"
+        }
+    }
+
+    fun saveInlineEvent(summary: AsdDemoSummary) {
+        if (!requestPermsIfNeeded()) {
+            snackbarText = "Permiso de ubicación requerido."
+            return
+        }
+
+        val up = menUp + womenUp
+        val down = menDown + womenDown
+        val hasDelay = selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank()
+        val hasPax = up + down > 0
+
+        if (!hasPax && !hasDelay && stopName.isBlank() && notes.isBlank()) {
+            snackbarText = "Captura al menos un ascenso, descenso, demora u observación."
+            return
+        }
+
+        if (down > summary.onBoard + up) {
+            snackbarText = "No puedes bajar $down personas si solo van ${summary.onBoard + up} a bordo."
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val fix = currentFixFromLastPoint(now)
+        val delayText = selectedDelayCodes.joinToString("/").ifBlank { null }
+
+        scope.launch {
+            try {
+                vm.addStopDetailed(
+                    tripId = tripId,
+                    stopType = inferredStopType(),
+                    stopTimeMs = now,
+                    startTimeMs = now,
+                    stopName = stopName.trim().ifBlank { null },
+                    notes = notes.trim().ifBlank { null },
+                    menUp = menUp,
+                    womenUp = womenUp,
+                    menDown = menDown,
+                    womenDown = womenDown,
+                    hasLuggage = hasLuggage,
+                    delayCodes = delayText,
+                    otherDelayDesc = otherDelayDesc.trim().ifBlank { null },
+                    stopLat = fix.lat,
+                    stopLon = fix.lon,
+                    stopAccM = fix.accM,
+                    stopProvider = fix.provider,
+                    stopFixTime = fix.fixTime,
+                    locationStatus = fix.status,
+                    startLat = fix.lat,
+                    startLon = fix.lon,
+                    startAccM = fix.accM,
+                    startProvider = fix.provider,
+                    startFixTime = fix.fixTime
+                )
+                snackbarText = if (fix.status == "GPS_PENDING") {
+                    "Evento guardado ✅ GPS pendiente"
+                } else {
+                    "Evento guardado ✅ ${fix.status} ±${fix.accM.toInt()}m"
+                }
+                resetCaptureForm()
+            } catch (e: Exception) {
+                snackbarText = e.message ?: "Error al guardar evento."
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -322,82 +430,6 @@ fun AsdTripDetailScreen(
             }
         }
 
-        if (showDialog) {
-            UnifiedEventDialog(
-                title = "Registrar evento ASD",
-                onDismiss = { showDialog = false },
-                onConfirm = { input ->
-                    scope.launch {
-                        try {
-                            if (!requestPermsIfNeeded()) {
-                                snackbarText = "Permiso de ubicación requerido."
-                                return@launch
-                            }
-
-                            val fixIn = pendingStopFix
-                            if (fixIn == null) {
-                                snackbarText = "No se pudo obtener el punto IN. Intenta de nuevo."
-                                showDialog = false
-                                return@launch
-                            }
-
-                            loadingGps = true
-                            gpsMsg = "Marcando OUT (fin del evento)…"
-                            val fixOut = gps.getBestFixForEvent(
-                                targetAccM = 10.0,
-                                fallbackAccM = 25.0,
-                                timeoutMs = 6_000L,
-                                highAccuracy = true
-                            )
-                            loadingGps = false
-                            gpsMsg = null
-
-                            val menUp = if (input.kind == EventKind.ASCENSO) input.men else 0
-                            val womenUp = if (input.kind == EventKind.ASCENSO) input.women else 0
-                            val menDown = if (input.kind == EventKind.DESCENSO) input.men else 0
-                            val womenDown = if (input.kind == EventKind.DESCENSO) input.women else 0
-
-                            vm.addStopDetailed(
-                                tripId = tripId,
-                                stopType = mapStopType(input),
-                                stopTimeMs = stopClickTime,
-                                startTimeMs = fixOut.fixTime,
-                                stopName = input.stopName,
-                                notes = input.notes,
-                                menUp = menUp,
-                                womenUp = womenUp,
-                                menDown = menDown,
-                                womenDown = womenDown,
-                                hasLuggage = input.hasLuggage,
-                                delayCodes = delayCodesString(input),
-                                otherDelayDesc = input.otherDesc,
-                                stopLat = fixIn.lat,
-                                stopLon = fixIn.lon,
-                                stopAccM = fixIn.accM,
-                                stopProvider = fixIn.provider,
-                                stopFixTime = fixIn.fixTime,
-                                locationStatus = fixOut.status,
-                                startLat = fixOut.lat,
-                                startLon = fixOut.lon,
-                                startAccM = fixOut.accM,
-                                startProvider = fixOut.provider,
-                                startFixTime = fixOut.fixTime
-                            )
-
-                            pendingStopFix = null
-                            snackbarText = "Evento guardado ✅ IN±${fixIn.accM.toInt()}m | OUT±${fixOut.accM.toInt()}m"
-                        } catch (e: Exception) {
-                            loadingGps = false
-                            gpsMsg = null
-                            snackbarText = e.message ?: "Error al registrar evento."
-                        } finally {
-                            showDialog = false
-                        }
-                    }
-                }
-            )
-        }
-
         LazyColumn(
             modifier = Modifier
                 .padding(pad)
@@ -405,6 +437,42 @@ fun AsdTripDetailScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item {
+                InlineAsdCaptureCard(
+                    isEnded = isEnded,
+                    menUp = menUp,
+                    womenUp = womenUp,
+                    menDown = menDown,
+                    womenDown = womenDown,
+                    selectedDelayCodes = selectedDelayCodes,
+                    otherDelayDesc = otherDelayDesc,
+                    hasLuggage = hasLuggage,
+                    stopName = stopName,
+                    notes = notes,
+                    lastPoint = lastPoint,
+                    onMenUpChange = { menUp = it.coerceAtLeast(0) },
+                    onWomenUpChange = { womenUp = it.coerceAtLeast(0) },
+                    onMenDownChange = { menDown = it.coerceAtLeast(0) },
+                    onWomenDownChange = { womenDown = it.coerceAtLeast(0) },
+                    onToggleDelayCode = { code ->
+                        selectedDelayCodes = if (selectedDelayCodes.contains(code)) {
+                            selectedDelayCodes - code
+                        } else {
+                            selectedDelayCodes + code
+                        }
+                    },
+                    onOtherDelayDescChange = { otherDelayDesc = it },
+                    onHasLuggageChange = { hasLuggage = it },
+                    onStopNameChange = { stopName = it },
+                    onNotesChange = { notes = it },
+                    onSave = { saveInlineEvent(summary) },
+                    onClear = { resetCaptureForm() }
+                )
+            }
+
+            gpsMsg?.let { msg -> item { Text(msg) } }
+            if (loadingGps) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+
             item {
                 TripHeaderCard(
                     routeName = t.routeName,
@@ -417,9 +485,7 @@ fun AsdTripDetailScreen(
                 )
             }
 
-            item {
-                DemoSummaryCard(summary = summary)
-            }
+            item { DemoSummaryCard(summary = summary) }
 
             item {
                 TrackingStatusCard(
@@ -472,40 +538,14 @@ fun AsdTripDetailScreen(
             }
 
             item {
-                DemoActionsCard(
+                TripActionsCard(
                     isEnded = isEnded,
                     loadingGps = loadingGps,
-                    onRegisterEvent = {
-                        if (!requestPermsIfNeeded()) {
-                            snackbarText = "Permiso de ubicación requerido."
-                            return@DemoActionsCard
-                        }
-                        scope.launch {
-                            try {
-                                loadingGps = true
-                                gpsMsg = "Marcando IN (inicio del evento)…"
-                                val fixIn = gps.getBestFixForEvent(
-                                    targetAccM = 10.0,
-                                    fallbackAccM = 25.0,
-                                    timeoutMs = 6_000L,
-                                    highAccuracy = true
-                                )
-                                pendingStopFix = fixIn
-                                stopClickTime = fixIn.fixTime
-                                showDialog = true
-                            } catch (e: Exception) {
-                                snackbarText = e.message ?: "Error obteniendo GPS (IN)."
-                            } finally {
-                                loadingGps = false
-                                gpsMsg = null
-                            }
-                        }
-                    },
                     onOpenMap = { onOpenMap(tripId) },
                     onCloseTrip = {
                         if (!requestPermsIfNeeded()) {
                             snackbarText = "Permiso de ubicación requerido."
-                            return@DemoActionsCard
+                            return@TripActionsCard
                         }
                         scope.launch {
                             try {
@@ -537,41 +577,177 @@ fun AsdTripDetailScreen(
 
             item {
                 ExportActionsCard(
-                    onExportCsv = {
-                        exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv")
-                    },
-                    onExportTrack = {
-                        exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv")
-                    },
-                    onExportGpx = {
-                        exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx")
-                    },
-                    onExportKml = {
-                        exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml")
-                    }
+                    onExportCsv = { exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") },
+                    onExportTrack = { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") },
+                    onExportGpx = { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") },
+                    onExportKml = { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }
                 )
             }
 
-            gpsMsg?.let { msg -> item { Text(msg) } }
-            if (loadingGps) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-
-            item {
-                Text("Eventos registrados", style = MaterialTheme.typography.titleMedium)
-            }
+            item { Text("Eventos registrados", style = MaterialTheme.typography.titleMedium) }
 
             if (stops.isEmpty()) {
                 item {
                     Card {
                         Text(
-                            "Aún no hay eventos. Registra ascensos, descensos o demoras para la demo.",
+                            "Aún no hay eventos. Usa el bloque superior para registrar ascensos, descensos o demoras.",
                             modifier = Modifier.padding(12.dp)
                         )
                     }
                 }
             } else {
-                items(stops) { event ->
-                    EventCard(event = event, fmt = fmt)
+                items(stops) { event -> EventCard(event = event, fmt = fmt) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InlineAsdCaptureCard(
+    isEnded: Boolean,
+    menUp: Int,
+    womenUp: Int,
+    menDown: Int,
+    womenDown: Int,
+    selectedDelayCodes: Set<String>,
+    otherDelayDesc: String,
+    hasLuggage: Boolean,
+    stopName: String,
+    notes: String,
+    lastPoint: TrackPoint?,
+    onMenUpChange: (Int) -> Unit,
+    onWomenUpChange: (Int) -> Unit,
+    onMenDownChange: (Int) -> Unit,
+    onWomenDownChange: (Int) -> Unit,
+    onToggleDelayCode: (String) -> Unit,
+    onOtherDelayDescChange: (String) -> Unit,
+    onHasLuggageChange: (Boolean) -> Unit,
+    onStopNameChange: (String) -> Unit,
+    onNotesChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onClear: () -> Unit
+) {
+    val delayCodes = listOf("AD", "C", "S", "TM", "CND", "O")
+
+    Card {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Registro de ascensos, descensos y demoras", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Captura lo ocurrido en este punto. La app clasifica automáticamente el evento según pasajeros y demoras.",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Text("Suben", style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                CounterBox("Hombres", menUp, onMenUpChange, Modifier.weight(1f))
+                CounterBox("Mujeres", womenUp, onWomenUpChange, Modifier.weight(1f))
+            }
+
+            Text("Bajan", style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                CounterBox("Hombres", menDown, onMenDownChange, Modifier.weight(1f))
+                CounterBox("Mujeres", womenDown, onWomenDownChange, Modifier.weight(1f))
+            }
+
+            Text("Tipo de demora", style = MaterialTheme.typography.titleSmall)
+            DelayCodeGrid(
+                codes = delayCodes,
+                selected = selectedDelayCodes,
+                onToggle = onToggleDelayCode
+            )
+
+            if (selectedDelayCodes.contains("O")) {
+                OutlinedTextField(
+                    value = otherDelayDesc,
+                    onValueChange = onOtherDelayDescChange,
+                    label = { Text("Descripción de otro") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange)
+                Text("Porta maleta / bulto voluminoso")
+            }
+
+            OutlinedTextField(
+                value = stopName,
+                onValueChange = onStopNameChange,
+                label = { Text("Parada / referencia") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value = notes,
+                onValueChange = onNotesChange,
+                label = { Text("Observaciones") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2
+            )
+
+            Text(
+                lastPoint?.let { "GPS usado: último punto guardado ±${it.accM.toInt()}m" }
+                    ?: "GPS usado: pendiente si aún no hay punto guardado",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f), enabled = !isEnded) {
+                    Text("Limpiar")
                 }
+                Button(onClick = onSave, modifier = Modifier.weight(1f), enabled = !isEnded) {
+                    Text("Guardar")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CounterBox(label: String, value: Int, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+    Card(modifier = modifier) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = { onChange((value - 1).coerceAtLeast(0)) }, modifier = Modifier.weight(1f)) {
+                    Text("−")
+                }
+                OutlinedTextField(
+                    value = value.toString(),
+                    onValueChange = { onChange(it.filter { ch -> ch.isDigit() }.take(3).toIntOrNull() ?: 0) },
+                    modifier = Modifier.weight(1.2f),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                OutlinedButton(onClick = { onChange(value + 1) }, modifier = Modifier.weight(1f)) {
+                    Text("+")
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DelayCodeGrid(codes: List<String>, selected: Set<String>, onToggle: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            codes.take(3).forEach { code ->
+                FilterChip(
+                    selected = selected.contains(code),
+                    onClick = { onToggle(code) },
+                    label = { Text(code) }
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            codes.drop(3).forEach { code ->
+                FilterChip(
+                    selected = selected.contains(code),
+                    onClick = { onToggle(code) },
+                    label = { Text(code) }
+                )
             }
         }
     }
@@ -677,21 +853,15 @@ private fun DistanceCard(
 }
 
 @Composable
-private fun DemoActionsCard(
+private fun TripActionsCard(
     isEnded: Boolean,
     loadingGps: Boolean,
-    onRegisterEvent: () -> Unit,
     onOpenMap: () -> Unit,
     onCloseTrip: () -> Unit
 ) {
     Card {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Acciones de demo", style = MaterialTheme.typography.titleMedium)
-            Button(
-                enabled = !isEnded && !loadingGps,
-                onClick = onRegisterEvent,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("+ Registrar evento") }
+            Text("Acciones del recorrido", style = MaterialTheme.typography.titleMedium)
             Button(onClick = onOpenMap, modifier = Modifier.fillMaxWidth()) {
                 Text("Ver mapa del recorrido")
             }
@@ -736,12 +906,9 @@ private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) {
             Text("Maleta/Bulto: ${if (event.hasLuggage) "Sí" else "No"}")
             if (!event.notes.isNullOrBlank()) Text("Notas: ${event.notes}")
             if (event.stopLat != 0.0 || event.stopLon != 0.0) {
-                Text("GPS IN: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}m)")
+                Text("GPS: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}m)")
             } else {
-                Text("GPS IN: sin coordenadas")
-            }
-            if (event.startLat != 0.0 || event.startLon != 0.0) {
-                Text("GPS OUT: ${"%.5f".format(event.startLat)}, ${"%.5f".format(event.startLon)} (±${event.startAccM.toInt()}m)")
+                Text("GPS: pendiente")
             }
         }
     }
@@ -768,8 +935,8 @@ private data class AsdDemoSummary(
                 val type = event.stopType.uppercase(Locale("es", "MX"))
                 val isDelay = !event.delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")
 
-                if (up > 0 || type == "ASCENSO") boardings += up
-                if (down > 0 || type == "DESCENSO") alightings += down
+                boardings += up
+                alightings += down
                 if (isDelay) delays += 1
 
                 onBoard += up - down
