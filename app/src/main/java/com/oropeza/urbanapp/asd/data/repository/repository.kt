@@ -1,5 +1,6 @@
 package com.oropeza.urbanapp.asd.data.repository
 
+import com.oropeza.urbanapp.asd.backup.AsdOnlineBackup
 import com.oropeza.urbanapp.asd.data.local.*
 import kotlinx.coroutines.flow.Flow
 import kotlin.math.max
@@ -176,9 +177,7 @@ class AsdRepository(private val db: AppDatabase) {
             ?.toMutableList()
             ?: mutableListOf()
 
-        if ((up > 0 || down > 0) && !codes.contains("AD")) {
-            codes.add(0, "AD")
-        }
+        if ((up > 0 || down > 0) && !codes.contains("AD")) codes.add(0, "AD")
 
         return codes.distinct().joinToString("/").ifBlank { null }
     }
@@ -232,38 +231,39 @@ class AsdRepository(private val db: AppDatabase) {
             else -> 0
         }
 
-        stopDao.insert(
-            StopEvent(
-                tripId = tripId,
-                timestamp = now,
-                stopType = stopType.uppercase(),
-                count = count.coerceAtLeast(0),
-                stopName = cleanText(stopName),
-                notes = cleanText(notes),
-                waypointStopId = pair.inId,
-                waypointStartId = pair.outId,
-                stopTime = stopTimeMs,
-                startTime = startTimeMs,
-                stopLat = stopLat,
-                stopLon = stopLon,
-                startLat = startLat,
-                startLon = startLon,
-                stopAccM = stopAccM,
-                stopProvider = stopProvider,
-                stopFixTime = stopFixTime,
-                startAccM = startAccM,
-                startProvider = startProvider,
-                startFixTime = startFixTime,
-                locationStatus = locationStatus,
-                paxMenUp = cleanMenUp,
-                paxWomenUp = cleanWomenUp,
-                paxMenDown = cleanMenDown,
-                paxWomenDown = cleanWomenDown,
-                hasLuggage = hasLuggage,
-                delayCodes = normalizedDelayCodes,
-                otherDelayDesc = cleanText(otherDelayDesc)
-            )
+        val event = StopEvent(
+            tripId = tripId,
+            timestamp = now,
+            stopType = stopType.uppercase(),
+            count = count.coerceAtLeast(0),
+            stopName = cleanText(stopName),
+            notes = cleanText(notes),
+            waypointStopId = pair.inId,
+            waypointStartId = pair.outId,
+            stopTime = stopTimeMs,
+            startTime = startTimeMs,
+            stopLat = stopLat,
+            stopLon = stopLon,
+            startLat = startLat,
+            startLon = startLon,
+            stopAccM = stopAccM,
+            stopProvider = stopProvider,
+            stopFixTime = stopFixTime,
+            startAccM = startAccM,
+            startProvider = startProvider,
+            startFixTime = startFixTime,
+            locationStatus = locationStatus,
+            paxMenUp = cleanMenUp,
+            paxWomenUp = cleanWomenUp,
+            paxMenDown = cleanMenDown,
+            paxWomenDown = cleanWomenDown,
+            hasLuggage = hasLuggage,
+            delayCodes = normalizedDelayCodes,
+            otherDelayDesc = cleanText(otherDelayDesc)
         )
+
+        val insertedId = stopDao.insert(event)
+        AsdOnlineBackup.backupStopEvent(event.copy(eventId = insertedId))
     }
 
     private fun normalizeCoord(lat: Double, lon: Double): Pair<Double, Double> {
@@ -289,35 +289,35 @@ class AsdRepository(private val db: AppDatabase) {
         val pair = tripDao.reserveWaypointPair(tripId)
         val now = System.currentTimeMillis()
 
-        stopDao.insert(
-            StopEvent(
-                tripId = tripId,
-                timestamp = now,
-                stopType = "BANDERA",
-                count = 0,
-                stopName = null,
-                notes = cleanText(notes),
-                waypointStopId = pair.inId,
-                waypointStartId = pair.outId,
-                stopTime = now,
-                stopLat = lat,
-                stopLon = lon,
-                stopAccM = startAccM,
-                stopProvider = startProvider,
-                stopFixTime = if (startFixTime > 0L) startFixTime else now,
-                startTime = 0L,
-                startLat = 0.0,
-                startLon = 0.0,
-                startAccM = 0.0,
-                startProvider = "",
-                startFixTime = 0L,
-                locationStatus = locationStatus,
-                delayCodes = cleanText(delayType),
-                otherDelayDesc = null,
-                hasLuggage = false,
-                paxMenUp = 0, paxWomenUp = 0, paxMenDown = 0, paxWomenDown = 0
-            )
+        val event = StopEvent(
+            tripId = tripId,
+            timestamp = now,
+            stopType = "BANDERA",
+            count = 0,
+            stopName = null,
+            notes = cleanText(notes),
+            waypointStopId = pair.inId,
+            waypointStartId = pair.outId,
+            stopTime = now,
+            stopLat = lat,
+            stopLon = lon,
+            stopAccM = startAccM,
+            stopProvider = startProvider,
+            stopFixTime = if (startFixTime > 0L) startFixTime else now,
+            startTime = 0L,
+            startLat = 0.0,
+            startLon = 0.0,
+            startAccM = 0.0,
+            startProvider = "",
+            startFixTime = 0L,
+            locationStatus = locationStatus,
+            delayCodes = cleanText(delayType),
+            otherDelayDesc = null,
+            hasLuggage = false,
+            paxMenUp = 0, paxWomenUp = 0, paxMenDown = 0, paxWomenDown = 0
         )
+        val insertedId = stopDao.insert(event)
+        AsdOnlineBackup.backupStopEvent(event.copy(eventId = insertedId))
         return true
     }
 
@@ -334,17 +334,17 @@ class AsdRepository(private val db: AppDatabase) {
         val (lat, lon) = normalizeCoord(endLat, endLon)
         val now = System.currentTimeMillis()
 
-        stopDao.update(
-            active.copy(
-                startTime = now,
-                startLat = lat,
-                startLon = lon,
-                startAccM = endAccM,
-                startProvider = endProvider,
-                startFixTime = if (endFixTime > 0L) endFixTime else now,
-                locationStatus = locationStatus
-            )
+        val updated = active.copy(
+            startTime = now,
+            startLat = lat,
+            startLon = lon,
+            startAccM = endAccM,
+            startProvider = endProvider,
+            startFixTime = if (endFixTime > 0L) endFixTime else now,
+            locationStatus = locationStatus
         )
+        stopDao.update(updated)
+        AsdOnlineBackup.backupStopEvent(updated)
         return true
     }
 
