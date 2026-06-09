@@ -70,11 +70,11 @@ object KmlExporter {
             out.appendLine("</Folder>")
 
             out.appendLine("<Folder>")
-            out.appendLine("<name>Eventos</name>")
-            stops
-                .filter { it.stopLat != 0.0 && it.stopLon != 0.0 }
-                .sortedBy { it.timestamp }
-                .forEach { stop -> writeStopPlacemark(out, stop) }
+            out.appendLine("<name>Eventos ASD</name>")
+            stops.sortedBy { it.timestamp }.forEach { stop ->
+                writeStopStartPlacemark(out, stop)
+                writeStopClosePlacemark(out, stop)
+            }
             out.appendLine("</Folder>")
 
             out.appendLine("</Document>")
@@ -86,42 +86,41 @@ object KmlExporter {
         out.appendLine("<Style id=\"routeStyle\">")
         out.appendLine("<LineStyle><color>ffff6500</color><width>5</width></LineStyle>")
         out.appendLine("</Style>")
-        out.appendLine("<Style id=\"boardingStyle\">")
-        out.appendLine("<IconStyle><color>ffffaa00</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/blu-circle.png</href></Icon></IconStyle>")
+        out.appendLine("<Style id=\"startStyle\">")
+        out.appendLine("<IconStyle><color>ff00c853</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon></IconStyle>")
         out.appendLine("</Style>")
-        out.appendLine("<Style id=\"alightingStyle\">")
-        out.appendLine("<IconStyle><color>ff00a5ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/orange-circle.png</href></Icon></IconStyle>")
-        out.appendLine("</Style>")
-        out.appendLine("<Style id=\"delayStyle\">")
-        out.appendLine("<IconStyle><color>ffff00ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/purple-circle.png</href></Icon></IconStyle>")
-        out.appendLine("</Style>")
-        out.appendLine("<Style id=\"combinedStyle\">")
-        out.appendLine("<IconStyle><color>ffff00ff</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/purple-stars.png</href></Icon></IconStyle>")
+        out.appendLine("<Style id=\"closeStyle\">")
+        out.appendLine("<IconStyle><color>ff0000ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon></IconStyle>")
         out.appendLine("</Style>")
         out.appendLine("<Style id=\"eventStyle\">")
         out.appendLine("<IconStyle><scale>1.0</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle>")
         out.appendLine("</Style>")
     }
 
-    private fun writeStopPlacemark(out: java.io.Writer, stop: StopEvent) {
-        val category = stop.category()
-        val style = when (category) {
-            "ASCENSO" -> "#boardingStyle"
-            "DESCENSO" -> "#alightingStyle"
-            "DEMORA" -> "#delayStyle"
-            "ASD + DEMORA" -> "#combinedStyle"
-            else -> "#eventStyle"
-        }
-        val title = buildString {
-            append(category)
-            if (!stop.stopName.isNullOrBlank()) append(" - ${stop.stopName}")
-        }
+    private fun writeStopStartPlacemark(out: java.io.Writer, stop: StopEvent) {
+        if (stop.stopLat == 0.0 && stop.stopLon == 0.0) return
+        val wp = if (stop.waypointStopId > 0) stop.waypointStopId.toString() else "?"
+        val name = "WP$wp-INICIO-${stop.category()}"
         out.appendLine("<Placemark>")
-        out.appendLine("<name>${esc(title)}</name>")
-        out.appendLine("<styleUrl>$style</styleUrl>")
-        out.appendLine("<TimeStamp><when>${esc(fmtIso(stop.timestamp))}</when></TimeStamp>")
-        out.appendLine("<description>${esc(stop.description())}</description>")
+        out.appendLine("<name>${esc(name)}</name>")
+        out.appendLine("<styleUrl>#startStyle</styleUrl>")
+        out.appendLine("<TimeStamp><when>${esc(fmtIso(stop.stopTime.takeIf { it > 0L } ?: stop.timestamp))}</when></TimeStamp>")
+        out.appendLine("<description>${esc(stop.description(isClose = false))}</description>")
         out.appendLine("<Point><coordinates>${stop.stopLon},${stop.stopLat},0</coordinates></Point>")
+        out.appendLine("</Placemark>")
+    }
+
+    private fun writeStopClosePlacemark(out: java.io.Writer, stop: StopEvent) {
+        if (stop.startLat == 0.0 && stop.startLon == 0.0) return
+        if (stop.startTime <= 0L) return
+        val wp = if (stop.waypointStartId > 0) stop.waypointStartId.toString() else "?"
+        val name = "WP$wp-CIERRE-${stop.category()}"
+        out.appendLine("<Placemark>")
+        out.appendLine("<name>${esc(name)}</name>")
+        out.appendLine("<styleUrl>#closeStyle</styleUrl>")
+        out.appendLine("<TimeStamp><when>${esc(fmtIso(stop.startTime))}</when></TimeStamp>")
+        out.appendLine("<description>${esc(stop.description(isClose = true))}</description>")
+        out.appendLine("<Point><coordinates>${stop.startLon},${stop.startLat},0</coordinates></Point>")
         out.appendLine("</Placemark>")
     }
 
@@ -137,26 +136,37 @@ object KmlExporter {
         val hasPax = hasBoarding() || hasAlighting()
         val hasDelay = hasDelay()
         return when {
-            hasPax && hasDelay -> "ASD + DEMORA"
-            type in setOf("ASCENSO", "SUBE", "BOARDING") || hasBoarding() -> "ASCENSO"
-            type in setOf("DESCENSO", "BAJA", "ALIGHTING") || hasAlighting() -> "DESCENSO"
+            hasPax && hasDelay -> "ASD_DEMORA"
+            hasBoarding() && hasAlighting() -> "ASD"
+            hasBoarding() -> "ASCENSO"
+            hasAlighting() -> "DESCENSO"
             hasDelay -> "DEMORA"
             else -> type.ifBlank { "EVENTO" }
         }
     }
 
-    private fun StopEvent.description(): String {
+    private fun StopEvent.description(isClose: Boolean): String {
         val up = paxMenUp + paxWomenUp
         val down = paxMenDown + paxWomenDown
+        val time = if (isClose) startTime else stopTime.takeIf { it > 0L } ?: timestamp
+        val acc = if (isClose) startAccM else stopAccM
+        val provider = if (isClose) startProvider else stopProvider
+        val lat = if (isClose) startLat else stopLat
+        val lon = if (isClose) startLon else stopLon
         return buildString {
-            append("Hora: ${fmtIso(timestamp)}")
+            append(if (isClose) "Fase: CIERRE" else "Fase: INICIO")
+            append("\nHora: ${fmtIso(time)}")
             append("\nTipo: ${category()}")
             if (up > 0) append("\nSuben: H$paxMenUp M$paxWomenUp Total $up")
             if (down > 0) append("\nBajan: H$paxMenDown M$paxWomenDown Total $down")
             if (!delayCodes.isNullOrBlank()) append("\nDemora: $delayCodes")
             if (!otherDelayDesc.isNullOrBlank()) append("\nOtro: $otherDelayDesc")
+            if (!stopName.isNullOrBlank()) append("\nParada: $stopName")
             if (!notes.isNullOrBlank()) append("\nNotas: $notes")
-            append("\nGPS: ±${"%.1f".format(Locale.US, stopAccM)} m")
+            if (hasLuggage) append("\nPorta maleta/bulto: SI")
+            append("\nCoordenada: $lat,$lon")
+            append("\nGPS: ±${"%.1f".format(Locale.US, acc)} m")
+            if (provider.isNotBlank()) append("\nProveedor: $provider")
             append("\nStatus: $locationStatus")
         }
     }
