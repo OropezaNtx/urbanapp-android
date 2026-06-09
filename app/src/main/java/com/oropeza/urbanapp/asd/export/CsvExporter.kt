@@ -260,8 +260,33 @@ object CsvExporter {
         uri: Uri,
         points: List<TrackPoint>
     ) {
-        val headers = listOf("tripId", "timeMs", "lat", "lon", "accM", "provider")
-        val rows = points.map { p -> listOf(p.tripId, p.timeMs, p.lat, p.lon, p.accM, p.provider) }
+        val ordered = points.sortedBy { it.timeMs }
+        val headers = listOf(
+            "tripId",
+            "timeMs",
+            "fecha_hora",
+            "delta_seg",
+            "lat",
+            "lon",
+            "accM",
+            "gps_quality",
+            "provider"
+        )
+        val rows = ordered.mapIndexed { index, p ->
+            val previous = ordered.getOrNull(index - 1)
+            val deltaSec = previous?.let { ((p.timeMs - it.timeMs).coerceAtLeast(0L) / 1000.0) } ?: 0.0
+            listOf(
+                p.tripId,
+                p.timeMs,
+                fmtDateTime(p.timeMs),
+                deltaSec,
+                p.lat,
+                p.lon,
+                p.accM,
+                gpsQuality(p.accM),
+                p.provider
+            )
+        }
         writeCsvUtf8Bom(context, uri, headers, rows)
     }
 
