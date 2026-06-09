@@ -160,6 +160,8 @@ object CsvExporter {
             "Pax. Mujeres Suben",
             "Pax. Hombres bajan",
             "Pax. Mujeres bajan",
+            "Total suben",
+            "Total bajan",
             "Total a bordo",
             "Tipo de demora",
             "Porta maleta o bulto voluminoso",
@@ -180,8 +182,10 @@ object CsvExporter {
             val womenUp = s.paxWomenUp
             val menDown = s.paxMenDown
             val womenDown = s.paxWomenDown
+            val totalSuben = menUp + womenUp
+            val totalBajan = menDown + womenDown
 
-            val delta = (menUp + womenUp) - (menDown + womenDown)
+            val delta = totalSuben - totalBajan
             totalAbordoAcc += delta
             if (totalAbordoAcc < 0) totalAbordoAcc = 0
 
@@ -231,6 +235,8 @@ object CsvExporter {
                 womenUp,
                 menDown,
                 womenDown,
+                totalSuben,
+                totalBajan,
                 totalAbordoAcc,
                 s.delayCodes ?: "",
                 if (s.hasLuggage) 1 else 0,
