@@ -34,7 +34,6 @@ class TrackingService : Service() {
         private const val TAG = "TrackingService"
     }
 
-    // Configuración de campo: teléfonos dedicados, captura continua y GPS usable rápido.
     private val requiredAccM = 25.0
     private val usableAccM = 45.0
     private val kalmanUseAccM = 45.0
@@ -173,27 +172,9 @@ class TrackingService : Service() {
         updatesJob = scope.launch {
             val tripId = currentTripId ?: return@launch
             val params = when (mode) {
-                Mode.ACQUIRE -> Params(
-                    intervalMs = 800L,
-                    minUpdateMs = 400L,
-                    minDistanceM = 0f,
-                    maxWaitTimeMs = 0L,
-                    highAccuracy = true
-                )
-                Mode.TRACK -> Params(
-                    intervalMs = 1000L,
-                    minUpdateMs = 500L,
-                    minDistanceM = 0f,
-                    maxWaitTimeMs = 0L,
-                    highAccuracy = true
-                )
-                Mode.STILL -> Params(
-                    intervalMs = 3000L,
-                    minUpdateMs = 1500L,
-                    minDistanceM = 0f,
-                    maxWaitTimeMs = 0L,
-                    highAccuracy = true
-                )
+                Mode.ACQUIRE -> Params(800L, 400L, 0f, 0L, true)
+                Mode.TRACK -> Params(1000L, 500L, 0f, 0L, true)
+                Mode.STILL -> Params(3000L, 1500L, 0f, 0L, true)
             }
 
             gps.locationUpdates(
@@ -318,8 +299,13 @@ class TrackingService : Service() {
             lastSavedLat = latF
             lastSavedLon = lonF
             scope.launch {
-                try { AsdGraph.db.trackDao().insert(p) }
-                catch (e: Exception) { Log.e(TAG, "Error insertando TrackPoint", e) }
+                try {
+                    AsdGraph.db.trackDao().insert(p)
+                    val completed = AsdGraph.repo.completePendingGpsEvents(tripId, p)
+                    if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error insertando TrackPoint o completando GPS pendiente", e)
+                }
             }
         }
     }
