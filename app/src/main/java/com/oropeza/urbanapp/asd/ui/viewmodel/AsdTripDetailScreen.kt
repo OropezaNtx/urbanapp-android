@@ -213,13 +213,17 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     fun selectedDelayText(): String? = selectedDelayCodes.joinToString("/").ifBlank { null }
     fun upper(value: String): String = value.uppercase(Locale("es", "MX"))
     fun hasValidDelayCause(): Boolean = (menUp + womenUp + menDown + womenDown > 0) || selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank()
+    fun validateGenderOnBoard(summary: AsdDemoSummary): String? {
+        if (menDown > summary.menOnBoard + menUp) return "No puedes bajar $menDown hombres si solo van ${summary.menOnBoard + menUp} hombres disponibles."
+        if (womenDown > summary.womenOnBoard + womenUp) return "No puedes bajar $womenDown mujeres si solo van ${summary.womenOnBoard + womenUp} mujeres disponibles."
+        return null
+    }
 
     fun closeActiveDelay(summary: AsdDemoSummary) {
         if (!isDelayActive) return
         if (!requestPermsIfNeeded()) { snackbarText = "Permiso de ubicación requerido."; return }
-        val up = menUp + womenUp; val down = menDown + womenDown
         if (!hasValidDelayCause()) { snackbarText = "El registro debe tener ascenso/descenso o una demora seleccionada."; return }
-        if (down > summary.onBoard + up) { snackbarText = "No puedes bajar $down personas si solo van ${summary.onBoard + up} a bordo."; return }
+        validateGenderOnBoard(summary)?.let { snackbarText = it; return }
         val now = System.currentTimeMillis(); val endFix = currentFix(now)
         scope.launch {
             try {
@@ -278,7 +282,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         LazyColumn(modifier = Modifier.padding(pad).fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 InlineAsdCaptureCard(
-                    isEnded, isDelayActive, activeElapsedSec, menUp, womenUp, menDown, womenDown, summary.onBoard, t.seatCapacity, exceedsCapacity,
+                    isEnded, isDelayActive, activeElapsedSec, menUp, womenUp, menDown, womenDown, summary.onBoard, summary.menOnBoard, summary.womenOnBoard, t.seatCapacity, exceedsCapacity,
                     selectedDelayCodes, otherDelayDesc, hasLuggage, stopName, notes, lastPoint,
                     { ensureActiveDelayFromInput(); menUp = it.coerceAtLeast(0) },
                     { ensureActiveDelayFromInput(); womenUp = it.coerceAtLeast(0) },
@@ -324,6 +328,8 @@ private fun InlineAsdCaptureCard(
     menDown: Int,
     womenDown: Int,
     currentOnBoard: Int,
+    menOnBoard: Int,
+    womenOnBoard: Int,
     seatCapacity: Int?,
     exceedsCapacity: Boolean,
     selectedDelayCodes: Set<String>,
@@ -358,17 +364,16 @@ private fun InlineAsdCaptureCard(
                 Text("REGISTRO ASD", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Text(if (isDelayActive) "ACTIVO ${formatElapsed(activeElapsedSec)}" else "LISTO", color = if (isDelayActive) green else Color.Unspecified, fontWeight = FontWeight.Bold)
             }
-            if (isDelayActive) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = onCloseDelay, modifier = Modifier.weight(1f), enabled = !isEnded, colors = ButtonDefaults.buttonColors(containerColor = green)) { Text("GUARDAR Y CERRAR") }
-                    Button(onClick = onCancelDelay, modifier = Modifier.weight(1f), enabled = !isEnded, colors = ButtonDefaults.buttonColors(containerColor = red)) { Text("ABORTAR") }
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onCloseDelay, modifier = Modifier.weight(1f), enabled = !isEnded && isDelayActive, colors = ButtonDefaults.buttonColors(containerColor = green)) { Text("GUARDAR Y CERRAR") }
+                Button(onClick = onCancelDelay, modifier = Modifier.weight(1f), enabled = !isEnded && isDelayActive, colors = ButtonDefaults.buttonColors(containerColor = red)) { Text("ABORTAR") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 SummaryMetric("SUBEN", totalUp.toString(), Modifier.weight(1f))
                 SummaryMetric("BAJAN", totalDown.toString(), Modifier.weight(1f))
                 SummaryMetric("A BORDO", estimatedOnBoard.toString(), Modifier.weight(1f), isError = exceedsCapacity)
             }
+            Text("A BORDO: H ${menOnBoard + menUp - menDown} • M ${womenOnBoard + womenUp - womenDown}", style = MaterialTheme.typography.bodySmall, color = if (menDown > menOnBoard + menUp || womenDown > womenOnBoard + womenUp) MaterialTheme.colorScheme.error else Color.Unspecified)
             if (exceedsCapacity) Text("⚠ SUPERA CAPACIDAD (${seatCapacity ?: 0})", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
             if (totalUp + totalDown > 0) AssistChip(onClick = {}, label = { Text("AD AUTOMÁTICO") })
             Text("SUBEN", style = MaterialTheme.typography.titleSmall)
@@ -421,7 +426,7 @@ private fun DelayCodeGrid(codes: List<String>, selected: Set<String>, onToggle: 
 }
 
 @Composable private fun TripHeaderCard(routeName: String, direction: String, start: String, end: String, vehicleEco: String?, plateNumber: String?, isEnded: Boolean) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("RECORRIDO ASD", style = MaterialTheme.typography.titleMedium); Text("RUTA: $routeName"); Text("SENTIDO: $direction"); Text("INICIO: $start"); Text("FIN: $end"); Text("UNIDAD: ECO ${vehicleEco ?: "-"} • PLACA ${plateNumber ?: "-"}"); Text(if (isEnded) "ESTADO: CERRADO" else "ESTADO: EN CURSO") } } }
-@Composable private fun DemoSummaryCard(summary: AsdDemoSummary) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium); Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("EVENTOS", summary.events.toString(), Modifier.weight(1f)); SummaryMetric("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f)); SummaryMetric("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f)) }; Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("A BORDO", summary.onBoard.toString(), Modifier.weight(1f)); SummaryMetric("DEMORAS", summary.delays.toString(), Modifier.weight(1f)); SummaryMetric("GPS", summary.trackPoints.toString(), Modifier.weight(1f)) } } } }
+@Composable private fun DemoSummaryCard(summary: AsdDemoSummary) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium); Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("EVENTOS", summary.events.toString(), Modifier.weight(1f)); SummaryMetric("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f)); SummaryMetric("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f)) }; Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("A BORDO", summary.onBoard.toString(), Modifier.weight(1f)); SummaryMetric("H/M", "${summary.menOnBoard}/${summary.womenOnBoard}", Modifier.weight(1f)); SummaryMetric("GPS", summary.trackPoints.toString(), Modifier.weight(1f)) } } } }
 @Composable private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier, isError: Boolean = false) { Card(modifier = modifier) { Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.titleLarge, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified, fontWeight = FontWeight.Bold); Text(label, style = MaterialTheme.typography.bodySmall, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified) } } }
 @Composable private fun TrackingStatusCard(trackingAlive: Boolean, lastAgeMs: Long, lastPoint: TrackPoint?, pointCount: Int) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("ESTADO DE TRACKING", style = MaterialTheme.typography.titleMedium); Text(if (trackingAlive) "🟢 ACTIVO (${lastAgeMs / 1000}S)" else "🔴 SIN SEÑAL RECIENTE"); lastPoint?.let { Text("PRECISIÓN: ±${it.accM.toInt()} M"); Text("PROVEEDOR: ${it.provider.uppercase(Locale("es", "MX"))}") } ?: Text("AÚN NO HAY PUNTOS."); Text("PUNTOS: $pointCount") } } }
 @Composable private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalculateAll: () -> Unit, onCalculateRecent: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("DISTANCIA", style = MaterialTheme.typography.titleMedium); if (distanceLoading) LinearProgressIndicator(Modifier.fillMaxWidth()) else Text("APROX: ${distanceKm?.let { "%.2f KM".format(it) } ?: "—"}"); Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedButton(enabled = !distanceLoading, onClick = onCalculateRecent, modifier = Modifier.weight(1f)) { Text("15 MIN") }; OutlinedButton(enabled = !distanceLoading, onClick = onCalculateAll, modifier = Modifier.weight(1f)) { Text("TODO") } } } } }
@@ -429,6 +434,6 @@ private fun DelayCodeGrid(codes: List<String>, selected: Set<String>, onToggle: 
 @Composable private fun ExportActionsCard(onExportCsv: () -> Unit, onExportTrack: () -> Unit, onExportGpx: () -> Unit, onExportKml: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium); OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("CSV FINAL") }; OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("KML") }; OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("GPX") }; OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("TRACK CSV") } } } }
 @Composable private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) { val up = event.paxMenUp + event.paxWomenUp; val down = event.paxMenDown + event.paxWomenDown; Card { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("${event.stopType} • ${fmt.format(Date(event.timestamp))}", style = MaterialTheme.typography.titleSmall); if (!event.stopName.isNullOrBlank()) Text("PARADA: ${event.stopName}"); Text("SUBEN: $up (H:${event.paxMenUp} M:${event.paxWomenUp})"); Text("BAJAN: $down (H:${event.paxMenDown} M:${event.paxWomenDown})"); Text("DEMORAS: ${event.delayCodes ?: "-"}"); Text("MALETA/BULTO: ${if (event.hasLuggage) "SÍ" else "NO"}"); if (!event.notes.isNullOrBlank()) Text("NOTAS: ${event.notes}"); Text("WP INICIO: ${event.waypointStopId} • WP CIERRE: ${event.waypointStartId}"); if (event.stopLat != 0.0 || event.stopLon != 0.0) Text("GPS: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}M)") else Text("GPS: PENDIENTE") } } }
 
-private data class AsdDemoSummary(val events: Int, val boardings: Int, val alightings: Int, val delays: Int, val onBoard: Int, val trackPoints: Int) { companion object { fun from(stops: List<StopEvent>, pointCount: Int): AsdDemoSummary { var boardings = 0; var alightings = 0; var delays = 0; var onBoard = 0; stops.sortedBy { it.timestamp }.forEach { event -> val up = event.paxMenUp + event.paxWomenUp; val down = event.paxMenDown + event.paxWomenDown; val type = event.stopType.uppercase(Locale("es", "MX")); if (!event.delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")) delays += 1; boardings += up; alightings += down; onBoard = (onBoard + up - down).coerceAtLeast(0) }; return AsdDemoSummary(stops.size, boardings, alightings, delays, onBoard, pointCount) } } }
+private data class AsdDemoSummary(val events: Int, val boardings: Int, val alightings: Int, val delays: Int, val onBoard: Int, val menOnBoard: Int, val womenOnBoard: Int, val trackPoints: Int) { companion object { fun from(stops: List<StopEvent>, pointCount: Int): AsdDemoSummary { var boardings = 0; var alightings = 0; var delays = 0; var onBoard = 0; var menOnBoard = 0; var womenOnBoard = 0; stops.sortedBy { it.timestamp }.forEach { event -> val up = event.paxMenUp + event.paxWomenUp; val down = event.paxMenDown + event.paxWomenDown; val type = event.stopType.uppercase(Locale("es", "MX")); if (!event.delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")) delays += 1; boardings += up; alightings += down; onBoard = (onBoard + up - down).coerceAtLeast(0); menOnBoard = (menOnBoard + event.paxMenUp - event.paxMenDown).coerceAtLeast(0); womenOnBoard = (womenOnBoard + event.paxWomenUp - event.paxWomenDown).coerceAtLeast(0) }; return AsdDemoSummary(stops.size, boardings, alightings, delays, onBoard, menOnBoard, womenOnBoard, pointCount) } } }
 private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double { val r = 6_371_000.0; val dLat = Math.toRadians(lat2 - lat1); val dLon = Math.toRadians(lon2 - lon1); val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2.0); val c = 2 * atan2(sqrt(a), sqrt(1 - a)); return r * c }
 private fun distanceMeters(points: List<TrackPoint>): Double { if (points.size < 2) return 0.0; val raw = points.map { LatLng(it.lat, it.lon) }; val smooth = PolylineSmoother.movingAverage(raw, window = 3); val simplified = PolylineSmoother.douglasPeucker(smooth, epsilonMeters = 4.0); var total = 0.0; for (i in 1 until simplified.size) total += haversineMeters(simplified[i - 1].lat, simplified[i - 1].lon, simplified[i].lat, simplified[i].lon); return total }
