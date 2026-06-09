@@ -251,25 +251,9 @@ fun AsdTripDetailScreen(
 
     fun activeStartFix(): LocationFix = LocationFix(activeDelayLat, activeDelayLon, activeDelayAccM, activeDelayProvider.ifBlank { "pending" }, activeDelayFixTime, activeDelayStatus)
 
-    fun inferredStopType(): String {
-        val hasPax = menUp + womenUp + menDown + womenDown > 0
-        val hasDelay = selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank() || isDelayActive
-        return if (hasPax) "ASD" else if (hasDelay) "DEMORA" else "ASD"
-    }
-
-    fun selectedDelayText(): String? = selectedDelayCodes.joinToString("/").ifBlank { null }
-
-    fun startActiveDelay() {
-        if (!requestPermsIfNeeded()) {
-            snackbarText = "Permiso de ubicación requerido."
-            return
-        }
-        val totalPax = menUp + womenUp + menDown + womenDown
-        val hasDelayCode = selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank() || totalPax > 0
-        if (!hasDelayCode) {
-            snackbarText = "Selecciona una demora o registra subidas/bajadas para iniciar."
-            return
-        }
+    fun ensureActiveDelayFromInput() {
+        if (isDelayActive || trip?.endTime != null) return
+        if (!requestPermsIfNeeded()) return
         val now = System.currentTimeMillis()
         val fix = currentFix(now)
         activeDelayStartMs = now
@@ -279,8 +263,16 @@ fun AsdTripDetailScreen(
         activeDelayProvider = fix.provider
         activeDelayFixTime = fix.fixTime
         activeDelayStatus = fix.status
-        snackbarText = "Demora iniciada ✅"
     }
+
+    fun inferredStopType(): String {
+        val hasPax = menUp + womenUp + menDown + womenDown > 0
+        val hasDelay = selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank() || isDelayActive
+        return if (hasPax) "ASD" else if (hasDelay) "DEMORA" else "ASD"
+    }
+
+    fun selectedDelayText(): String? = selectedDelayCodes.joinToString("/").ifBlank { null }
+    fun upper(value: String): String = value.uppercase(Locale("es", "MX"))
 
     fun closeActiveDelay(summary: AsdDemoSummary) {
         if (!isDelayActive) return
@@ -317,9 +309,9 @@ fun AsdTripDetailScreen(
                 )
                 clearActiveDelay()
                 resetCaptureForm()
-                snackbarText = "Demora cerrada y guardada ✅"
+                snackbarText = "Registro cerrado y guardado ✅"
             } catch (e: Exception) {
-                snackbarText = e.message ?: "Error al cerrar demora."
+                snackbarText = e.message ?: "Error al cerrar registro."
             }
         }
     }
@@ -431,25 +423,24 @@ fun AsdTripDetailScreen(
                     stopName = stopName,
                     notes = notes,
                     lastPoint = lastPoint,
-                    onMenUpChange = { menUp = it.coerceAtLeast(0) },
-                    onWomenUpChange = { womenUp = it.coerceAtLeast(0) },
-                    onMenDownChange = { menDown = it.coerceAtLeast(0) },
-                    onWomenDownChange = { womenDown = it.coerceAtLeast(0) },
-                    onToggleDelayCode = { code -> selectedDelayCodes = if (selectedDelayCodes.contains(code)) selectedDelayCodes - code else selectedDelayCodes + code },
-                    onOtherDelayDescChange = { otherDelayDesc = it },
-                    onHasLuggageChange = { hasLuggage = it },
-                    onStopNameChange = { stopName = it },
-                    onNotesChange = { notes = it },
-                    onStartDelay = { startActiveDelay() },
+                    onMenUpChange = { ensureActiveDelayFromInput(); menUp = it.coerceAtLeast(0) },
+                    onWomenUpChange = { ensureActiveDelayFromInput(); womenUp = it.coerceAtLeast(0) },
+                    onMenDownChange = { ensureActiveDelayFromInput(); menDown = it.coerceAtLeast(0) },
+                    onWomenDownChange = { ensureActiveDelayFromInput(); womenDown = it.coerceAtLeast(0) },
+                    onToggleDelayCode = { code -> ensureActiveDelayFromInput(); selectedDelayCodes = if (selectedDelayCodes.contains(code)) selectedDelayCodes - code else selectedDelayCodes + code },
+                    onOtherDelayDescChange = { ensureActiveDelayFromInput(); otherDelayDesc = upper(it) },
+                    onHasLuggageChange = { ensureActiveDelayFromInput(); hasLuggage = it },
+                    onStopNameChange = { ensureActiveDelayFromInput(); stopName = upper(it) },
+                    onNotesChange = { ensureActiveDelayFromInput(); notes = upper(it) },
                     onCloseDelay = { closeActiveDelay(summary) },
-                    onCancelDelay = { clearActiveDelay(); resetCaptureForm(); snackbarText = "Demora cancelada" },
+                    onCancelDelay = { clearActiveDelay(); resetCaptureForm(); snackbarText = "Registro cancelado" },
                     onSave = { saveInlineEvent(summary) },
                     onClear = { resetCaptureForm() }
                 )
             }
             gpsMsg?.let { item { Text(it) } }
             if (loadingGps) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-            item { TripHeaderCard(t.routeName, t.direction, fmt.format(Date(t.startTime)), t.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO", t.vehicleEco, t.plateNumber, isEnded) }
+            item { TripHeaderCard(t.routeName.uppercase(Locale("es", "MX")), t.direction.uppercase(Locale("es", "MX")), fmt.format(Date(t.startTime)), t.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO", t.vehicleEco?.uppercase(Locale("es", "MX")), t.plateNumber?.uppercase(Locale("es", "MX")), isEnded) }
             item { DemoSummaryCard(summary) }
             item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount) }
             item {
@@ -490,7 +481,7 @@ fun AsdTripDetailScreen(
                             return@TripActionsCard
                         }
                         if (isDelayActive) {
-                            snackbarText = "Cierra o cancela la demora activa antes de cerrar el viaje."
+                            snackbarText = "Cierra o cancela el registro activo antes de cerrar el viaje."
                             return@TripActionsCard
                         }
                         scope.launch {
@@ -541,7 +532,6 @@ private fun InlineAsdCaptureCard(
     onHasLuggageChange: (Boolean) -> Unit,
     onStopNameChange: (String) -> Unit,
     onNotesChange: (String) -> Unit,
-    onStartDelay: () -> Unit,
     onCloseDelay: () -> Unit,
     onCancelDelay: () -> Unit,
     onSave: () -> Unit,
@@ -550,60 +540,57 @@ private fun InlineAsdCaptureCard(
     val totalUp = menUp + womenUp
     val totalDown = menDown + womenDown
     val estimatedOnBoard = (currentOnBoard + totalUp - totalDown).coerceAtLeast(0)
-    val willAutoAddAd = totalUp + totalDown > 0 && !selectedDelayCodes.contains("AD")
-    val delayCodes = listOf("AD", "C", "S", "TM", "CND", "O")
+    val willAutoAddAd = totalUp + totalDown > 0
+    val delayCodes = listOf("C", "S", "TM", "CND", "O")
     val green = Color(0xFF00C853)
 
     Card(border = if (isDelayActive) BorderStroke(3.dp, green) else null) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Registro operativo ASD", style = MaterialTheme.typography.titleMedium)
-            Text("Captura subidas, bajadas y demoras en un solo punto.", style = MaterialTheme.typography.bodySmall)
+            Text("REGISTRO OPERATIVO ASD", style = MaterialTheme.typography.titleMedium)
+            Text("CAPTURA SUBIDAS, BAJADAS Y DEMORAS EN UN SOLO PUNTO.", style = MaterialTheme.typography.bodySmall)
             if (isDelayActive) {
                 Card(border = BorderStroke(2.dp, green)) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("DEMORA ACTIVA", color = green, style = MaterialTheme.typography.titleMedium)
-                        Text("Tiempo: ${formatElapsed(activeElapsedSec)}")
+                        Text("REGISTRO ACTIVO", color = green, style = MaterialTheme.typography.titleMedium)
+                        Text("TIEMPO: ${formatElapsed(activeElapsedSec)}")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(onClick = onCloseDelay, modifier = Modifier.weight(1f), enabled = !isEnded) { Text("Cerrar") }
-                            OutlinedButton(onClick = onCancelDelay, modifier = Modifier.weight(1f), enabled = !isEnded) { Text("Cancelar") }
+                            Button(onClick = onCloseDelay, modifier = Modifier.weight(1f), enabled = !isEnded) { Text("CERRAR") }
+                            OutlinedButton(onClick = onCancelDelay, modifier = Modifier.weight(1f), enabled = !isEnded) { Text("CANCELAR") }
                         }
                     }
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                SummaryMetric("Suben", totalUp.toString(), Modifier.weight(1f))
-                SummaryMetric("Bajan", totalDown.toString(), Modifier.weight(1f))
-                SummaryMetric("A bordo", estimatedOnBoard.toString(), Modifier.weight(1f))
+                SummaryMetric("SUBEN", totalUp.toString(), Modifier.weight(1f))
+                SummaryMetric("BAJAN", totalDown.toString(), Modifier.weight(1f))
+                SummaryMetric("A BORDO", estimatedOnBoard.toString(), Modifier.weight(1f))
             }
-            if (willAutoAddAd) AssistChip(onClick = {}, label = { Text("AD se agregará automáticamente") })
+            if (willAutoAddAd) AssistChip(onClick = {}, label = { Text("AD SE AGREGARÁ AUTOMÁTICAMENTE") })
 
-            Text("Suben", style = MaterialTheme.typography.titleSmall)
+            Text("SUBEN", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                CounterBox("Hombres", menUp, onMenUpChange, Modifier.weight(1f))
-                CounterBox("Mujeres", womenUp, onWomenUpChange, Modifier.weight(1f))
+                CounterBox("HOMBRES", menUp, onMenUpChange, Modifier.weight(1f))
+                CounterBox("MUJERES", womenUp, onWomenUpChange, Modifier.weight(1f))
             }
-            Text("Bajan", style = MaterialTheme.typography.titleSmall)
+            Text("BAJAN", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                CounterBox("Hombres", menDown, onMenDownChange, Modifier.weight(1f))
-                CounterBox("Mujeres", womenDown, onWomenDownChange, Modifier.weight(1f))
+                CounterBox("HOMBRES", menDown, onMenDownChange, Modifier.weight(1f))
+                CounterBox("MUJERES", womenDown, onWomenDownChange, Modifier.weight(1f))
             }
-            Text("Demoras", style = MaterialTheme.typography.titleSmall)
+            Text("DEMORAS", style = MaterialTheme.typography.titleSmall)
             DelayCodeGrid(delayCodes, selectedDelayCodes, onToggleDelayCode)
-            Text("AD = Ascenso/Descenso. También puedes marcar C, S, TM, CND u O.", style = MaterialTheme.typography.bodySmall)
-            if (selectedDelayCodes.contains("O")) OutlinedTextField(otherDelayDesc, onOtherDelayDescChange, label = { Text("Descripción de otro") }, modifier = Modifier.fillMaxWidth())
+            Text("AD SE AGREGA SOLO SI HAY ASCENSO O DESCENSO. MARCA C, S, TM, CND U O SI APLICA.", style = MaterialTheme.typography.bodySmall)
+            if (selectedDelayCodes.contains("O")) OutlinedTextField(otherDelayDesc, onOtherDelayDescChange, label = { Text("DESCRIPCIÓN DE OTRO") }, modifier = Modifier.fillMaxWidth())
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange)
-                Text("Porta maleta / bulto voluminoso")
+                Text("PORTA MALETA / BULTO VOLUMINOSO")
             }
-            OutlinedTextField(stopName, onStopNameChange, label = { Text("Parada / referencia") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            OutlinedTextField(notes, onNotesChange, label = { Text("Observaciones") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-            Text(lastPoint?.let { "GPS usado: último punto guardado ±${it.accM.toInt()}m" } ?: "GPS usado: pendiente si aún no hay punto guardado", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(stopName, onStopNameChange, label = { Text("PARADA / REFERENCIA") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(notes, onNotesChange, label = { Text("OBSERVACIONES") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+            Text(lastPoint?.let { "GPS USADO: ÚLTIMO PUNTO GUARDADO ±${it.accM.toInt()}M" } ?: "GPS USADO: PENDIENTE SI AÚN NO HAY PUNTO GUARDADO", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f), enabled = !isEnded && !isDelayActive) { Text("Limpiar") }
-                Button(onClick = onSave, modifier = Modifier.weight(1f), enabled = !isEnded) { Text(if (isDelayActive) "Cerrar demora" else "Guardar punto") }
-            }
-            if (!isDelayActive) {
-                OutlinedButton(onClick = onStartDelay, modifier = Modifier.fillMaxWidth(), enabled = !isEnded) { Text("Iniciar demora") }
+                OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f), enabled = !isEnded && !isDelayActive) { Text("LIMPIAR") }
+                Button(onClick = onSave, modifier = Modifier.weight(1f), enabled = !isEnded) { Text(if (isDelayActive) "CERRAR REGISTRO" else "GUARDAR PUNTO") }
             }
         }
     }
@@ -644,12 +631,12 @@ private fun DelayCodeGrid(codes: List<String>, selected: Set<String>, onToggle: 
 
 @Composable
 private fun TripHeaderCard(routeName: String, direction: String, start: String, end: String, vehicleEco: String?, plateNumber: String?, isEnded: Boolean) {
-    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("Recorrido ASD", style = MaterialTheme.typography.titleMedium); Text("Ruta: $routeName"); Text("Sentido: $direction"); Text("Inicio: $start"); Text("Fin: $end"); Text("Unidad: Eco ${vehicleEco ?: "-"} • Placa ${plateNumber ?: "-"}"); Text(if (isEnded) "Estado: CERRADO" else "Estado: EN CURSO") } }
+    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("RECORRIDO ASD", style = MaterialTheme.typography.titleMedium); Text("RUTA: $routeName"); Text("SENTIDO: $direction"); Text("INICIO: $start"); Text("FIN: $end"); Text("UNIDAD: ECO ${vehicleEco ?: "-"} • PLACA ${plateNumber ?: "-"}"); Text(if (isEnded) "ESTADO: CERRADO" else "ESTADO: EN CURSO") } }
 }
 
 @Composable
 private fun DemoSummaryCard(summary: AsdDemoSummary) {
-    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("Resumen operativo", style = MaterialTheme.typography.titleMedium); Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("Eventos", summary.events.toString(), Modifier.weight(1f)); SummaryMetric("Ascensos", summary.boardings.toString(), Modifier.weight(1f)); SummaryMetric("Descensos", summary.alightings.toString(), Modifier.weight(1f)) }; Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("A bordo", summary.onBoard.toString(), Modifier.weight(1f)); SummaryMetric("Demoras", summary.delays.toString(), Modifier.weight(1f)); SummaryMetric("GPS", summary.trackPoints.toString(), Modifier.weight(1f)) } } }
+    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium); Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("EVENTOS", summary.events.toString(), Modifier.weight(1f)); SummaryMetric("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f)); SummaryMetric("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f)) }; Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("A BORDO", summary.onBoard.toString(), Modifier.weight(1f)); SummaryMetric("DEMORAS", summary.delays.toString(), Modifier.weight(1f)); SummaryMetric("GPS", summary.trackPoints.toString(), Modifier.weight(1f)) } } }
 }
 
 @Composable
@@ -659,29 +646,29 @@ private fun SummaryMetric(label: String, value: String, modifier: Modifier = Mod
 
 @Composable
 private fun TrackingStatusCard(trackingAlive: Boolean, lastAgeMs: Long, lastPoint: TrackPoint?, pointCount: Int) {
-    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("Estado de tracking", style = MaterialTheme.typography.titleMedium); Text(if (trackingAlive) "🟢 Activo (última señal hace ${lastAgeMs / 1000}s)" else "🔴 Sin señal reciente"); lastPoint?.let { Text("Precisión: ±${it.accM.toInt()} m"); Text("Proveedor: ${it.provider}") } ?: Text("Aún no hay puntos guardados en este viaje."); Text("Puntos guardados: $pointCount") } }
+    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("ESTADO DE TRACKING", style = MaterialTheme.typography.titleMedium); Text(if (trackingAlive) "🟢 ACTIVO (ÚLTIMA SEÑAL HACE ${lastAgeMs / 1000}S)" else "🔴 SIN SEÑAL RECIENTE"); lastPoint?.let { Text("PRECISIÓN: ±${it.accM.toInt()} M"); Text("PROVEEDOR: ${it.provider.uppercase(Locale("es", "MX"))}") } ?: Text("AÚN NO HAY PUNTOS GUARDADOS EN ESTE VIAJE."); Text("PUNTOS GUARDADOS: $pointCount") } }
 }
 
 @Composable
 private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalculateAll: () -> Unit, onCalculateRecent: () -> Unit) {
-    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("Distancia del recorrido", style = MaterialTheme.typography.titleMedium); if (distanceLoading) LinearProgressIndicator(Modifier.fillMaxWidth()) else Text("Distancia aprox: ${distanceKm?.let { "%.2f km".format(it) } ?: "—"}"); Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedButton(enabled = !distanceLoading, onClick = onCalculateRecent, modifier = Modifier.weight(1f)) { Text("15 min") }; OutlinedButton(enabled = !distanceLoading, onClick = onCalculateAll, modifier = Modifier.weight(1f)) { Text("Todo") } } } }
+    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("DISTANCIA DEL RECORRIDO", style = MaterialTheme.typography.titleMedium); if (distanceLoading) LinearProgressIndicator(Modifier.fillMaxWidth()) else Text("DISTANCIA APROX: ${distanceKm?.let { "%.2f KM".format(it) } ?: "—"}"); Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedButton(enabled = !distanceLoading, onClick = onCalculateRecent, modifier = Modifier.weight(1f)) { Text("15 MIN") }; OutlinedButton(enabled = !distanceLoading, onClick = onCalculateAll, modifier = Modifier.weight(1f)) { Text("TODO") } } } }
 }
 
 @Composable
 private fun TripActionsCard(isEnded: Boolean, loadingGps: Boolean, onOpenMap: () -> Unit, onCloseTrip: () -> Unit) {
-    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("Acciones del recorrido", style = MaterialTheme.typography.titleMedium); Button(onClick = onOpenMap, modifier = Modifier.fillMaxWidth()) { Text("Ver mapa del recorrido") }; OutlinedButton(enabled = !isEnded && !loadingGps, onClick = onCloseTrip, modifier = Modifier.fillMaxWidth()) { Text("Cerrar viaje") } } }
+    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("ACCIONES DEL RECORRIDO", style = MaterialTheme.typography.titleMedium); Button(onClick = onOpenMap, modifier = Modifier.fillMaxWidth()) { Text("VER MAPA DEL RECORRIDO") }; OutlinedButton(enabled = !isEnded && !loadingGps, onClick = onCloseTrip, modifier = Modifier.fillMaxWidth()) { Text("CERRAR VIAJE") } } }
 }
 
 @Composable
 private fun ExportActionsCard(onExportCsv: () -> Unit, onExportTrack: () -> Unit, onExportGpx: () -> Unit, onExportKml: () -> Unit) {
-    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("Exportaciones", style = MaterialTheme.typography.titleMedium); OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("Exportar CSV final") }; OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("Exportar KML") }; OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("Exportar GPX") }; OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("Exportar TRACK CSV") } } }
+    Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium); OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("EXPORTAR CSV FINAL") }; OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("EXPORTAR KML") }; OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("EXPORTAR GPX") }; OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("EXPORTAR TRACK CSV") } } }
 }
 
 @Composable
 private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) {
     val up = event.paxMenUp + event.paxWomenUp
     val down = event.paxMenDown + event.paxWomenDown
-    Card { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("${event.stopType} • ${fmt.format(Date(event.timestamp))}", style = MaterialTheme.typography.titleSmall); if (!event.stopName.isNullOrBlank()) Text("Parada: ${event.stopName}"); Text("Suben: $up (H:${event.paxMenUp} M:${event.paxWomenUp})"); Text("Bajan: $down (H:${event.paxMenDown} M:${event.paxWomenDown})"); Text("Demoras: ${event.delayCodes ?: "-"}"); Text("Maleta/Bulto: ${if (event.hasLuggage) "Sí" else "No"}"); if (!event.notes.isNullOrBlank()) Text("Notas: ${event.notes}"); if (event.stopLat != 0.0 || event.stopLon != 0.0) Text("GPS: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}m)") else Text("GPS: pendiente") } }
+    Card { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("${event.stopType} • ${fmt.format(Date(event.timestamp))}", style = MaterialTheme.typography.titleSmall); if (!event.stopName.isNullOrBlank()) Text("PARADA: ${event.stopName}"); Text("SUBEN: $up (H:${event.paxMenUp} M:${event.paxWomenUp})"); Text("BAJAN: $down (H:${event.paxMenDown} M:${event.paxWomenDown})"); Text("DEMORAS: ${event.delayCodes ?: "-"}"); Text("MALETA/BULTO: ${if (event.hasLuggage) "SÍ" else "NO"}"); if (!event.notes.isNullOrBlank()) Text("NOTAS: ${event.notes}"); if (event.stopLat != 0.0 || event.stopLon != 0.0) Text("GPS: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}M)") else Text("GPS: PENDIENTE") } }
 }
 
 private data class AsdDemoSummary(val events: Int, val boardings: Int, val alightings: Int, val delays: Int, val onBoard: Int, val trackPoints: Int) {
