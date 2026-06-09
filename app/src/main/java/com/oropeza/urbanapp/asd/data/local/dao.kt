@@ -1,6 +1,7 @@
 package com.oropeza.urbanapp.asd.data.local
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+
 data class WaypointPair(val inId: Int, val outId: Int)
 
 @Dao
@@ -23,16 +24,12 @@ interface TripDao {
     @Query("UPDATE Trip SET nextWaypointId = :value WHERE tripId = :tripId")
     suspend fun updateNextWaypoint(tripId: Long, value: Int): Int
 
-    // ✅ Par de IDs para banderas IN/OUT
-    data class WaypointPair(val inId: Int, val outId: Int)
-
     @Transaction
     suspend fun reserveWaypointPair(tripId: Long): WaypointPair {
-        val base = getNextWaypoint(tripId)         // ej. 120
-        updateNextWaypoint(tripId, base + 2)       // siguiente será 122
-        return WaypointPair(inId = base, outId = base + 1) // 120 y 121
+        val base = getNextWaypoint(tripId)
+        updateNextWaypoint(tripId, base + 2)
+        return WaypointPair(inId = base, outId = base + 1)
     }
-
 }
 
 @Dao
@@ -46,7 +43,6 @@ interface StopDao {
     @Query("SELECT * FROM StopEvent WHERE tripId = :tripId ORDER BY timestamp ASC")
     suspend fun getByTripOnce(tripId: Long): List<StopEvent>
 
-    // ✅ “Demora activa” = BANDERA sin cierre todavía
     @Query("""
         SELECT * FROM StopEvent
         WHERE tripId = :tripId 
@@ -56,8 +52,45 @@ interface StopDao {
         LIMIT 1
     """)
     suspend fun getActiveBandera(tripId: Long): StopEvent?
-}
 
+    @Query("""
+        SELECT * FROM StopEvent
+        WHERE tripId = :tripId
+          AND (
+            locationStatus = 'GPS_PENDING'
+            OR stopLat = 0.0
+            OR stopLon = 0.0
+          )
+        ORDER BY timestamp ASC
+        LIMIT :limit
+    """)
+    suspend fun getPendingGpsEvents(tripId: Long, limit: Int = 10): List<StopEvent>
+
+    @Query("""
+        UPDATE StopEvent
+        SET stopLat = :lat,
+            stopLon = :lon,
+            stopAccM = :accM,
+            stopProvider = :provider,
+            stopFixTime = :fixTime,
+            startLat = CASE WHEN startLat = 0.0 THEN :lat ELSE startLat END,
+            startLon = CASE WHEN startLon = 0.0 THEN :lon ELSE startLon END,
+            startAccM = CASE WHEN startAccM = 0.0 THEN :accM ELSE startAccM END,
+            startProvider = CASE WHEN startProvider = '' THEN :provider ELSE startProvider END,
+            startFixTime = CASE WHEN startFixTime = 0 THEN :fixTime ELSE startFixTime END,
+            locationStatus = :status
+        WHERE eventId = :eventId
+    """)
+    suspend fun updateEventGpsFix(
+        eventId: Long,
+        lat: Double,
+        lon: Double,
+        accM: Double,
+        provider: String,
+        fixTime: Long,
+        status: String
+    ): Int
+}
 
 @Dao
 interface DelayDao {
@@ -79,8 +112,6 @@ interface DelayDao {
     suspend fun getActiveDelay(tripId: Long): DelayEvent?
 }
 
-
-
 @Dao
 interface CcSessionDao {
     @Insert suspend fun insert(s: CcSession): Long
@@ -99,7 +130,6 @@ interface CcSessionDao {
 
     @Query("UPDATE CcSession SET endedAt = :endedAt WHERE sessionId = :sessionId")
     suspend fun endSession(sessionId: Long, endedAt: Long): Int
-
 }
 
 @Dao
@@ -112,7 +142,6 @@ interface CcEventDao {
     @Query("SELECT MAX(seqInSession) FROM CcEvent WHERE sessionId = :sessionId")
     suspend fun getMaxSeq(sessionId: Long): Int?
 }
-
 
 @Dao
 interface FovPoiCatalogDao {
@@ -130,6 +159,7 @@ interface FovPoiCatalogDao {
 
     @Query("SELECT * FROM FovPoiCatalogItem WHERE poiKey = :poiKey AND routeUid = :routeUid LIMIT 1")
     suspend fun getByRouteOnce(poiKey: String, routeUid: String): FovPoiCatalogItem?
+
     @Query("""
     SELECT
       c.poiKey AS poiKey,
@@ -151,7 +181,6 @@ interface FovPoiCatalogDao {
     LIMIT 200
     """)
     suspend fun searchPoiCatalogOnce(poiKey: String, q: String): List<FovPoiCatalogRow>
-
 }
 
 data class FovPoiCatalogRow(
@@ -180,13 +209,8 @@ interface FovObservationDao {
     suspend fun getByFolioOnce(folio: String): FovObservation?
 }
 
-
-
-
-
 @Dao
 interface FovRouteMasterDao {
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: FovRouteMaster): Long
 
@@ -204,7 +228,6 @@ interface FovRouteMasterDao {
     suspend fun searchOnce(q: String): List<FovRouteMaster>
 }
 
-// ✅ DTO para la lista (sesión + count)
 data class FovSessionRow(
     @Embedded val s: FovSession,
     val catalogCount: Int
@@ -217,7 +240,6 @@ interface FovSessionDao {
     @Query("SELECT * FROM FovSession ORDER BY createdAt DESC")
     fun getAll(): Flow<List<FovSession>>
 
-    // ✅ NUEVO: sesiones + conteo de catálogo
     @Query("""
         SELECT 
           s.*,
