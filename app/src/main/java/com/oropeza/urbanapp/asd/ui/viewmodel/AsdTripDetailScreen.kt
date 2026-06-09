@@ -10,20 +10,27 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
+import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.export.CsvExporter
 import com.oropeza.urbanapp.asd.export.GpxExporter
 import com.oropeza.urbanapp.asd.export.KmlExporter
@@ -52,6 +59,24 @@ class AsdTripDetailVM : ViewModel() {
     fun trackCountFlow(tripId: Long): Flow<Int> = AsdGraph.repo.trackCountFlow(tripId)
     suspend fun getTrackPointsOnce(tripId: Long) = AsdGraph.repo.getTrackPointsOnce(tripId)
     suspend fun getTrackPointsBetweenOnce(tripId: Long, fromMs: Long, toMs: Long) = AsdGraph.repo.getTrackPointsBetweenOnce(tripId, fromMs, toMs)
+
+    suspend fun updateTripHeader(
+        tripId: Long,
+        routeName: String,
+        company: String?,
+        vehicleEco: String?,
+        direction: String,
+        routeNumber: Int?,
+        esFs: String?,
+        baseStart: String?,
+        baseEnd: String?,
+        plateNumber: String?,
+        vehicleType: String?,
+        seatCapacity: Int?,
+        notes: String?
+    ): Boolean = AsdGraph.repo.updateTripHeader(
+        tripId, routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, notes
+    )
 
     suspend fun exportLayoutFinal(context: Context, tripId: Long, uri: Uri): Boolean {
         val trip = AsdGraph.repo.getTripOnce(tripId) ?: return false
@@ -173,6 +198,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     var distanceKm by remember { mutableStateOf<Double?>(null) }
     var distanceLoading by remember { mutableStateOf(false) }
     var showCloseTripConfirm by remember { mutableStateOf(false) }
+    var showEditHeader by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val isDelayActive = activeDelayStartMs > 0L
 
@@ -265,6 +291,21 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         )
     }
 
+    val currentTrip = trip
+    if (showEditHeader && currentTrip != null) {
+        EditTripHeaderDialog(
+            trip = currentTrip,
+            onDismiss = { showEditHeader = false },
+            onSave = { routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, headerNotes ->
+                scope.launch {
+                    val ok = vm.updateTripHeader(tripId, routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, headerNotes)
+                    snackbarText = if (ok) "Encabezado actualizado ✅" else "No se pudo actualizar encabezado."
+                    showEditHeader = false
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text((trip?.routeName ?: "ASD").uppercase(Locale("es", "MX"))) }, navigationIcon = { TextButton(onClick = onBack) { Text("ATRÁS") } }) },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -301,7 +342,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             }
             gpsMsg?.let { item { Text(it.uppercase(Locale("es", "MX"))) } }
             if (loadingGps) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-            item { TripHeaderCard(t.routeName.uppercase(Locale("es", "MX")), t.direction.uppercase(Locale("es", "MX")), fmt.format(Date(t.startTime)), t.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO", t.vehicleEco?.uppercase(Locale("es", "MX")), t.plateNumber?.uppercase(Locale("es", "MX")), isEnded) }
+            item { TripHeaderCard(t.routeName.uppercase(Locale("es", "MX")), t.direction.uppercase(Locale("es", "MX")), fmt.format(Date(t.startTime)), t.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO", t.vehicleEco?.uppercase(Locale("es", "MX")), t.plateNumber?.uppercase(Locale("es", "MX")), t.seatCapacity, isEnded, onEdit = { showEditHeader = true }) }
             item { DemoSummaryCard(summary) }
             item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount) }
             item { DistanceCard(distanceKm, distanceLoading, {
@@ -375,7 +416,6 @@ private fun InlineAsdCaptureCard(
             }
             Text("A BORDO: H ${menOnBoard + menUp - menDown} • M ${womenOnBoard + womenUp - womenDown}", style = MaterialTheme.typography.bodySmall, color = if (menDown > menOnBoard + menUp || womenDown > womenOnBoard + womenUp) MaterialTheme.colorScheme.error else Color.Unspecified)
             if (exceedsCapacity) Text("⚠ SUPERA CAPACIDAD (${seatCapacity ?: 0})", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-            if (totalUp + totalDown > 0) AssistChip(onClick = {}, label = { Text("AD AUTOMÁTICO") })
             Text("SUBEN", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 CounterBox("👨 HOMBRES", menUp, onMenUpChange, Modifier.weight(1f))
@@ -389,10 +429,10 @@ private fun InlineAsdCaptureCard(
             Text("DEMORAS", style = MaterialTheme.typography.titleSmall)
             DelayCodeGrid(delayCodes, selectedDelayCodes, onToggleDelayCode)
             Text("C=CONGESTIÓN, S=SEMAFORIZACIÓN, TM=TRÁFICO MIXTO, VI=VUELTA IZQUIERDA, VD=VUELTA DERECHA, PP=PASE PEATONAL.", style = MaterialTheme.typography.bodySmall)
-            if (selectedDelayCodes.contains("O")) OutlinedTextField(otherDelayDesc, onOtherDelayDescChange, label = { Text("DESCRIPCIÓN DE OTRO") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            if (selectedDelayCodes.contains("O")) UpperNextTextField(otherDelayDesc, onOtherDelayDescChange, "DESCRIPCIÓN DE OTRO", singleLine = true)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange); Text("MALETA / BULTO") }
-            OutlinedTextField(stopName, onStopNameChange, label = { Text("PARADA / REFERENCIA") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            OutlinedTextField(notes, onNotesChange, label = { Text("OBSERVACIONES") }, modifier = Modifier.fillMaxWidth(), minLines = 1)
+            UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
+            UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
             Text(lastPoint?.let { "GPS: ±${it.accM.toInt()}M" } ?: "GPS: PENDIENTE", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f), enabled = !isEnded && !isDelayActive) { Text("LIMPIAR") }
@@ -400,6 +440,95 @@ private fun InlineAsdCaptureCard(
             }
         }
     }
+}
+
+@Composable
+private fun UpperNextTextField(value: String, onValueChange: (String) -> Unit, label: String, singleLine: Boolean) {
+    val focusManager = LocalFocusManager.current
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = singleLine,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+    )
+}
+
+@Composable
+private fun EditTripHeaderDialog(
+    trip: Trip,
+    onDismiss: () -> Unit,
+    onSave: (String, String?, String?, String, Int?, String?, String?, String?, String?, String?, Int?, String?) -> Unit
+) {
+    val focusManager = LocalFocusManager.current
+    fun upper(v: String) = v.uppercase(Locale("es", "MX"))
+    var routeName by rememberSaveable(trip.tripId) { mutableStateOf(trip.routeName.uppercase(Locale("es", "MX"))) }
+    var company by rememberSaveable(trip.tripId) { mutableStateOf(trip.company?.uppercase(Locale("es", "MX")) ?: "") }
+    var vehicleEco by rememberSaveable(trip.tripId) { mutableStateOf(trip.vehicleEco?.uppercase(Locale("es", "MX")) ?: "") }
+    var direction by rememberSaveable(trip.tripId) { mutableStateOf(trip.direction.uppercase(Locale("es", "MX"))) }
+    var routeNumber by rememberSaveable(trip.tripId) { mutableStateOf(trip.routeNumber?.toString() ?: "") }
+    var esFs by rememberSaveable(trip.tripId) { mutableStateOf(trip.esFs?.uppercase(Locale("es", "MX")) ?: "") }
+    var baseStart by rememberSaveable(trip.tripId) { mutableStateOf(trip.baseStart?.uppercase(Locale("es", "MX")) ?: "") }
+    var baseEnd by rememberSaveable(trip.tripId) { mutableStateOf(trip.baseEnd?.uppercase(Locale("es", "MX")) ?: "") }
+    var plateNumber by rememberSaveable(trip.tripId) { mutableStateOf(trip.plateNumber?.uppercase(Locale("es", "MX")) ?: "") }
+    var vehicleType by rememberSaveable(trip.tripId) { mutableStateOf(trip.vehicleType?.uppercase(Locale("es", "MX")) ?: "") }
+    var seatCapacity by rememberSaveable(trip.tripId) { mutableStateOf(trip.seatCapacity?.toString() ?: "") }
+    var headerNotes by rememberSaveable(trip.tripId) { mutableStateOf(trip.notes?.uppercase(Locale("es", "MX")) ?: "") }
+
+    @Composable
+    fun NextField(label: String, value: String, change: (String) -> Unit, number: Boolean = false) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = { change(if (number) it.filter { ch -> ch.isDigit() }.take(4) else upper(it)) },
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = if (number) KeyboardType.Number else KeyboardType.Text, imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("EDITAR ENCABEZADO") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                NextField("RUTA / DERROTERO", routeName) { routeName = it }
+                NextField("EMPRESA", company) { company = it }
+                NextField("ECO", vehicleEco) { vehicleEco = it }
+                NextField("SENTIDO", direction) { direction = it }
+                NextField("NO. RECORRIDO", routeNumber, { routeNumber = it }, number = true)
+                NextField("ES / FS", esFs) { esFs = it }
+                NextField("BASE INICIO", baseStart) { baseStart = it }
+                NextField("BASE FINAL", baseEnd) { baseEnd = it }
+                NextField("PLACA", plateNumber) { plateNumber = it }
+                NextField("TIPO VEHÍCULO", vehicleType) { vehicleType = it }
+                NextField("CAPACIDAD / ASIENTOS", seatCapacity, { seatCapacity = it }, number = true)
+                NextField("OBSERVACIONES", headerNotes) { headerNotes = it }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(
+                    routeName,
+                    company.ifBlank { null },
+                    vehicleEco.ifBlank { null },
+                    direction,
+                    routeNumber.toIntOrNull(),
+                    esFs.ifBlank { null },
+                    baseStart.ifBlank { null },
+                    baseEnd.ifBlank { null },
+                    plateNumber.ifBlank { null },
+                    vehicleType.ifBlank { null },
+                    seatCapacity.toIntOrNull(),
+                    headerNotes.ifBlank { null }
+                )
+            }) { Text("GUARDAR") }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("CANCELAR") } }
+    )
 }
 
 private fun formatElapsed(totalSec: Long): String { val h = totalSec / 3600; val m = (totalSec % 3600) / 60; val s = totalSec % 60; return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s) }
@@ -425,7 +554,7 @@ private fun DelayCodeGrid(codes: List<String>, selected: Set<String>, onToggle: 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { codes.chunked(5).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) { row.forEach { code -> FilterChip(selected = selected.contains(code), onClick = { onToggle(code) }, label = { Text(code) }) } } } }
 }
 
-@Composable private fun TripHeaderCard(routeName: String, direction: String, start: String, end: String, vehicleEco: String?, plateNumber: String?, isEnded: Boolean) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("RECORRIDO ASD", style = MaterialTheme.typography.titleMedium); Text("RUTA: $routeName"); Text("SENTIDO: $direction"); Text("INICIO: $start"); Text("FIN: $end"); Text("UNIDAD: ECO ${vehicleEco ?: "-"} • PLACA ${plateNumber ?: "-"}"); Text(if (isEnded) "ESTADO: CERRADO" else "ESTADO: EN CURSO") } } }
+@Composable private fun TripHeaderCard(routeName: String, direction: String, start: String, end: String, vehicleEco: String?, plateNumber: String?, seatCapacity: Int?, isEnded: Boolean, onEdit: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) { Text("RECORRIDO ASD", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f)); OutlinedButton(onClick = onEdit, enabled = !isEnded) { Text("EDITAR") } }; Text("RUTA: $routeName"); Text("SENTIDO: $direction"); Text("INICIO: $start"); Text("FIN: $end"); Text("UNIDAD: ECO ${vehicleEco ?: "-"} • PLACA ${plateNumber ?: "-"}"); Text("CAPACIDAD: ${seatCapacity ?: "-"}"); Text(if (isEnded) "ESTADO: CERRADO" else "ESTADO: EN CURSO") } } }
 @Composable private fun DemoSummaryCard(summary: AsdDemoSummary) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium); Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("EVENTOS", summary.events.toString(), Modifier.weight(1f)); SummaryMetric("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f)); SummaryMetric("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f)) }; Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("A BORDO", summary.onBoard.toString(), Modifier.weight(1f)); SummaryMetric("H/M", "${summary.menOnBoard}/${summary.womenOnBoard}", Modifier.weight(1f)); SummaryMetric("GPS", summary.trackPoints.toString(), Modifier.weight(1f)) } } } }
 @Composable private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier, isError: Boolean = false) { Card(modifier = modifier) { Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.titleLarge, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified, fontWeight = FontWeight.Bold); Text(label, style = MaterialTheme.typography.bodySmall, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified) } } }
 @Composable private fun TrackingStatusCard(trackingAlive: Boolean, lastAgeMs: Long, lastPoint: TrackPoint?, pointCount: Int) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("ESTADO DE TRACKING", style = MaterialTheme.typography.titleMedium); Text(if (trackingAlive) "🟢 ACTIVO (${lastAgeMs / 1000}S)" else "🔴 SIN SEÑAL RECIENTE"); lastPoint?.let { Text("PRECISIÓN: ±${it.accM.toInt()} M"); Text("PROVEEDOR: ${it.provider.uppercase(Locale("es", "MX"))}") } ?: Text("AÚN NO HAY PUNTOS."); Text("PUNTOS: $pointCount") } } }
