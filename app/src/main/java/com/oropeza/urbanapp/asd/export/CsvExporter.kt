@@ -165,7 +165,11 @@ object CsvExporter {
             "Total a bordo",
             "Tipo de demora",
             "Porta maleta o bulto voluminoso",
-            "Observaciones"
+            "Observaciones",
+            "GPS Status",
+            "GPS Accuracy m",
+            "GPS Provider",
+            "GPS Fix Time"
         )
 
         val rows = mutableListOf<List<Any?>>()
@@ -240,7 +244,11 @@ object CsvExporter {
                 totalAbordoAcc,
                 s.delayCodes ?: "",
                 if (s.hasLuggage) 1 else 0,
-                obs
+                obs,
+                s.locationStatus,
+                if (s.stopAccM > 0.0) s.stopAccM else "",
+                s.stopProvider,
+                if (s.stopFixTime > 0L) fmtDateTime(s.stopFixTime) else ""
             )
         }
 
