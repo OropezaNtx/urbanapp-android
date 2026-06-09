@@ -30,6 +30,8 @@ fun UrbanMapScreen(
     eventMarkers: List<UrbanMapPoint> = emptyList(),
     startPoint: UrbanMapPoint? = null,
     endPoint: UrbanMapPoint? = null,
+    focusPoint: UrbanMapPoint? = null,
+    focusRequestKey: Int = 0,
     onPointClick: (UrbanMapPoint) -> Unit = {}
 ) {
     val isMapsApiKeyConfigured = BuildConfig.MAPS_API_KEY.isNotBlank()
@@ -48,6 +50,7 @@ fun UrbanMapScreen(
 
     val validStartPoint = remember(startPoint) { startPoint?.takeIf { it.hasValidCoordinates } }
     val validEndPoint = remember(endPoint) { endPoint?.takeIf { it.hasValidCoordinates } }
+    val validFocusPoint = remember(focusPoint) { focusPoint?.takeIf { it.hasValidCoordinates } }
 
     val allCameraPoints = remember(validPoints, validEventMarkers, validStartPoint, validEndPoint) {
         buildList {
@@ -112,6 +115,14 @@ fun UrbanMapScreen(
             cameraPositions.forEach { builder.include(it) }
             cameraPositionState.animate(
                 CameraUpdateFactory.newLatLngBounds(builder.build(), 120)
+            )
+        }
+    }
+
+    LaunchedEffect(focusRequestKey, validFocusPoint) {
+        validFocusPoint?.let { point ->
+            cameraPositionState.animate(
+                CameraUpdateFactory.newLatLngZoom(LatLng(point.lat, point.lon), 18f)
             )
         }
     }
