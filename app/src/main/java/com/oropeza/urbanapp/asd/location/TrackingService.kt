@@ -43,8 +43,8 @@ class TrackingService : Service() {
     private val jumpM = 45.0
     private val jumpAccM = 25.0
 
-    private val minSaveDistanceM = 2.0
-    private val maxSaveIntervalMs = 5_000L
+    private val minSaveDistanceM = 0.0
+    private val maxSaveIntervalMs = 2_000L
 
     private enum class Mode { ACQUIRE, TRACK, STILL }
 
@@ -172,9 +172,9 @@ class TrackingService : Service() {
         updatesJob = scope.launch {
             val tripId = currentTripId ?: return@launch
             val params = when (mode) {
-                Mode.ACQUIRE -> Params(800L, 400L, 0f, 0L, true)
-                Mode.TRACK -> Params(1000L, 500L, 0f, 0L, true)
-                Mode.STILL -> Params(3000L, 1500L, 0f, 0L, true)
+                Mode.ACQUIRE -> Params(1000L, 500L, 0f, 0L, true)
+                Mode.TRACK -> Params(2000L, 1000L, 0f, 0L, true)
+                Mode.STILL -> Params(2000L, 1000L, 0f, 0L, true)
             }
 
             gps.locationUpdates(
