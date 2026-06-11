@@ -495,18 +495,32 @@ private fun EditTripHeaderDialog(
         title = { Text("EDITAR ENCABEZADO") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                NextField("RUTA / DERROTERO", routeName) { routeName = it }
-                NextField("EMPRESA", company) { company = it }
-                NextField("ECO", vehicleEco) { vehicleEco = it }
-                NextField("SENTIDO", direction) { direction = it }
-                NextField("NO. RECORRIDO", routeNumber, { routeNumber = it }, number = true)
-                NextField("ES / FS", esFs) { esFs = it }
-                NextField("BASE INICIO", baseStart) { baseStart = it }
-                NextField("BASE FINAL", baseEnd) { baseEnd = it }
-                NextField("PLACA", plateNumber) { plateNumber = it }
-                NextField("TIPO VEHÍCULO", vehicleType) { vehicleType = it }
-                NextField("CAPACIDAD / ASIENTOS", seatCapacity, { seatCapacity = it }, number = true)
-                NextField("OBSERVACIONES", headerNotes) { headerNotes = it }
+                NextField(label = "RUTA / DERROTERO", value = routeName, change = { routeName = it })
+                NextField(label = "EMPRESA", value = company, change = { company = it })
+                NextField(label = "ECO", value = vehicleEco, change = { vehicleEco = it })
+                NextField(label = "SENTIDO", value = direction, change = { direction = it })
+
+                NextField(
+                    label = "NO. RECORRIDO",
+                    value = routeNumber,
+                    change = { routeNumber = it },
+                    number = true
+                )
+
+                NextField(label = "ES / FS", value = esFs, change = { esFs = it })
+                NextField(label = "BASE INICIO", value = baseStart, change = { baseStart = it })
+                NextField(label = "BASE FINAL", value = baseEnd, change = { baseEnd = it })
+                NextField(label = "PLACA", value = plateNumber, change = { plateNumber = it })
+                NextField(label = "TIPO VEHÍCULO", value = vehicleType, change = { vehicleType = it })
+
+                NextField(
+                    label = "CAPACIDAD / ASIENTOS",
+                    value = seatCapacity,
+                    change = { seatCapacity = it },
+                    number = true
+                )
+
+                NextField(label = "OBSERVACIONES", value = headerNotes, change = { headerNotes = it })
             }
         },
         confirmButton = {

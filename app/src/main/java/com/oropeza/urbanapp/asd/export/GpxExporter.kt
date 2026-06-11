@@ -65,7 +65,7 @@ object GpxExporter {
             val trackName = "${trip.routeName} - ${trip.direction} (Trip ${trip.tripId})"
 
             out.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
-            out.appendLine("""<gpx version="1.1" creator="UrbanApp ASD" xmlns="http://www.topografix.com/GPX/1/1">"")
+            out.appendLine("""<gpx version="1.1" creator="UrbanApp ASD" xmlns="http://www.topografix.com/GPX/1/1">""")
 
             out.appendLine("<metadata>")
             out.appendLine("<name>${esc(trackName)}</name>")
