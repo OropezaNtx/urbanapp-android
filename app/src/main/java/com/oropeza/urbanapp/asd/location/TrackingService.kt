@@ -43,6 +43,7 @@ class TrackingService : Service() {
     private val jumpM = 45.0
     private val jumpAccM = 25.0
 
+    // Regla de negocio: intentar conservar un punto de ruta cada 2 segundos.
     private val minSaveDistanceM = 0.0
     private val maxSaveIntervalMs = 2_000L
 
@@ -219,13 +220,17 @@ class TrackingService : Service() {
         provider: String?
     ) {
         val timeMs = if (timeFromLoc > 0L) timeFromLoc else System.currentTimeMillis()
+        val gpsQuality = GpsQualityEvaluator.evaluate(lat, lon, accM, provider)
 
-        if (!isValidCoordinate(lat, lon)) return
+        if (!gpsQuality.isValid) {
+            Log.d(TAG, "GPS rechazado: ${gpsQuality.reason}")
+            return
+        }
 
         val lastEN = lastAcceptedElapsedNanos
         if (lastEN != null && elapsedNanos > 0L && elapsedNanos == lastEN) return
 
-        if (accM <= requiredAccM) goodFixStreak++ else goodFixStreak = 0
+        if (gpsQuality.isUsableForEvent) goodFixStreak++ else goodFixStreak = 0
 
         if (!recordingArmed) {
             if (goodFixStreak >= goodFixNeeded) {
@@ -239,15 +244,15 @@ class TrackingService : Service() {
                 lastSavedLat = null
                 lastSavedLon = null
                 stillCounter = 0
-                Log.i(TAG, "Recording ARMED rápido (acc <= $requiredAccM)")
+                Log.i(TAG, "Recording ARMED rápido (${gpsQuality.label}: ${gpsQuality.reason})")
                 switchMode(Mode.TRACK)
-            } else if (accM > usableAccM) {
+            } else if (!gpsQuality.isUsableForTrack) {
                 if (currentMode != Mode.ACQUIRE) switchMode(Mode.ACQUIRE)
                 return
             }
         }
 
-        if (accM > 80.0) return
+        if (!gpsQuality.isUsableForTrack) return
 
         val lastT = lastAcceptedTimeMs
         val lastLat = lastAcceptedLat
@@ -264,8 +269,14 @@ class TrackingService : Service() {
             val distM = haversineMeters(lastLat!!, lastLon!!, lat, lon)
             val speedMs = distM / dtSec
 
-            if (speedMs > maxSpeedMs) return
-            if (distM > jumpM && accM > jumpAccM) return
+            if (speedMs > maxSpeedMs) {
+                Log.d(TAG, "GPS rechazado por velocidad improbable: ${"%.1f".format(speedMs)} m/s")
+                return
+            }
+            if (distM > jumpM && accM > jumpAccM) {
+                Log.d(TAG, "GPS rechazado por salto: ${"%.1f".format(distM)} m / ±${accM.toInt()}m")
+                return
+            }
 
             if (distM < 1.2 && accM <= usableAccM) stillCounter++ else stillCounter = 0
             if (stillCounter >= 8 && currentMode != Mode.STILL) switchMode(Mode.STILL)
@@ -285,7 +296,7 @@ class TrackingService : Service() {
         lastAcceptedLat = latF
         lastAcceptedLon = lonF
 
-        val canSave = accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, timeMs)
+        val canSave = gpsQuality.isUsableForTrack && shouldSaveTrackPoint(latF, lonF, timeMs)
         if (canSave) {
             val modeTag = currentMode?.name ?: "NA"
             val qualityTag = if (recordingArmed) "ARMED" else "QUICK"
@@ -295,7 +306,7 @@ class TrackingService : Service() {
                 lat = latF,
                 lon = lonF,
                 accM = accM,
-                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag"
+                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag+${gpsQuality.quality.name}"
             )
             lastSavedTimeMs = timeMs
             lastSavedLat = latF
@@ -321,13 +332,6 @@ class TrackingService : Service() {
         val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
         val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
         return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
-    }
-
-    private fun isValidCoordinate(lat: Double, lon: Double): Boolean {
-        if (!lat.isFinite() || !lon.isFinite()) return false
-        if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return false
-        if (lat == 0.0 && lon == 0.0) return false
-        return true
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
