@@ -57,7 +57,7 @@ fun AsdMapScreen(
     var locateRequestKey by remember { mutableIntStateOf(0) }
 
     val validTrackPoints = remember(trackPoints) {
-        trackPoints.filter { it.lat != 0.0 && it.lon != 0.0 }.sortedBy { it.timeMs }
+        trackPoints.filter { isValidCoordinate(it.lat, it.lon) }.sortedBy { it.timeMs }
     }
     val rawPoints = remember(validTrackPoints) { validTrackPoints.map { it.toUrbanMapPoint() } }
     val mapPoints = remember(validTrackPoints) { validTrackPoints.toSmoothedMapPoints() }
@@ -193,7 +193,7 @@ private fun TrackPoint.toUrbanMapPoint(): UrbanMapPoint = UrbanMapPoint(
 private fun StopEvent.toUrbanMapWaypointPoints(): List<UrbanMapPoint> {
     val points = mutableListOf<UrbanMapPoint>()
     val category = eventCategory()
-    if (stopLat != 0.0 || stopLon != 0.0) {
+    if (isValidCoordinate(stopLat, stopLon)) {
         points += UrbanMapPoint(
             id = "event-$eventId-wp-inicio-$waypointStopId",
             title = "WP $waypointStopId INICIO REGISTRO • ${displayLabel()}",
@@ -207,7 +207,7 @@ private fun StopEvent.toUrbanMapWaypointPoints(): List<UrbanMapPoint> {
             metadata = mapOf("tripId" to tripId.toString(), "wp" to waypointStopId.toString(), "fase" to "INICIO")
         )
     }
-    if ((startLat != 0.0 || startLon != 0.0) && startTime > 0L && waypointStartId != waypointStopId) {
+    if (isValidCoordinate(startLat, startLon) && startTime > 0L && waypointStartId != waypointStopId) {
         points += UrbanMapPoint(
             id = "event-$eventId-wp-cierre-$waypointStartId",
             title = "WP $waypointStartId CIERRE REGISTRO • ${displayLabel()}",
@@ -222,6 +222,13 @@ private fun StopEvent.toUrbanMapWaypointPoints(): List<UrbanMapPoint> {
         )
     }
     return points
+}
+
+private fun isValidCoordinate(lat: Double, lon: Double): Boolean {
+    if (!lat.isFinite() || !lon.isFinite()) return false
+    if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return false
+    if (lat == 0.0 && lon == 0.0) return false
+    return true
 }
 
 private fun StopEvent.waypointSubtitle(isClose: Boolean): String {
