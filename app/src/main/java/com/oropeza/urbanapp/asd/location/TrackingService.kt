@@ -42,6 +42,9 @@ class TrackingService : Service() {
     private val maxSpeedMs = 45.0
     private val jumpM = 45.0
     private val jumpAccM = 25.0
+    private val softClampExcellentM = 3.0
+    private val softClampGoodM = 5.0
+    private val softClampUsableM = 8.0
 
     // Regla de negocio: intentar conservar un punto de ruta cada 2 segundos.
     private val minSaveDistanceM = 0.0
@@ -292,10 +295,38 @@ class TrackingService : Service() {
 
         val useKalman = accM <= kalmanUseAccM
         val isStationary = (currentMode == Mode.STILL) || (stillCounter >= 3)
-        val (latF, lonF) = if (useKalman) {
-            kalmanTrack.update(lat = lat, lon = lon, accM = accM, timeMs = timeMs, isStationary = isStationary)
+
+        val (candidateLat, candidateLon) = if (useKalman) {
+            kalmanTrack.update(
+                lat = lat,
+                lon = lon,
+                accM = accM,
+                timeMs = timeMs,
+                isStationary = isStationary
+            )
         } else {
             lat to lon
+        }
+
+        val savedLat = lastSavedLat
+        val savedLon = lastSavedLon
+        val clampM = when (gpsQuality.quality) {
+            GpsQualityEvaluator.Quality.EXCELLENT -> softClampExcellentM
+            GpsQualityEvaluator.Quality.GOOD -> softClampGoodM
+            GpsQualityEvaluator.Quality.USABLE -> softClampUsableM
+            else -> softClampUsableM
+        }
+
+        val (latF, lonF) = if (savedLat != null && savedLon != null) {
+            clampCoordinateStep(
+                fromLat = savedLat,
+                fromLon = savedLon,
+                toLat = candidateLat,
+                toLon = candidateLon,
+                maxStepM = clampM
+            )
+        } else {
+            candidateLat to candidateLon
         }
 
         lastAcceptedElapsedNanos = if (elapsedNanos > 0L) elapsedNanos else lastAcceptedElapsedNanos
@@ -340,6 +371,22 @@ class TrackingService : Service() {
         val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
         val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
         return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
+    }
+
+    private fun clampCoordinateStep(
+        fromLat: Double,
+        fromLon: Double,
+        toLat: Double,
+        toLon: Double,
+        maxStepM: Double
+    ): Pair<Double, Double> {
+        val distanceM = haversineMeters(fromLat, fromLon, toLat, toLon)
+        if (distanceM <= maxStepM || distanceM <= 0.0) return toLat to toLon
+
+        val ratio = maxStepM / distanceM
+        val lat = fromLat + (toLat - fromLat) * ratio
+        val lon = fromLon + (toLon - fromLon) * ratio
+        return lat to lon
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
