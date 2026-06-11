@@ -22,7 +22,9 @@ class AsdRepository(private val db: AppDatabase) {
 
     fun trackLastPointFlow(tripId: Long) = trackDao.getLatestFlow(tripId)
     fun trackCountFlow(tripId: Long) = trackDao.countFlow(tripId)
+
     suspend fun getTrackPointsBetweenOnce(tripId: Long, fromMs: Long, toMs: Long) = trackDao.getBetweenOnce(tripId, fromMs, toMs)
+
     fun trackPointsFlow(tripId: Long): Flow<List<TrackPoint>> = trackDao.getByTrip(tripId)
     suspend fun trackPointsOnce(tripId: Long): List<TrackPoint> = trackDao.getByTripOnce(tripId)
     suspend fun insertTrackPoint(p: TrackPoint): Long = trackDao.insert(p)
@@ -42,10 +44,7 @@ class AsdRepository(private val db: AppDatabase) {
         plateNumber: String?,
         vehicleType: String?,
         seatCapacity: Int?,
-        notes: String?,
-        aforador: String?,
-        supervisor: String?,
-        deviceNumber: String?
+        notes: String?
     ): Boolean {
         val current = tripDao.getByIdOnce(tripId) ?: return false
         val updated = current.copy(
@@ -60,10 +59,7 @@ class AsdRepository(private val db: AppDatabase) {
             plateNumber = cleanText(plateNumber),
             vehicleType = cleanText(vehicleType),
             seatCapacity = seatCapacity,
-            notes = cleanText(notes),
-            aforador = cleanText(aforador),
-            supervisor = cleanText(supervisor),
-            deviceNumber = cleanText(deviceNumber)
+            notes = cleanText(notes)
         )
         return tripDao.update(updated) > 0
     }
