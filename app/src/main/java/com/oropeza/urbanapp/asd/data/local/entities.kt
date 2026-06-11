@@ -28,12 +28,7 @@ data class Trip(
     val baseEnd: String? = null,
     val plateNumber: String? = null,   // No. Placa
     val vehicleType: String? = null,   // Tipo de vehículo
-    val seatCapacity: Int? = null,     // Capacidad de asientos
-
-    // campos operativos para piloto
-    val aforador: String? = null,
-    val supervisor: String? = null,
-    val deviceNumber: String? = null
+    val seatCapacity: Int? = null      // Capacidad de asientos
 )
 
 @Entity(
@@ -183,31 +178,26 @@ data class FovPoiCatalogItem(
     val poiKey: String,
     val observableId: Int,
     val routeUid: String,
-    val ruta: String,
-    val numeroRutaEmpresa: String,
-    val derroteroLetrero: String
+    val active: Boolean = true
 )
 
 @Entity(
-    primaryKeys = ["routeUid"]
-)
-data class FovRouteMaster(
-    val routeUid: String,
-    val ruta: String,
-    val numeroRutaEmpresa: String,
-    val derroteroLetrero: String,
-    val createdAt: Long = System.currentTimeMillis(),
-    val createdBy: String? = null
-)
-
-@Entity(
-    foreignKeys = [ForeignKey(
-        entity = FovSession::class,
-        parentColumns = ["sessionId"],
-        childColumns = ["sessionId"],
-        onDelete = ForeignKey.CASCADE
-    )],
-    indices = [Index("sessionId"), Index("timeMs"), Index("seqInSession"), Index("folio")]
+    foreignKeys = [
+        ForeignKey(
+            entity = FovSession::class,
+            parentColumns = ["sessionId"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index("sessionId"),
+        Index("timeMs"),
+        Index("seqInSession"),
+        Index("folio"),
+        Index("routeUid"),
+        Index("observableId")
+    ]
 )
 data class FovObservation(
     @PrimaryKey(autoGenerate = true) val obsId: Long = 0,
@@ -226,5 +216,36 @@ data class FovObservation(
     val gradoOcupacion: String? = null,
     val tipoVehiculo: String? = null,
     val descTipoVehiculo: String? = null,
-    val observaciones: String? = null
+    val observaciones: String? = null,
+
+    // ✅ GPS por observación
+    val lat: Double = 0.0,
+    val lon: Double = 0.0,
+    val accM: Double = 0.0,
+    val provider: String = "",
+    val fixTime: Long = 0L,
+    val locationStatus: String = "NO_FIX"
+)
+
+@Entity(
+    indices = [
+        Index("ruta"),
+        Index("numeroRutaEmpresa")
+    ]
+)
+data class FovRouteMaster(
+    @PrimaryKey val routeUid: String,
+    val ruta: String,
+    val numeroRutaEmpresa: String,
+    val derroteroLetrero: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val createdBy: String? = null
+)
+
+@Entity
+data class FovOccupancyScheme(
+    @PrimaryKey(autoGenerate = true) val schemeId: Long = 0,
+    val name: String,
+    val type: String,
+    val optionsJson: String
 )
