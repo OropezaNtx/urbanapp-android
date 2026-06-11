@@ -145,7 +145,9 @@ object GpxExporter {
             out.appendLine("<trk>")
             out.appendLine("<name>${esc(trackName)}</name>")
 
-            val orderedPts = points.sortedBy { it.timeMs }
+            val orderedPts = points
+                .filter { it.lat != 0.0 && it.lon != 0.0 }
+                .sortedBy { it.timeMs }
             if (orderedPts.isNotEmpty()) {
                 val raw = orderedPts.map { LatLng(it.lat, it.lon) }
                 val smooth = PolylineSmoother.movingAverage(raw, window = 3)
