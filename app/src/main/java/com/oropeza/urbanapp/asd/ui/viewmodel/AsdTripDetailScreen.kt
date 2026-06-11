@@ -73,9 +73,27 @@ class AsdTripDetailVM : ViewModel() {
         plateNumber: String?,
         vehicleType: String?,
         seatCapacity: Int?,
-        notes: String?
+        notes: String?,
+        aforador: String?,
+        supervisor: String?,
+        deviceNumber: String?
     ): Boolean = AsdGraph.repo.updateTripHeader(
-        tripId, routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, notes
+        tripId = tripId,
+        routeName = routeName,
+        company = company,
+        vehicleEco = vehicleEco,
+        direction = direction,
+        routeNumber = routeNumber,
+        esFs = esFs,
+        baseStart = baseStart,
+        baseEnd = baseEnd,
+        plateNumber = plateNumber,
+        vehicleType = vehicleType,
+        seatCapacity = seatCapacity,
+        notes = notes,
+        aforador = aforador,
+        supervisor = supervisor,
+        deviceNumber = deviceNumber
     )
 
     suspend fun exportLayoutFinal(context: Context, tripId: Long, uri: Uri): Boolean {
@@ -208,11 +226,16 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             kotlinx.coroutines.delay(1000L)
         }
     }
+
     LaunchedEffect(snackbarText) {
-        snackbarText?.let { snackbarHostState.showSnackbar(it); snackbarText = null }
+        snackbarText?.let {
+            snackbarHostState.showSnackbar(it)
+            snackbarText = null
+        }
     }
 
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+
     fun requestPermsIfNeeded(): Boolean {
         if (!gps.hasPermission()) {
             permLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -220,25 +243,75 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         }
         return true
     }
-    fun startTrackingService() = context.startService(Intent(context, TrackingService::class.java).apply { action = TrackingService.ACTION_START; putExtra(TrackingService.EXTRA_TRIP_ID, tripId) })
-    fun stopTrackingService() = context.startService(Intent(context, TrackingService::class.java).apply { action = TrackingService.ACTION_STOP })
-    fun resetCaptureForm() { menUp = 0; womenUp = 0; menDown = 0; womenDown = 0; selectedDelayCodes = emptySet(); otherDelayDesc = ""; hasLuggage = false; stopName = ""; notes = "" }
-    fun clearActiveDelay() { activeDelayStartMs = 0L; activeDelayLat = 0.0; activeDelayLon = 0.0; activeDelayAccM = 0.0; activeDelayProvider = ""; activeDelayFixTime = 0L; activeDelayStatus = "GPS_PENDING" }
+
+    fun startTrackingService() = context.startService(Intent(context, TrackingService::class.java).apply {
+        action = TrackingService.ACTION_START
+        putExtra(TrackingService.EXTRA_TRIP_ID, tripId)
+    })
+
+    fun stopTrackingService() = context.startService(Intent(context, TrackingService::class.java).apply {
+        action = TrackingService.ACTION_STOP
+    })
+
+    fun resetCaptureForm() {
+        menUp = 0
+        womenUp = 0
+        menDown = 0
+        womenDown = 0
+        selectedDelayCodes = emptySet()
+        otherDelayDesc = ""
+        hasLuggage = false
+        stopName = ""
+        notes = ""
+    }
+
+    fun clearActiveDelay() {
+        activeDelayStartMs = 0L
+        activeDelayLat = 0.0
+        activeDelayLon = 0.0
+        activeDelayAccM = 0.0
+        activeDelayProvider = ""
+        activeDelayFixTime = 0L
+        activeDelayStatus = "GPS_PENDING"
+    }
+
     fun currentFix(now: Long): LocationFix {
         val p = lastPoint
-        return if (p != null && p.lat != 0.0 && p.lon != 0.0) LocationFix(p.lat, p.lon, p.accM, p.provider, p.timeMs, if (p.accM <= 20.0) "FIX_USABLE" else "GPS_LAST") else LocationFix(0.0, 0.0, 0.0, "pending", now, "GPS_PENDING")
+        return if (p != null && p.lat != 0.0 && p.lon != 0.0) {
+            LocationFix(p.lat, p.lon, p.accM, p.provider, p.timeMs, if (p.accM <= 20.0) "FIX_USABLE" else "GPS_LAST")
+        } else {
+            LocationFix(0.0, 0.0, 0.0, "pending", now, "GPS_PENDING")
+        }
     }
-    fun activeStartFix() = LocationFix(activeDelayLat, activeDelayLon, activeDelayAccM, activeDelayProvider.ifBlank { "pending" }, activeDelayFixTime, activeDelayStatus)
+
+    fun activeStartFix() = LocationFix(
+        activeDelayLat,
+        activeDelayLon,
+        activeDelayAccM,
+        activeDelayProvider.ifBlank { "pending" },
+        activeDelayFixTime,
+        activeDelayStatus
+    )
+
     fun ensureActiveDelayFromInput() {
         if (isDelayActive || trip?.endTime != null) return
         if (!requestPermsIfNeeded()) return
-        val now = System.currentTimeMillis(); val fix = currentFix(now)
-        activeDelayStartMs = now; activeDelayLat = fix.lat; activeDelayLon = fix.lon; activeDelayAccM = fix.accM; activeDelayProvider = fix.provider; activeDelayFixTime = fix.fixTime; activeDelayStatus = fix.status
+        val now = System.currentTimeMillis()
+        val fix = currentFix(now)
+        activeDelayStartMs = now
+        activeDelayLat = fix.lat
+        activeDelayLon = fix.lon
+        activeDelayAccM = fix.accM
+        activeDelayProvider = fix.provider
+        activeDelayFixTime = fix.fixTime
+        activeDelayStatus = fix.status
     }
+
     fun inferredStopType(): String = if (menUp + womenUp + menDown + womenDown > 0) "ASD" else "DEMORA"
     fun selectedDelayText(): String? = selectedDelayCodes.joinToString("/").ifBlank { null }
     fun upper(value: String): String = value.uppercase(Locale("es", "MX"))
     fun hasValidDelayCause(): Boolean = (menUp + womenUp + menDown + womenDown > 0) || selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank()
+
     fun validateGenderOnBoard(summary: AsdDemoSummary): String? {
         if (menDown > summary.menOnBoard + menUp) return "No puedes bajar $menDown hombres si solo van ${summary.menOnBoard + menUp} hombres disponibles."
         if (womenDown > summary.womenOnBoard + womenUp) return "No puedes bajar $womenDown mujeres si solo van ${summary.womenOnBoard + womenUp} mujeres disponibles."
@@ -247,39 +320,95 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
 
     fun closeActiveDelay(summary: AsdDemoSummary) {
         if (!isDelayActive) return
-        if (!requestPermsIfNeeded()) { snackbarText = "Permiso de ubicación requerido."; return }
-        if (!hasValidDelayCause()) { snackbarText = "El registro debe tener ascenso/descenso o una demora seleccionada."; return }
-        validateGenderOnBoard(summary)?.let { snackbarText = it; return }
-        val now = System.currentTimeMillis(); val endFix = currentFix(now)
-        scope.launch {
-            try {
-                vm.addStopDetailed(tripId, inferredStopType(), activeDelayStartMs, now, stopName.trim().ifBlank { null }, notes.trim().ifBlank { null }, menUp, womenUp, menDown, womenDown, hasLuggage, selectedDelayText(), otherDelayDesc.trim().ifBlank { null }, activeStartFix(), endFix)
-                clearActiveDelay(); resetCaptureForm(); snackbarText = "Registro cerrado y guardado ✅"
-            } catch (e: Exception) { snackbarText = e.message ?: "Error al cerrar registro." }
+        if (!requestPermsIfNeeded()) {
+            snackbarText = "Permiso de ubicación requerido."
+            return
         }
-    }
-    fun saveInlineEvent(summary: AsdDemoSummary) { if (isDelayActive) closeActiveDelay(summary) else { snackbarText = "Toca un contador o una demora para iniciar el registro." } }
-    fun requestCloseTrip() {
-        if (!requestPermsIfNeeded()) { snackbarText = "Permiso de ubicación requerido."; return }
-        if (isDelayActive) { snackbarText = "Cierra o cancela el registro activo antes de cerrar el viaje."; return }
-        showCloseTripConfirm = true
-    }
-    fun closeTripNow() {
+        if (!hasValidDelayCause()) {
+            snackbarText = "El registro debe tener ascenso/descenso o una demora seleccionada."
+            return
+        }
+        validateGenderOnBoard(summary)?.let {
+            snackbarText = it
+            return
+        }
+        val now = System.currentTimeMillis()
+        val endFix = currentFix(now)
         scope.launch {
             try {
-                loadingGps = true; gpsMsg = "Cerrando viaje… fijando ubicación final"
-                val fix = gps.getBestFixForEvent(10.0, 25.0, 7_000L, true)
-                val ok = vm.endTripWithFix(tripId, fix); stopTrackingService()
-                snackbarText = if (ok) "Viaje cerrado ✅ (${fix.status}) acc=±${fix.accM.toInt()}m" else "No se pudo cerrar el viaje."
-            } catch (e: Exception) { snackbarText = e.message ?: "Error al cerrar viaje." }
-            finally { loadingGps = false; gpsMsg = null; showCloseTripConfirm = false }
+                vm.addStopDetailed(
+                    tripId,
+                    inferredStopType(),
+                    activeDelayStartMs,
+                    now,
+                    stopName.trim().ifBlank { null },
+                    notes.trim().ifBlank { null },
+                    menUp,
+                    womenUp,
+                    menDown,
+                    womenDown,
+                    hasLuggage,
+                    selectedDelayText(),
+                    otherDelayDesc.trim().ifBlank { null },
+                    activeStartFix(),
+                    endFix
+                )
+                clearActiveDelay()
+                resetCaptureForm()
+                snackbarText = "Registro cerrado y guardado ✅"
+            } catch (e: Exception) {
+                snackbarText = e.message ?: "Error al cerrar registro."
+            }
         }
     }
 
-    val exportCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? -> uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportLayoutFinal(context, tripId, it)) "CSV final exportado ✅" else "No se pudo exportar CSV." }.getOrElse { e -> e.message ?: "Error exportando CSV." } } } }
-    val exportTrackLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? -> uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTrackCsv(context, tripId, it)) "TRACK CSV exportado ✅" else "No se pudo exportar TRACK." }.getOrElse { e -> e.message ?: "Error exportando TRACK." } } } }
-    val exportGpxLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri: Uri? -> uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTripGpx(context, tripId, it)) "GPX exportado ✅" else "No se pudo exportar GPX." }.getOrElse { e -> e.message ?: "Error exportando GPX." } } } }
-    val exportKmlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { uri: Uri? -> uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTripKml(context, tripId, it)) "KML exportado ✅" else "No se pudo exportar KML." }.getOrElse { e -> e.message ?: "Error exportando KML." } } } }
+    fun saveInlineEvent(summary: AsdDemoSummary) {
+        if (isDelayActive) closeActiveDelay(summary) else snackbarText = "Toca un contador o una demora para iniciar el registro."
+    }
+
+    fun requestCloseTrip() {
+        if (!requestPermsIfNeeded()) {
+            snackbarText = "Permiso de ubicación requerido."
+            return
+        }
+        if (isDelayActive) {
+            snackbarText = "Cierra o cancela el registro activo antes de cerrar el viaje."
+            return
+        }
+        showCloseTripConfirm = true
+    }
+
+    fun closeTripNow() {
+        scope.launch {
+            try {
+                loadingGps = true
+                gpsMsg = "Cerrando viaje… fijando ubicación final"
+                val fix = gps.getBestFixForEvent(10.0, 25.0, 7_000L, true)
+                val ok = vm.endTripWithFix(tripId, fix)
+                stopTrackingService()
+                snackbarText = if (ok) "Viaje cerrado ✅ (${fix.status}) acc=±${fix.accM.toInt()}m" else "No se pudo cerrar el viaje."
+            } catch (e: Exception) {
+                snackbarText = e.message ?: "Error al cerrar viaje."
+            } finally {
+                loadingGps = false
+                gpsMsg = null
+                showCloseTripConfirm = false
+            }
+        }
+    }
+
+    val exportCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
+        uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportLayoutFinal(context, tripId, it)) "CSV final exportado ✅" else "No se pudo exportar CSV." }.getOrElse { e -> e.message ?: "Error exportando CSV." } } }
+    }
+    val exportTrackLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
+        uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTrackCsv(context, tripId, it)) "TRACK CSV exportado ✅" else "No se pudo exportar TRACK." }.getOrElse { e -> e.message ?: "Error exportando TRACK." } } }
+    }
+    val exportGpxLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri: Uri? ->
+        uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTripGpx(context, tripId, it)) "GPX exportado ✅" else "No se pudo exportar GPX." }.getOrElse { e -> e.message ?: "Error exportando GPX." } } }
+    }
+    val exportKmlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { uri: Uri? ->
+        uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTripKml(context, tripId, it)) "KML exportado ✅" else "No se pudo exportar KML." }.getOrElse { e -> e.message ?: "Error exportando KML." } } }
+    }
 
     if (showCloseTripConfirm) {
         AlertDialog(
@@ -296,9 +425,26 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         EditTripHeaderDialog(
             trip = currentTrip,
             onDismiss = { showEditHeader = false },
-            onSave = { routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, headerNotes ->
+            onSave = { routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, headerNotes, aforador, supervisor, deviceNumber ->
                 scope.launch {
-                    val ok = vm.updateTripHeader(tripId, routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, headerNotes)
+                    val ok = vm.updateTripHeader(
+                        tripId,
+                        routeName,
+                        company,
+                        vehicleEco,
+                        direction,
+                        routeNumber,
+                        esFs,
+                        baseStart,
+                        baseEnd,
+                        plateNumber,
+                        vehicleType,
+                        seatCapacity,
+                        headerNotes,
+                        aforador,
+                        supervisor,
+                        deviceNumber
+                    )
                     snackbarText = if (ok) "Encabezado actualizado ✅" else "No se pudo actualizar encabezado."
                     showEditHeader = false
                 }
@@ -307,11 +453,19 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text((trip?.routeName ?: "ASD").uppercase(Locale("es", "MX"))) }, navigationIcon = { TextButton(onClick = onBack) { Text("ATRÁS") } }) },
+        topBar = {
+            TopAppBar(
+                title = { Text((trip?.routeName ?: "ASD").uppercase(Locale("es", "MX"))) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("ATRÁS") } }
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { pad ->
         val t = trip
-        if (t == null) { Box(Modifier.padding(pad).fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return@Scaffold }
+        if (t == null) {
+            Box(Modifier.padding(pad).fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@Scaffold
+        }
         val isEnded = t.endTime != null
         val summary = remember(stops, pointCount) { AsdDemoSummary.from(stops, pointCount) }
         val lastAgeMs = lastPoint?.let { System.currentTimeMillis() - it.timeMs } ?: Long.MAX_VALUE
@@ -321,7 +475,15 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         val exceedsCapacity = t.seatCapacity?.let { it > 0 && captureOnBoard > it } ?: false
         val maxMenDown = summary.menOnBoard + menUp
         val maxWomenDown = summary.womenOnBoard + womenUp
-        LaunchedEffect(tripId, isEnded) { if (!isEnded) { if (gps.hasPermission()) startTrackingService() else snackbarText = "Tip: activa permisos de ubicación para registrar GPS." } else stopTrackingService() }
+
+        LaunchedEffect(tripId, isEnded) {
+            if (!isEnded) {
+                if (gps.hasPermission()) startTrackingService() else snackbarText = "Tip: activa permisos de ubicación para registrar GPS."
+            } else {
+                stopTrackingService()
+            }
+        }
+
         LazyColumn(modifier = Modifier.padding(pad).fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 InlineAsdCaptureCard(
@@ -344,14 +506,53 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             }
             gpsMsg?.let { item { Text(it.uppercase(Locale("es", "MX"))) } }
             if (loadingGps) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-            item { TripHeaderCard(t.routeName.uppercase(Locale("es", "MX")), t.direction.uppercase(Locale("es", "MX")), fmt.format(Date(t.startTime)), t.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO", t.vehicleEco?.uppercase(Locale("es", "MX")), t.plateNumber?.uppercase(Locale("es", "MX")), t.seatCapacity, isEnded, onEdit = { showEditHeader = true }) }
+            item {
+                TripHeaderCard(
+                    routeName = t.routeName.uppercase(Locale("es", "MX")),
+                    direction = t.direction.uppercase(Locale("es", "MX")),
+                    start = fmt.format(Date(t.startTime)),
+                    end = t.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO",
+                    vehicleEco = t.vehicleEco?.uppercase(Locale("es", "MX")),
+                    plateNumber = t.plateNumber?.uppercase(Locale("es", "MX")),
+                    seatCapacity = t.seatCapacity,
+                    aforador = t.aforador?.uppercase(Locale("es", "MX")),
+                    supervisor = t.supervisor?.uppercase(Locale("es", "MX")),
+                    deviceNumber = t.deviceNumber?.uppercase(Locale("es", "MX")),
+                    isEnded = isEnded,
+                    onEdit = { showEditHeader = true }
+                )
+            }
             item { DemoSummaryCard(summary) }
             item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount) }
-            item { DistanceCard(distanceKm, distanceLoading, {
-                distanceLoading = true; distanceKm = null; scope.launch { try { distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsOnce(tripId)) / 1000.0 } } catch (e: Exception) { snackbarText = e.message ?: "Error calculando distancia." } finally { distanceLoading = false } }
-            }, {
-                distanceLoading = true; distanceKm = null; scope.launch { try { val toMs = System.currentTimeMillis(); val fromMs = toMs - 15 * 60 * 1000L; distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsBetweenOnce(tripId, fromMs, toMs)) / 1000.0 } } catch (e: Exception) { snackbarText = e.message ?: "Error calculando distancia." } finally { distanceLoading = false } }
-            }) }
+            item {
+                DistanceCard(distanceKm, distanceLoading, {
+                    distanceLoading = true
+                    distanceKm = null
+                    scope.launch {
+                        try {
+                            distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsOnce(tripId)) / 1000.0 }
+                        } catch (e: Exception) {
+                            snackbarText = e.message ?: "Error calculando distancia."
+                        } finally {
+                            distanceLoading = false
+                        }
+                    }
+                }, {
+                    distanceLoading = true
+                    distanceKm = null
+                    scope.launch {
+                        try {
+                            val toMs = System.currentTimeMillis()
+                            val fromMs = toMs - 15 * 60 * 1000L
+                            distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsBetweenOnce(tripId, fromMs, toMs)) / 1000.0 }
+                        } catch (e: Exception) {
+                            snackbarText = e.message ?: "Error calculando distancia."
+                        } finally {
+                            distanceLoading = false
+                        }
+                    }
+                })
+            }
             item { TripActionsCard(isEnded, loadingGps, { onOpenMap(tripId) }, { requestCloseTrip() }) }
             item { ExportActionsCard({ exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") }, { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") }, { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") }, { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }) }
             item { Text("EVENTOS REGISTRADOS", style = MaterialTheme.typography.titleMedium) }
@@ -403,6 +604,7 @@ private fun InlineAsdCaptureCard(
     val delayCodes = listOf("C", "S", "TM", "CND", "VI", "VD", "PP", "CONG", "O")
     val green = Color(0xFF2E7D32)
     val red = Color(0xFFC62828)
+
     Card(border = if (isDelayActive) BorderStroke(2.dp, green) else null) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -434,7 +636,10 @@ private fun InlineAsdCaptureCard(
             DelayCodeGrid(delayCodes, selectedDelayCodes, onToggleDelayCode)
             Text("C=CONGESTIÓN, S=SEMAFORIZACIÓN, TM=TRÁFICO MIXTO, VI=VUELTA IZQUIERDA, VD=VUELTA DERECHA, PP=PASE PEATONAL.", style = MaterialTheme.typography.bodySmall)
             if (selectedDelayCodes.contains("O")) UpperNextTextField(otherDelayDesc, onOtherDelayDescChange, "DESCRIPCIÓN DE OTRO", singleLine = true)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange); Text("MALETA / BULTO") }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange)
+                Text("MALETA / BULTO")
+            }
             UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
             UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
             Text(lastPoint?.let { "GPS: ±${it.accM.toInt()}M" } ?: "GPS: PENDIENTE", style = MaterialTheme.typography.bodySmall)
@@ -464,7 +669,7 @@ private fun UpperNextTextField(value: String, onValueChange: (String) -> Unit, l
 private fun EditTripHeaderDialog(
     trip: Trip,
     onDismiss: () -> Unit,
-    onSave: (String, String?, String?, String, Int?, String?, String?, String?, String?, String?, Int?, String?) -> Unit
+    onSave: (String, String?, String?, String, Int?, String?, String?, String?, String?, String?, Int?, String?, String?, String?, String?) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     fun upper(v: String) = v.uppercase(Locale("es", "MX"))
@@ -479,6 +684,9 @@ private fun EditTripHeaderDialog(
     var plateNumber by rememberSaveable(trip.tripId) { mutableStateOf(trip.plateNumber?.uppercase(Locale("es", "MX")) ?: "") }
     var vehicleType by rememberSaveable(trip.tripId) { mutableStateOf(trip.vehicleType?.uppercase(Locale("es", "MX")) ?: "") }
     var seatCapacity by rememberSaveable(trip.tripId) { mutableStateOf(trip.seatCapacity?.toString() ?: "") }
+    var aforador by rememberSaveable(trip.tripId) { mutableStateOf(trip.aforador?.uppercase(Locale("es", "MX")) ?: "") }
+    var supervisor by rememberSaveable(trip.tripId) { mutableStateOf(trip.supervisor?.uppercase(Locale("es", "MX")) ?: "") }
+    var deviceNumber by rememberSaveable(trip.tripId) { mutableStateOf(trip.deviceNumber?.uppercase(Locale("es", "MX")) ?: "") }
     var headerNotes by rememberSaveable(trip.tripId) { mutableStateOf(trip.notes?.uppercase(Locale("es", "MX")) ?: "") }
 
     @Composable
@@ -501,6 +709,9 @@ private fun EditTripHeaderDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 NextField(label = "RUTA / DERROTERO", value = routeName, change = { routeName = it })
                 NextField(label = "EMPRESA", value = company, change = { company = it })
+                NextField(label = "AFORADOR", value = aforador, change = { aforador = it })
+                NextField(label = "SUPERVISOR", value = supervisor, change = { supervisor = it })
+                NextField(label = "NO. DISPOSITIVO", value = deviceNumber, change = { deviceNumber = it })
                 NextField(label = "ECO", value = vehicleEco, change = { vehicleEco = it })
                 NextField(label = "SENTIDO", value = direction, change = { direction = it })
                 NextField(label = "NO. RECORRIDO", value = routeNumber, change = { routeNumber = it }, number = true)
@@ -527,7 +738,10 @@ private fun EditTripHeaderDialog(
                     plateNumber.ifBlank { null },
                     vehicleType.ifBlank { null },
                     seatCapacity.toIntOrNull(),
-                    headerNotes.ifBlank { null }
+                    headerNotes.ifBlank { null },
+                    aforador.ifBlank { null },
+                    supervisor.ifBlank { null },
+                    deviceNumber.ifBlank { null }
                 )
             }) { Text("GUARDAR") }
         },
@@ -535,7 +749,12 @@ private fun EditTripHeaderDialog(
     )
 }
 
-private fun formatElapsed(totalSec: Long): String { val h = totalSec / 3600; val m = (totalSec % 3600) / 60; val s = totalSec % 60; return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s) }
+private fun formatElapsed(totalSec: Long): String {
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+}
 
 @Composable
 private fun CounterBox(label: String, value: Int, onChange: (Int) -> Unit, modifier: Modifier = Modifier, maxValue: Int? = null) {
@@ -562,10 +781,52 @@ private fun CounterBox(label: String, value: Int, onChange: (Int) -> Unit, modif
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DelayCodeGrid(codes: List<String>, selected: Set<String>, onToggle: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { codes.chunked(5).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) { row.forEach { code -> FilterChip(selected = selected.contains(code), onClick = { onToggle(code) }, label = { Text(code) }) } } } }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        codes.chunked(5).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                row.forEach { code ->
+                    FilterChip(selected = selected.contains(code), onClick = { onToggle(code) }, label = { Text(code) })
+                }
+            }
+        }
+    }
 }
 
-@Composable private fun TripHeaderCard(routeName: String, direction: String, start: String, end: String, vehicleEco: String?, plateNumber: String?, seatCapacity: Int?, isEnded: Boolean, onEdit: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) { Text("RECORRIDO ASD", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f)); OutlinedButton(onClick = onEdit, enabled = !isEnded) { Text("EDITAR") } }; Text("RUTA: $routeName"); Text("SENTIDO: $direction"); Text("INICIO: $start"); Text("FIN: $end"); Text("UNIDAD: ECO ${vehicleEco ?: "-"} • PLACA ${plateNumber ?: "-"}"); Text("CAPACIDAD: ${seatCapacity ?: "-"}"); Text(if (isEnded) "ESTADO: CERRADO" else "ESTADO: EN CURSO") } } }
+@Composable
+private fun TripHeaderCard(
+    routeName: String,
+    direction: String,
+    start: String,
+    end: String,
+    vehicleEco: String?,
+    plateNumber: String?,
+    seatCapacity: Int?,
+    aforador: String?,
+    supervisor: String?,
+    deviceNumber: String?,
+    isEnded: Boolean,
+    onEdit: () -> Unit
+) {
+    Card {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("RECORRIDO ASD", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = onEdit, enabled = !isEnded) { Text("EDITAR") }
+            }
+            Text("RUTA: $routeName")
+            Text("SENTIDO: $direction")
+            Text("AFORADOR: ${aforador ?: "-"}")
+            Text("SUPERVISOR: ${supervisor ?: "-"}")
+            Text("DISPOSITIVO: ${deviceNumber ?: "-"}")
+            Text("INICIO: $start")
+            Text("FIN: $end")
+            Text("UNIDAD: ECO ${vehicleEco ?: "-"} • PLACA ${plateNumber ?: "-"}")
+            Text("CAPACIDAD: ${seatCapacity ?: "-"}")
+            Text(if (isEnded) "ESTADO: CERRADO" else "ESTADO: EN CURSO")
+        }
+    }
+}
+
 @Composable private fun DemoSummaryCard(summary: AsdDemoSummary) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium); Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("EVENTOS", summary.events.toString(), Modifier.weight(1f)); SummaryMetric("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f)); SummaryMetric("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f)) }; Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("A BORDO", summary.onBoard.toString(), Modifier.weight(1f)); SummaryMetric("H/M", "${summary.menOnBoard}/${summary.womenOnBoard}", Modifier.weight(1f)); SummaryMetric("GPS", summary.trackPoints.toString(), Modifier.weight(1f)) } } } }
 @Composable private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier, isError: Boolean = false) { Card(modifier = modifier) { Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.titleLarge, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified, fontWeight = FontWeight.Bold); Text(label, style = MaterialTheme.typography.bodySmall, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified) } } }
 @Composable private fun TrackingStatusCard(trackingAlive: Boolean, lastAgeMs: Long, lastPoint: TrackPoint?, pointCount: Int) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("ESTADO DE TRACKING", style = MaterialTheme.typography.titleMedium); Text(if (trackingAlive) "🟢 ACTIVO (${lastAgeMs / 1000}S)" else "🔴 SIN SEÑAL RECIENTE"); lastPoint?.let { Text("PRECISIÓN: ±${it.accM.toInt()} M"); Text("PROVEEDOR: ${it.provider.uppercase(Locale("es", "MX"))}") } ?: Text("AÚN NO HAY PUNTOS."); Text("PUNTOS: $pointCount") } } }
@@ -576,4 +837,4 @@ private fun DelayCodeGrid(codes: List<String>, selected: Set<String>, onToggle: 
 
 private data class AsdDemoSummary(val events: Int, val boardings: Int, val alightings: Int, val delays: Int, val onBoard: Int, val menOnBoard: Int, val womenOnBoard: Int, val trackPoints: Int) { companion object { fun from(stops: List<StopEvent>, pointCount: Int): AsdDemoSummary { var boardings = 0; var alightings = 0; var delays = 0; var onBoard = 0; var menOnBoard = 0; var womenOnBoard = 0; stops.sortedBy { it.timestamp }.forEach { event -> val up = event.paxMenUp + event.paxWomenUp; val down = event.paxMenDown + event.paxWomenDown; val type = event.stopType.uppercase(Locale("es", "MX")); if (!event.delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")) delays += 1; boardings += up; alightings += down; onBoard = (onBoard + up - down).coerceAtLeast(0); menOnBoard = (menOnBoard + event.paxMenUp - event.paxMenDown).coerceAtLeast(0); womenOnBoard = (womenOnBoard + event.paxWomenUp - event.paxWomenDown).coerceAtLeast(0) }; return AsdDemoSummary(stops.size, boardings, alightings, delays, onBoard, menOnBoard, womenOnBoard, pointCount) } } }
 private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double { val r = 6_371_000.0; val dLat = Math.toRadians(lat2 - lat1); val dLon = Math.toRadians(lon2 - lon1); val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2.0); val c = 2 * atan2(sqrt(a), sqrt(1 - a)); return r * c }
-private fun distanceMeters(points: List<TrackPoint>): Double { if (points.size < 2) return 0.0; val raw = points.map { LatLng(it.lat, it.lon) }; val smooth = PolylineSmoother.movingAverage(raw, window = 3); val simplified = PolylineSmoother.douglasPeucker(smooth, epsilonMeters = 4.0); var total = 0.0; for (i in 1 until simplified.size) total += haversineMeters(simplified[i - 1].lat, simplified[i - 1].lon, simplified[i].lat, simplified[i].lon); return total }
+private fun distanceMeters(points: List<TrackPoint>): Double { if (points.size < 2) return 0.0; val raw = points.map { LatLng(it.lat, it.lon) }; val smooth = PolylineSmoother.movingAverage(raw, window = 3); val simplified = PolylineSmoother.douglasPeucker(smooth, epsilonMeters = 4.0); var total = 0.0; for (i in 1 until simplified.size) total += haversineMeters(simplified[i - 1].lat, simplified[i].lon, simplified[i].lat, simplified[i].lon); return total }
