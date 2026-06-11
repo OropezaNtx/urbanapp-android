@@ -39,7 +39,10 @@ class AsdNewTripVM : ViewModel() {
         baseEnd: String? = null,
         plateNumber: String? = null,
         vehicleType: String? = null,
-        seatCapacity: Int? = null
+        seatCapacity: Int? = null,
+        aforador: String? = null,
+        supervisor: String? = null,
+        deviceNumber: String? = null
     ): Long {
         return AsdGraph.repo.createTripWithStartFix(
             planningRouteId = planningRouteId,
@@ -60,7 +63,10 @@ class AsdNewTripVM : ViewModel() {
             baseEnd = baseEnd,
             plateNumber = plateNumber,
             vehicleType = vehicleType,
-            seatCapacity = seatCapacity
+            seatCapacity = seatCapacity,
+            aforador = aforador,
+            supervisor = supervisor,
+            deviceNumber = deviceNumber
         )
     }
 }
@@ -85,6 +91,11 @@ fun AsdNewTripScreen(
     var vehicleEco by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var direction by remember { mutableStateOf("IDA") }
+
+    // Campos operativos
+    var aforador by remember { mutableStateOf("") }
+    var supervisor by remember { mutableStateOf("") }
+    var deviceNumber by remember { mutableStateOf("") }
 
     // Encabezado opcional
     var routeNumberTxt by remember { mutableStateOf("") }
@@ -123,6 +134,7 @@ fun AsdNewTripScreen(
             pendingCreate = false
             scope.launch { createTripFlow(vm, gps,
                 planningRouteId, routeName, company, vehicleEco, direction, notes,
+                aforador, supervisor, deviceNumber,
                 routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
                 onCreated = onCreated,
                 setLoading = { loading = it },
@@ -146,6 +158,7 @@ fun AsdNewTripScreen(
                 createTripFlow(
                     vm, gps,
                     planningRouteId, routeName, company, vehicleEco, direction, notes,
+                    aforador, supervisor, deviceNumber,
                     routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
                     onCreated = onCreated,
                     setLoading = { loading = it },
@@ -221,6 +234,31 @@ fun AsdNewTripScreen(
                     label = { Text("REGRESO") }
                 )
             }
+
+            Divider()
+
+            Text("Campos operativos", style = MaterialTheme.typography.titleMedium)
+
+            OutlinedTextField(
+                value = aforador,
+                onValueChange = { aforador = it },
+                label = { Text("Aforador") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = supervisor,
+                onValueChange = { supervisor = it },
+                label = { Text("Supervisor") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = deviceNumber,
+                onValueChange = { deviceNumber = it },
+                label = { Text("No. Dispositivo") },
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Divider()
 
@@ -336,6 +374,9 @@ private suspend fun createTripFlow(
     vehicleEco: String,
     direction: String,
     notes: String,
+    aforador: String,
+    supervisor: String,
+    deviceNumber: String,
     routeNumberTxt: String,
     esFs: String,
     baseStart: String,
@@ -385,7 +426,10 @@ private suspend fun createTripFlow(
                 baseEnd = baseEnd.ifBlank { null },
                 plateNumber = plateNumber.ifBlank { null },
                 vehicleType = vehicleType.ifBlank { null },
-                seatCapacity = seatCapacityTxt.trim().toIntOrNull()
+                seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
+                aforador = aforador.ifBlank { null },
+                supervisor = supervisor.ifBlank { null },
+                deviceNumber = deviceNumber.ifBlank { null }
             )
 
             setLoading(false)
@@ -424,7 +468,10 @@ private suspend fun createTripFlow(
                 baseEnd = baseEnd.ifBlank { null },
                 plateNumber = plateNumber.ifBlank { null },
                 vehicleType = vehicleType.ifBlank { null },
-                seatCapacity = seatCapacityTxt.trim().toIntOrNull()
+                seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
+                aforador = aforador.ifBlank { null },
+                supervisor = supervisor.ifBlank { null },
+                deviceNumber = deviceNumber.ifBlank { null }
             )
 
             setLoading(false)
@@ -459,7 +506,10 @@ private suspend fun createTripFlow(
             baseEnd = baseEnd.ifBlank { null },
             plateNumber = plateNumber.ifBlank { null },
             vehicleType = vehicleType.ifBlank { null },
-            seatCapacity = seatCapacityTxt.trim().toIntOrNull()
+            seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
+            aforador = aforador.ifBlank { null },
+            supervisor = supervisor.ifBlank { null },
+            deviceNumber = deviceNumber.ifBlank { null }
         )
 
         setLoading(false)
