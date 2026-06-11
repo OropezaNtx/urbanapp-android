@@ -224,6 +224,7 @@ class TrackingService : Service() {
 
         if (!gpsQuality.isValid) {
             Log.d(TAG, "GPS rechazado: ${gpsQuality.reason}")
+            updateNotification("GPS inválido: ${gpsQuality.reason}")
             return
         }
 
@@ -248,11 +249,15 @@ class TrackingService : Service() {
                 switchMode(Mode.TRACK)
             } else if (!gpsQuality.isUsableForTrack) {
                 if (currentMode != Mode.ACQUIRE) switchMode(Mode.ACQUIRE)
+                updateNotification("Buscando GPS usable: ${gpsQuality.label} ${gpsQuality.reason}")
                 return
             }
         }
 
-        if (!gpsQuality.isUsableForTrack) return
+        if (!gpsQuality.isUsableForTrack) {
+            updateNotification("GPS no usable: ${gpsQuality.label} ${gpsQuality.reason}")
+            return
+        }
 
         val lastT = lastAcceptedTimeMs
         val lastLat = lastAcceptedLat
@@ -271,10 +276,12 @@ class TrackingService : Service() {
 
             if (speedMs > maxSpeedMs) {
                 Log.d(TAG, "GPS rechazado por velocidad improbable: ${"%.1f".format(speedMs)} m/s")
+                updateNotification("GPS rechazado: velocidad improbable")
                 return
             }
             if (distM > jumpM && accM > jumpAccM) {
                 Log.d(TAG, "GPS rechazado por salto: ${"%.1f".format(distM)} m / ±${accM.toInt()}m")
+                updateNotification("GPS rechazado: salto ${distM.toInt()}m")
                 return
             }
 
@@ -311,6 +318,7 @@ class TrackingService : Service() {
             lastSavedTimeMs = timeMs
             lastSavedLat = latF
             lastSavedLon = lonF
+            updateNotification("GPS ${gpsQuality.label} ±${accM.toInt()}m • $modeTag • guardado")
             scope.launch {
                 try {
                     AsdGraph.db.trackDao().insert(p)
@@ -343,6 +351,11 @@ class TrackingService : Service() {
                 sin(dLon / 2) * sin(dLon / 2)
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return r * c
+    }
+
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIF_ID, buildNotification(text))
     }
 
     private fun buildNotification(text: String): android.app.Notification {
