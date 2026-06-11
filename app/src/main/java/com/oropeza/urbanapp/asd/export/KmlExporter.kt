@@ -29,6 +29,20 @@ object KmlExporter {
             .replace("\"", "&quot;")
             .replace("'", "&apos;")
 
+    private fun Trip.operationalDescription(): String {
+        return buildString {
+            append("UrbanApp ASD")
+            append("\nInicio: ${fmtIso(startTime)}")
+            if (!company.isNullOrBlank()) append("\nEmpresa: $company")
+            if (!aforador.isNullOrBlank()) append("\nAforador: $aforador")
+            if (!supervisor.isNullOrBlank()) append("\nSupervisor: $supervisor")
+            if (!deviceNumber.isNullOrBlank()) append("\nDispositivo: $deviceNumber")
+            if (!vehicleEco.isNullOrBlank()) append("\nEco: $vehicleEco")
+            if (!plateNumber.isNullOrBlank()) append("\nPlaca: $plateNumber")
+            if (!notes.isNullOrBlank()) append("\nObservaciones: $notes")
+        }
+    }
+
     suspend fun exportTripKml(
         context: Context,
         uri: Uri,
@@ -51,7 +65,7 @@ object KmlExporter {
             out.appendLine("""<kml xmlns="http://www.opengis.net/kml/2.2">""")
             out.appendLine("<Document>")
             out.appendLine("<name>${esc(tripName)}</name>")
-            out.appendLine("<description>${esc("UrbanApp ASD | Inicio: ${fmtIso(trip.startTime)}")}</description>")
+            out.appendLine("<description>${esc(trip.operationalDescription())}</description>")
 
             writeStyles(out)
 
