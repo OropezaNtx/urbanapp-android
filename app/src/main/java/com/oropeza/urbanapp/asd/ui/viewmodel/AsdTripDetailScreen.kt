@@ -319,16 +319,18 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         val activeElapsedSec = if (isDelayActive) ((tickMs - activeDelayStartMs).coerceAtLeast(0L) / 1000L) else 0L
         val captureOnBoard = (summary.onBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0)
         val exceedsCapacity = t.seatCapacity?.let { it > 0 && captureOnBoard > it } ?: false
+        val maxMenDown = summary.menOnBoard + menUp
+        val maxWomenDown = summary.womenOnBoard + womenUp
         LaunchedEffect(tripId, isEnded) { if (!isEnded) { if (gps.hasPermission()) startTrackingService() else snackbarText = "Tip: activa permisos de ubicación para registrar GPS." } else stopTrackingService() }
         LazyColumn(modifier = Modifier.padding(pad).fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 InlineAsdCaptureCard(
-                    isEnded, isDelayActive, activeElapsedSec, menUp, womenUp, menDown, womenDown, summary.onBoard, summary.menOnBoard, summary.womenOnBoard, t.seatCapacity, exceedsCapacity,
+                    isEnded, isDelayActive, activeElapsedSec, menUp, womenUp, menDown, womenDown, summary.onBoard, summary.menOnBoard, summary.womenOnBoard, maxMenDown, maxWomenDown, t.seatCapacity, exceedsCapacity,
                     selectedDelayCodes, otherDelayDesc, hasLuggage, stopName, notes, lastPoint,
                     { ensureActiveDelayFromInput(); menUp = it.coerceAtLeast(0) },
                     { ensureActiveDelayFromInput(); womenUp = it.coerceAtLeast(0) },
-                    { ensureActiveDelayFromInput(); menDown = it.coerceAtLeast(0) },
-                    { ensureActiveDelayFromInput(); womenDown = it.coerceAtLeast(0) },
+                    { ensureActiveDelayFromInput(); menDown = it.coerceIn(0, maxMenDown) },
+                    { ensureActiveDelayFromInput(); womenDown = it.coerceIn(0, maxWomenDown) },
                     { code -> ensureActiveDelayFromInput(); selectedDelayCodes = if (selectedDelayCodes.contains(code)) selectedDelayCodes - code else selectedDelayCodes + code },
                     { ensureActiveDelayFromInput(); otherDelayDesc = upper(it) },
                     { ensureActiveDelayFromInput(); hasLuggage = it },
@@ -371,6 +373,8 @@ private fun InlineAsdCaptureCard(
     currentOnBoard: Int,
     menOnBoard: Int,
     womenOnBoard: Int,
+    maxMenDown: Int,
+    maxWomenDown: Int,
     seatCapacity: Int?,
     exceedsCapacity: Boolean,
     selectedDelayCodes: Set<String>,
@@ -414,7 +418,7 @@ private fun InlineAsdCaptureCard(
                 SummaryMetric("BAJAN", totalDown.toString(), Modifier.weight(1f))
                 SummaryMetric("A BORDO", estimatedOnBoard.toString(), Modifier.weight(1f), isError = exceedsCapacity)
             }
-            Text("A BORDO: H ${menOnBoard + menUp - menDown} • M ${womenOnBoard + womenUp - womenDown}", style = MaterialTheme.typography.bodySmall, color = if (menDown > menOnBoard + menUp || womenDown > womenOnBoard + womenUp) MaterialTheme.colorScheme.error else Color.Unspecified)
+            Text("A BORDO: H ${menOnBoard + menUp - menDown} • M ${womenOnBoard + womenUp - womenDown}", style = MaterialTheme.typography.bodySmall, color = if (menDown > maxMenDown || womenDown > maxWomenDown) MaterialTheme.colorScheme.error else Color.Unspecified)
             if (exceedsCapacity) Text("⚠ SUPERA CAPACIDAD (${seatCapacity ?: 0})", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
             Text("SUBEN", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -423,8 +427,8 @@ private fun InlineAsdCaptureCard(
             }
             Text("BAJAN", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                CounterBox("👨 HOMBRES", menDown, onMenDownChange, Modifier.weight(1f))
-                CounterBox("👩 MUJERES", womenDown, onWomenDownChange, Modifier.weight(1f))
+                CounterBox("👨 HOMBRES", menDown, onMenDownChange, Modifier.weight(1f), maxValue = maxMenDown)
+                CounterBox("👩 MUJERES", womenDown, onWomenDownChange, Modifier.weight(1f), maxValue = maxWomenDown)
             }
             Text("DEMORAS", style = MaterialTheme.typography.titleSmall)
             DelayCodeGrid(delayCodes, selectedDelayCodes, onToggleDelayCode)
@@ -499,27 +503,13 @@ private fun EditTripHeaderDialog(
                 NextField(label = "EMPRESA", value = company, change = { company = it })
                 NextField(label = "ECO", value = vehicleEco, change = { vehicleEco = it })
                 NextField(label = "SENTIDO", value = direction, change = { direction = it })
-
-                NextField(
-                    label = "NO. RECORRIDO",
-                    value = routeNumber,
-                    change = { routeNumber = it },
-                    number = true
-                )
-
+                NextField(label = "NO. RECORRIDO", value = routeNumber, change = { routeNumber = it }, number = true)
                 NextField(label = "ES / FS", value = esFs, change = { esFs = it })
                 NextField(label = "BASE INICIO", value = baseStart, change = { baseStart = it })
                 NextField(label = "BASE FINAL", value = baseEnd, change = { baseEnd = it })
                 NextField(label = "PLACA", value = plateNumber, change = { plateNumber = it })
                 NextField(label = "TIPO VEHÍCULO", value = vehicleType, change = { vehicleType = it })
-
-                NextField(
-                    label = "CAPACIDAD / ASIENTOS",
-                    value = seatCapacity,
-                    change = { seatCapacity = it },
-                    number = true
-                )
-
+                NextField(label = "CAPACIDAD / ASIENTOS", value = seatCapacity, change = { seatCapacity = it }, number = true)
                 NextField(label = "OBSERVACIONES", value = headerNotes, change = { headerNotes = it })
             }
         },
@@ -548,16 +538,23 @@ private fun EditTripHeaderDialog(
 private fun formatElapsed(totalSec: Long): String { val h = totalSec / 3600; val m = (totalSec % 3600) / 60; val s = totalSec % 60; return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s) }
 
 @Composable
-private fun CounterBox(label: String, value: Int, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
+private fun CounterBox(label: String, value: Int, onChange: (Int) -> Unit, modifier: Modifier = Modifier, maxValue: Int? = null) {
+    val atMax = maxValue != null && value >= maxValue
+    val isLimitedCounter = maxValue != null
+    val valueColor = if (atMax && isLimitedCounter) MaterialTheme.colorScheme.error else Color.Unspecified
+    Card(modifier = modifier, border = if (atMax && isLimitedCounter) BorderStroke(1.dp, MaterialTheme.colorScheme.error) else null) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = valueColor)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = { onChange((value - 1).coerceAtLeast(0)) }, modifier = Modifier.size(42.dp), contentPadding = PaddingValues(0.dp)) { Text("−", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                Text(value.toString(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = { onChange(value + 1) }, modifier = Modifier.size(42.dp), contentPadding = PaddingValues(0.dp)) { Text("+", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                Text(value.toString(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = valueColor, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { onChange(value + 1) }, enabled = maxValue == null || value < maxValue, modifier = Modifier.size(42.dp), contentPadding = PaddingValues(0.dp)) { Text("+", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(3, 5, 10).forEach { AssistChip(onClick = { onChange(it) }, label = { Text(it.toString()) }) } }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(3, 5, 10).forEach { quickValue ->
+                    AssistChip(onClick = { onChange(if (maxValue != null) quickValue.coerceAtMost(maxValue) else quickValue) }, label = { Text(quickValue.toString()) })
+                }
+            }
         }
     }
 }
