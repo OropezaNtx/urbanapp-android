@@ -58,6 +58,7 @@ class AsdTripDetailVM : ViewModel() {
     fun stopsFlow(tripId: Long) = AsdGraph.repo.stopsFlow(tripId)
     fun trackLastPointFlow(tripId: Long): Flow<TrackPoint?> = AsdGraph.repo.trackLastPointFlow(tripId)
     fun trackCountFlow(tripId: Long): Flow<Int> = AsdGraph.repo.trackCountFlow(tripId)
+    fun trackPointsFlow(tripId: Long): Flow<List<TrackPoint>> = AsdGraph.repo.trackPointsFlow(tripId)
     suspend fun getTrackPointsOnce(tripId: Long) = AsdGraph.repo.getTrackPointsOnce(tripId)
     suspend fun getTrackPointsBetweenOnce(tripId: Long, fromMs: Long, toMs: Long) = AsdGraph.repo.getTrackPointsBetweenOnce(tripId, fromMs, toMs)
 
@@ -191,6 +192,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val stops by vm.stopsFlow(tripId).collectAsState(initial = emptyList())
     val lastPoint by vm.trackLastPointFlow(tripId).collectAsState(initial = null)
     val pointCount by vm.trackCountFlow(tripId).collectAsState(initial = 0)
+    val trackPoints by vm.trackPointsFlow(tripId).collectAsState(initial = emptyList())
     val fmt = remember { SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale("es", "MX")) }
     val fileFmt = remember { SimpleDateFormat("yyyyMMdd_HHmm", Locale("es", "MX")) }
 
@@ -524,7 +526,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                 )
             }
             item { DemoSummaryCard(summary) }
-            item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount) }
+            item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount, trackPoints) }
             item {
                 DistanceCard(distanceKm, distanceLoading, {
                     distanceLoading = true
@@ -835,7 +837,8 @@ private fun TrackingStatusCard(
     trackingAlive: Boolean,
     lastAgeMs: Long,
     lastPoint: TrackPoint?,
-    pointCount: Int
+    pointCount: Int,
+    trackPoints: List<TrackPoint>
 ) {
     val diag = remember(lastPoint?.provider) {
         com.oropeza.urbanapp.asd.location.GpsProviderDiagnostics.parse(lastPoint?.provider)
@@ -850,6 +853,9 @@ private fun TrackingStatusCard(
                 else -> "POOR"
             }
         } ?: "-"
+    }
+    val qualitySummary = remember(trackPoints) {
+        buildGpsQualitySummary(trackPoints)
     }
 
     Card {
@@ -868,6 +874,7 @@ private fun TrackingStatusCard(
                 Text("PROVEEDOR: ${diag.providerRaw.ifBlank { it.provider }}")
             } ?: Text("AÚN NO HAY PUNTOS.")
             Text("PUNTOS: $pointCount")
+            Text("CALIDAD RECORRIDO: $qualitySummary")
         }
     }
 }
@@ -875,6 +882,29 @@ private fun TrackingStatusCard(
 @Composable private fun TripActionsCard(isEnded: Boolean, loadingGps: Boolean, onOpenMap: () -> Unit, onCloseTrip: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("ACCIONES", style = MaterialTheme.typography.titleMedium); Button(onClick = onOpenMap, modifier = Modifier.fillMaxWidth()) { Text("VER MAPA") }; OutlinedButton(enabled = !isEnded && !loadingGps, onClick = onCloseTrip, modifier = Modifier.fillMaxWidth()) { Text("CERRAR VIAJE") } } } }
 @Composable private fun ExportActionsCard(onExportCsv: () -> Unit, onExportTrack: () -> Unit, onExportGpx: () -> Unit, onExportKml: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium); OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("CSV FINAL") }; OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("KML") }; OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("GPX") }; OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("TRACK CSV") } } } }
 @Composable private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) { val up = event.paxMenUp + event.paxWomenUp; val down = event.paxMenDown + event.paxWomenDown; Card { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("${event.stopType} • ${fmt.format(Date(event.timestamp))}", style = MaterialTheme.typography.titleSmall); if (!event.stopName.isNullOrBlank()) Text("PARADA: ${event.stopName}"); Text("SUBEN: $up (H:${event.paxMenUp} M:${event.paxWomenUp})"); Text("BAJAN: $down (H:${event.paxMenDown} M:${event.paxWomenDown})"); Text("DEMORAS: ${event.delayCodes ?: "-"}"); Text("MALETA/BULTO: ${if (event.hasLuggage) "SÍ" else "NO"}"); if (!event.notes.isNullOrBlank()) Text("NOTAS: ${event.notes}"); Text("WP INICIO: ${event.waypointStopId} • WP CIERRE: ${event.waypointStartId}"); if (event.stopLat != 0.0 || event.stopLon != 0.0) Text("GPS: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}M)") else Text("GPS: PENDIENTE") } } }
+
+private fun buildGpsQualitySummary(points: List<TrackPoint>): String {
+    if (points.isEmpty()) return "-"
+
+    val qualities = points.map { point ->
+        val parsed = com.oropeza.urbanapp.asd.location.GpsProviderDiagnostics.parse(point.provider)
+        parsed.quality.ifBlank {
+            when {
+                point.accM <= 10.0 -> "EXCELLENT"
+                point.accM <= 25.0 -> "GOOD"
+                point.accM <= 45.0 -> "USABLE"
+                else -> "POOR"
+            }
+        }
+    }
+
+    fun pct(label: String): Int {
+        val count = qualities.count { it == label }
+        return ((count.toDouble() / qualities.size.toDouble()) * 100.0).toInt()
+    }
+
+    return "EXCELLENT ${pct("EXCELLENT")}% / GOOD ${pct("GOOD")}% / USABLE ${pct("USABLE")}% / POOR ${pct("POOR")}%"
+}
 
 private data class AsdDemoSummary(val events: Int, val boardings: Int, val alightings: Int, val delays: Int, val onBoard: Int, val menOnBoard: Int, val womenOnBoard: Int, val trackPoints: Int) { companion object { fun from(stops: List<StopEvent>, pointCount: Int): AsdDemoSummary { var boardings = 0; var alightings = 0; var delays = 0; var onBoard = 0; var menOnBoard = 0; var womenOnBoard = 0; stops.sortedBy { it.timestamp }.forEach { event -> val up = event.paxMenUp + event.paxWomenUp; val down = event.paxMenDown + event.paxWomenDown; val type = event.stopType.uppercase(Locale("es", "MX")); if (!event.delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")) delays += 1; boardings += up; alightings += down; onBoard = (onBoard + up - down).coerceAtLeast(0); menOnBoard = (menOnBoard + event.paxMenUp - event.paxMenDown).coerceAtLeast(0); womenOnBoard = (womenOnBoard + event.paxWomenUp - event.paxWomenDown).coerceAtLeast(0) }; return AsdDemoSummary(stops.size, boardings, alightings, delays, onBoard, menOnBoard, womenOnBoard, pointCount) } } }
 private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double { val r = 6_371_000.0; val dLat = Math.toRadians(lat2 - lat1); val dLon = Math.toRadians(lon2 - lon1); val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2.0); val c = 2 * atan2(sqrt(a), sqrt(1 - a)); return r * c }
