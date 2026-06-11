@@ -51,6 +51,7 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
+import com.oropeza.urbanapp.asd.export.TrackCsvExporter
 
 class AsdTripDetailVM : ViewModel() {
     fun tripFlow(tripId: Long) = AsdGraph.repo.tripFlow(tripId)
@@ -108,7 +109,7 @@ class AsdTripDetailVM : ViewModel() {
         val smooth = PolylineSmoother.movingAverage(raw, window = 3)
         val simplified = PolylineSmoother.douglasPeucker(smooth, epsilonMeters = 4.0)
         val rebuilt = points.take(simplified.size).mapIndexed { i, p -> p.copy(lat = simplified[i].lat, lon = simplified[i].lon) }
-        CsvExporter.exportTrackPointsCsv(context, uri, rebuilt)
+        TrackCsvExporter.exportTrackPointsCsv(context, uri, rebuilt)
         return true
     }
 
