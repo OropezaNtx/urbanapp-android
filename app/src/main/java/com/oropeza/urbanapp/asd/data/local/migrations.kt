@@ -175,9 +175,38 @@ object Migrations {
 
     val MIGRATION_10_11 = object : Migration(10, 11) {
         override fun migrate(db: SupportSQLiteDatabase) {
+            addTripOperationalMetadataColumns(db)
+        }
+    }
+
+    val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            addTripOperationalMetadataColumns(db)
+        }
+    }
+
+    private fun addTripOperationalMetadataColumns(db: SupportSQLiteDatabase) {
+        if (!tripColumnExists(db, "aforador")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN aforador TEXT")
+        }
+        if (!tripColumnExists(db, "supervisor")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN supervisor TEXT")
+        }
+        if (!tripColumnExists(db, "deviceNumber")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN deviceNumber TEXT")
+        }
+    }
+
+    private fun tripColumnExists(db: SupportSQLiteDatabase, columnName: String): Boolean {
+        val cursor = db.query("PRAGMA table_info(`Trip`)")
+        return try {
+            val nameIndex = cursor.getColumnIndex("name")
+            while (cursor.moveToNext()) {
+                if (nameIndex >= 0 && cursor.getString(nameIndex) == columnName) return true
+            }
+            false
+        } finally {
+            cursor.close()
         }
     }
 }
