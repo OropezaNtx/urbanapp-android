@@ -830,7 +830,47 @@ private fun TripHeaderCard(
 
 @Composable private fun DemoSummaryCard(summary: AsdDemoSummary) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium); Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("EVENTOS", summary.events.toString(), Modifier.weight(1f)); SummaryMetric("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f)); SummaryMetric("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f)) }; Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("A BORDO", summary.onBoard.toString(), Modifier.weight(1f)); SummaryMetric("H/M", "${summary.menOnBoard}/${summary.womenOnBoard}", Modifier.weight(1f)); SummaryMetric("GPS", summary.trackPoints.toString(), Modifier.weight(1f)) } } } }
 @Composable private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier, isError: Boolean = false) { Card(modifier = modifier) { Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.titleLarge, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified, fontWeight = FontWeight.Bold); Text(label, style = MaterialTheme.typography.bodySmall, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified) } } }
-@Composable private fun TrackingStatusCard(trackingAlive: Boolean, lastAgeMs: Long, lastPoint: TrackPoint?, pointCount: Int) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("ESTADO DE TRACKING", style = MaterialTheme.typography.titleMedium); Text(if (trackingAlive) "🟢 ACTIVO (${lastAgeMs / 1000}S)" else "🔴 SIN SEÑAL RECIENTE"); lastPoint?.let { Text("PRECISIÓN: ±${it.accM.toInt()} M"); Text("PROVEEDOR: ${it.provider.uppercase(Locale("es", "MX"))}") } ?: Text("AÚN NO HAY PUNTOS."); Text("PUNTOS: $pointCount") } } }
+@Composable
+private fun TrackingStatusCard(
+    trackingAlive: Boolean,
+    lastAgeMs: Long,
+    lastPoint: TrackPoint?,
+    pointCount: Int
+) {
+    val diag = remember(lastPoint?.provider) {
+        com.oropeza.urbanapp.asd.location.GpsProviderDiagnostics.parse(lastPoint?.provider)
+    }
+    val ageText = if (lastAgeMs == Long.MAX_VALUE) "-" else "${lastAgeMs / 1000}s"
+    val qualityText = diag.quality.ifBlank {
+        lastPoint?.let {
+            when {
+                it.accM <= 10.0 -> "EXCELLENT"
+                it.accM <= 25.0 -> "GOOD"
+                it.accM <= 45.0 -> "USABLE"
+                else -> "POOR"
+            }
+        } ?: "-"
+    }
+
+    Card {
+        Column(
+            Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("ESTADO DE TRACKING", style = MaterialTheme.typography.titleMedium)
+            Text(if (trackingAlive) "ACTIVO (${ageText})" else "SIN SEÑAL RECIENTE")
+            lastPoint?.let {
+                Text("CALIDAD GPS: $qualityText")
+                Text("PRECISIÓN: ±${it.accM.toInt()} M")
+                Text("MODO: ${diag.mode.ifBlank { "-" }}")
+                Text("FILTRO: ${diag.filter.ifBlank { "-" }}")
+                Text("ESTADO: ${diag.state.ifBlank { "-" }}")
+                Text("PROVEEDOR: ${diag.providerRaw.ifBlank { it.provider }}")
+            } ?: Text("AÚN NO HAY PUNTOS.")
+            Text("PUNTOS: $pointCount")
+        }
+    }
+}
 @Composable private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalculateAll: () -> Unit, onCalculateRecent: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("DISTANCIA", style = MaterialTheme.typography.titleMedium); if (distanceLoading) LinearProgressIndicator(Modifier.fillMaxWidth()) else Text("APROX: ${distanceKm?.let { "%.2f KM".format(it) } ?: "—"}"); Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedButton(enabled = !distanceLoading, onClick = onCalculateRecent, modifier = Modifier.weight(1f)) { Text("15 MIN") }; OutlinedButton(enabled = !distanceLoading, onClick = onCalculateAll, modifier = Modifier.weight(1f)) { Text("TODO") } } } } }
 @Composable private fun TripActionsCard(isEnded: Boolean, loadingGps: Boolean, onOpenMap: () -> Unit, onCloseTrip: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("ACCIONES", style = MaterialTheme.typography.titleMedium); Button(onClick = onOpenMap, modifier = Modifier.fillMaxWidth()) { Text("VER MAPA") }; OutlinedButton(enabled = !isEnded && !loadingGps, onClick = onCloseTrip, modifier = Modifier.fillMaxWidth()) { Text("CERRAR VIAJE") } } } }
 @Composable private fun ExportActionsCard(onExportCsv: () -> Unit, onExportTrack: () -> Unit, onExportGpx: () -> Unit, onExportKml: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium); OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("CSV FINAL") }; OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("KML") }; OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("GPX") }; OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("TRACK CSV") } } } }
