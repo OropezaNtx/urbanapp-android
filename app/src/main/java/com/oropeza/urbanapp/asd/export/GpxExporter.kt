@@ -50,6 +50,18 @@ object GpxExporter {
         }
     }
 
+    private fun Trip.operationalDescription(): String {
+        return buildString {
+            if (!company.isNullOrBlank()) append("Empresa: $company\n")
+            if (!aforador.isNullOrBlank()) append("Aforador: $aforador\n")
+            if (!supervisor.isNullOrBlank()) append("Supervisor: $supervisor\n")
+            if (!deviceNumber.isNullOrBlank()) append("Dispositivo: $deviceNumber\n")
+            if (!vehicleEco.isNullOrBlank()) append("Eco: $vehicleEco\n")
+            if (!plateNumber.isNullOrBlank()) append("Placa: $plateNumber\n")
+            if (!notes.isNullOrBlank()) append("Observaciones: $notes")
+        }.trim()
+    }
+
     suspend fun exportTripGpx(
         context: Context,
         uri: Uri,
@@ -63,12 +75,14 @@ object GpxExporter {
 
         os.bufferedWriter(Charsets.UTF_8).use { out ->
             val trackName = "${trip.routeName} - ${trip.direction} (Trip ${trip.tripId})"
+            val tripDesc = trip.operationalDescription()
 
             out.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
             out.appendLine("""<gpx version="1.1" creator="UrbanApp ASD" xmlns="http://www.topografix.com/GPX/1/1">""")
 
             out.appendLine("<metadata>")
             out.appendLine("<name>${esc(trackName)}</name>")
+            if (tripDesc.isNotBlank()) out.appendLine("<desc>${esc(tripDesc)}</desc>")
             out.appendLine("<time>${esc(fmtIso(trip.startTime))}</time>")
             out.appendLine("</metadata>")
 
