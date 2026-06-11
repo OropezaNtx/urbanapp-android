@@ -44,7 +44,10 @@ class AsdRepository(private val db: AppDatabase) {
         plateNumber: String?,
         vehicleType: String?,
         seatCapacity: Int?,
-        notes: String?
+        notes: String?,
+        aforador: String? = null,
+        supervisor: String? = null,
+        deviceNumber: String? = null
     ): Boolean {
         val current = tripDao.getByIdOnce(tripId) ?: return false
         val updated = current.copy(
@@ -59,7 +62,10 @@ class AsdRepository(private val db: AppDatabase) {
             plateNumber = cleanText(plateNumber),
             vehicleType = cleanText(vehicleType),
             seatCapacity = seatCapacity,
-            notes = cleanText(notes)
+            notes = cleanText(notes),
+            aforador = cleanText(aforador),
+            supervisor = cleanText(supervisor),
+            deviceNumber = cleanText(deviceNumber)
         )
         return tripDao.update(updated) > 0
     }
@@ -102,7 +108,10 @@ class AsdRepository(private val db: AppDatabase) {
         baseEnd: String? = null,
         plateNumber: String? = null,
         vehicleType: String? = null,
-        seatCapacity: Int? = null
+        seatCapacity: Int? = null,
+        aforador: String? = null,
+        supervisor: String? = null,
+        deviceNumber: String? = null
     ): Long {
         val start = System.currentTimeMillis()
         val tripId = tripDao.insert(
@@ -121,7 +130,10 @@ class AsdRepository(private val db: AppDatabase) {
                 baseEnd = cleanText(baseEnd),
                 plateNumber = cleanText(plateNumber),
                 vehicleType = cleanText(vehicleType),
-                seatCapacity = seatCapacity
+                seatCapacity = seatCapacity,
+                aforador = cleanText(aforador),
+                supervisor = cleanText(supervisor),
+                deviceNumber = cleanText(deviceNumber)
             )
         )
         addStopDetailed(
