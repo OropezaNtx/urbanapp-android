@@ -28,7 +28,12 @@ data class Trip(
     val baseEnd: String? = null,
     val plateNumber: String? = null,   // No. Placa
     val vehicleType: String? = null,   // Tipo de vehículo
-    val seatCapacity: Int? = null      // Capacidad de asientos
+    val seatCapacity: Int? = null,
+
+    // Campos operativos ASD
+    val aforador: String? = null,
+    val supervisor: String? = null,
+    val deviceNumber: String? = null
 )
 
 @Entity(
