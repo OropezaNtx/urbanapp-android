@@ -39,10 +39,7 @@ class AsdNewTripVM : ViewModel() {
         baseEnd: String? = null,
         plateNumber: String? = null,
         vehicleType: String? = null,
-        seatCapacity: Int? = null,
-        aforador: String? = null,
-        supervisor: String? = null,
-        deviceNumber: String? = null
+        seatCapacity: Int? = null
     ): Long {
         return AsdGraph.repo.createTripWithStartFix(
             planningRouteId = planningRouteId,
@@ -63,10 +60,7 @@ class AsdNewTripVM : ViewModel() {
             baseEnd = baseEnd,
             plateNumber = plateNumber,
             vehicleType = vehicleType,
-            seatCapacity = seatCapacity,
-            aforador = aforador,
-            supervisor = supervisor,
-            deviceNumber = deviceNumber
+            seatCapacity = seatCapacity
         )
     }
 }
@@ -100,9 +94,6 @@ fun AsdNewTripScreen(
     var plateNumber by remember { mutableStateOf("") }
     var vehicleType by remember { mutableStateOf("") }
     var seatCapacityTxt by remember { mutableStateOf("") }
-    var aforador by remember { mutableStateOf("") }
-    var supervisor by remember { mutableStateOf("") }
-    var deviceNumber by remember { mutableStateOf("") }
 
     // Estados UI
     var error by remember { mutableStateOf<String?>(null) }
@@ -111,6 +102,8 @@ fun AsdNewTripScreen(
 
     // ✅ Para no tener que presionar "Crear" 2 veces tras aceptar permisos
     var pendingCreate by remember { mutableStateOf(false) }
+
+    fun toIntOrNullSafe(s: String): Int? = s.trim().toIntOrNull()
 
     // Permisos
     val permLauncher = rememberLauncherForActivityResult(
@@ -128,18 +121,14 @@ fun AsdNewTripScreen(
         // ✅ Si el usuario aceptó permisos y veníamos de intentar crear, reintenta automáticamente
         if (pendingCreate) {
             pendingCreate = false
-            scope.launch {
-                createTripFlow(
-                    vm, gps,
-                    planningRouteId, routeName, company, vehicleEco, direction, notes,
-                    routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
-                    aforador, supervisor, deviceNumber,
-                    onCreated = onCreated,
-                    setLoading = { loading = it },
-                    setGpsMsg = { gpsMsg = it },
-                    setError = { error = it }
-                )
-            }
+            scope.launch { createTripFlow(vm, gps,
+                planningRouteId, routeName, company, vehicleEco, direction, notes,
+                routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
+                onCreated = onCreated,
+                setLoading = { loading = it },
+                setGpsMsg = { gpsMsg = it },
+                setError = { error = it }
+            ) }
         }
     }
 
@@ -158,7 +147,6 @@ fun AsdNewTripScreen(
                     vm, gps,
                     planningRouteId, routeName, company, vehicleEco, direction, notes,
                     routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
-                    aforador, supervisor, deviceNumber,
                     onCreated = onCreated,
                     setLoading = { loading = it },
                     setGpsMsg = { gpsMsg = it },
@@ -233,31 +221,6 @@ fun AsdNewTripScreen(
                     label = { Text("REGRESO") }
                 )
             }
-
-            Divider()
-
-            Text("Campos operativos", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = aforador,
-                onValueChange = { aforador = it },
-                label = { Text("Aforador") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = supervisor,
-                onValueChange = { supervisor = it },
-                label = { Text("Supervisor") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = deviceNumber,
-                onValueChange = { deviceNumber = it },
-                label = { Text("No. Dispositivo") },
-                modifier = Modifier.fillMaxWidth()
-            )
 
             Divider()
 
@@ -380,9 +343,6 @@ private suspend fun createTripFlow(
     plateNumber: String,
     vehicleType: String,
     seatCapacityTxt: String,
-    aforador: String,
-    supervisor: String,
-    deviceNumber: String,
     onCreated: (Long) -> Unit,
     setLoading: (Boolean) -> Unit,
     setGpsMsg: (String?) -> Unit,
@@ -425,10 +385,7 @@ private suspend fun createTripFlow(
                 baseEnd = baseEnd.ifBlank { null },
                 plateNumber = plateNumber.ifBlank { null },
                 vehicleType = vehicleType.ifBlank { null },
-                seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
-                aforador = aforador.ifBlank { null },
-                supervisor = supervisor.ifBlank { null },
-                deviceNumber = deviceNumber.ifBlank { null }
+                seatCapacity = seatCapacityTxt.trim().toIntOrNull()
             )
 
             setLoading(false)
@@ -467,10 +424,7 @@ private suspend fun createTripFlow(
                 baseEnd = baseEnd.ifBlank { null },
                 plateNumber = plateNumber.ifBlank { null },
                 vehicleType = vehicleType.ifBlank { null },
-                seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
-                aforador = aforador.ifBlank { null },
-                supervisor = supervisor.ifBlank { null },
-                deviceNumber = deviceNumber.ifBlank { null }
+                seatCapacity = seatCapacityTxt.trim().toIntOrNull()
             )
 
             setLoading(false)
@@ -505,10 +459,7 @@ private suspend fun createTripFlow(
             baseEnd = baseEnd.ifBlank { null },
             plateNumber = plateNumber.ifBlank { null },
             vehicleType = vehicleType.ifBlank { null },
-            seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
-            aforador = aforador.ifBlank { null },
-            supervisor = supervisor.ifBlank { null },
-            deviceNumber = deviceNumber.ifBlank { null }
+            seatCapacity = seatCapacityTxt.trim().toIntOrNull()
         )
 
         setLoading(false)
