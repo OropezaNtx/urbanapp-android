@@ -157,25 +157,27 @@ object Migrations {
 
             // Si por alguna razón no existe, créala (solo si no existiera)
             db.execSQL("""
-          CREATE TABLE IF NOT EXISTS FovRouteMaster (
-            routeUid TEXT NOT NULL,
-            ruta TEXT NOT NULL,
-            numeroRutaEmpresa TEXT NOT NULL,
-            derroteroLetrero TEXT NOT NULL,
-            createdAt INTEGER NOT NULL,
-            createdBy TEXT,
-            PRIMARY KEY(routeUid)
-          )
-        """.trimIndent())
+           CREATE TABLE IF NOT EXISTS FovRouteMaster (
+             routeUid TEXT NOT NULL,
+             ruta TEXT NOT NULL,
+             numeroRutaEmpresa TEXT NOT NULL,
+             derroteroLetrero TEXT NOT NULL,
+             createdAt INTEGER NOT NULL,
+             createdBy TEXT,
+             PRIMARY KEY(routeUid)
+           )
+         """.trimIndent())
 
             db.execSQL("CREATE INDEX IF NOT EXISTS index_FovRouteMaster_ruta ON FovRouteMaster(ruta)")
             db.execSQL("CREATE INDEX IF NOT EXISTS index_FovRouteMaster_numeroRutaEmpresa ON FovRouteMaster(numeroRutaEmpresa)")
         }
     }
 
-
-
-
-
-
+    val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE Trip ADD COLUMN aforador TEXT")
+            db.execSQL("ALTER TABLE Trip ADD COLUMN supervisor TEXT")
+            db.execSQL("ALTER TABLE Trip ADD COLUMN deviceNumber TEXT")
+        }
+    }
 }
