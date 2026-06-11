@@ -220,6 +220,8 @@ class TrackingService : Service() {
     ) {
         val timeMs = if (timeFromLoc > 0L) timeFromLoc else System.currentTimeMillis()
 
+        if (!isValidCoordinate(lat, lon)) return
+
         val lastEN = lastAcceptedElapsedNanos
         if (lastEN != null && elapsedNanos > 0L && elapsedNanos == lastEN) return
 
@@ -319,6 +321,13 @@ class TrackingService : Service() {
         val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
         val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
         return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
+    }
+
+    private fun isValidCoordinate(lat: Double, lon: Double): Boolean {
+        if (!lat.isFinite() || !lon.isFinite()) return false
+        if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return false
+        if (lat == 0.0 && lon == 0.0) return false
+        return true
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
