@@ -15,7 +15,7 @@ import com.oropeza.urbanapp.dashboard.OperationalDashboardDao
         FovPoiCatalogItem::class,
         FovObservation::class
     ],
-    version = 12,
+    version = 11,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
