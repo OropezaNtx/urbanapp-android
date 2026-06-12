@@ -440,9 +440,9 @@ private suspend fun createTripFlow(
         // ✅ Si no hubo quick fix, hacemos soft fix (pero sin bloquear indefinidamente)
         setGpsMsg("Buscando GPS (objetivo ≤10m; usable ≤25m)…")
         val fix = gps.getBestFixForEvent(
-            targetAccM = 10.0,
-            fallbackAccM = 25.0,
-            timeoutMs = 10_000L
+            targetAccM = 8.0,
+            fallbackAccM = 15.0,
+            timeoutMs = 12_000L
         )
 
         // ✅ CAMBIO CLAVE: si NO_FIX, no bloqueamos el inicio. Creamos el viaje sin coordenadas.
