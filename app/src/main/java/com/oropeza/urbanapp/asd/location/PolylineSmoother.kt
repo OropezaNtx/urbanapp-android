@@ -22,6 +22,7 @@ object PolylineSmoother {
 
     fun douglasPeucker(points: List<LatLng>, epsilonMeters: Double): List<LatLng> {
         if (points.size < 3) return points
+        if (points.size <= 500) return points
         val keep = BooleanArray(points.size)
         keep[0] = true
         keep[points.lastIndex] = true
