@@ -282,7 +282,14 @@ class TrackingService : Service() {
                 updateNotification("GPS rechazado: velocidad improbable")
                 return
             }
-            if (distM > jumpM && accM > jumpAccM) {
+            val dynamicJumpM = when (gpsQuality.quality) {
+                GpsQualityEvaluator.Quality.EXCELLENT -> 8.0
+                GpsQualityEvaluator.Quality.GOOD -> 12.0
+                GpsQualityEvaluator.Quality.USABLE -> 18.0
+                else -> jumpM
+            }
+
+            if (distM > dynamicJumpM && accM >= jumpAccM) {
                 Log.d(TAG, "GPS rechazado por salto: ${"%.1f".format(distM)} m / ±${accM.toInt()}m")
                 updateNotification("GPS rechazado: salto ${distM.toInt()}m")
                 return
