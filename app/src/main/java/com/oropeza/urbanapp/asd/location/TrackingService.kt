@@ -37,7 +37,7 @@ class TrackingService : Service() {
     private val requiredAccM = 15.0
     private val usableAccM = 25.0
     private val kalmanUseAccM = 25.0
-    private val goodFixNeeded = 2
+    private val goodFixNeeded = 3
 
     private val maxSpeedMs = 45.0
     private val jumpM = 25.0
@@ -176,7 +176,7 @@ class TrackingService : Service() {
         updatesJob = scope.launch {
             val tripId = currentTripId ?: return@launch
             val params = when (mode) {
-                Mode.ACQUIRE -> Params(1000L, 500L, 0f, 0L, true)
+                Mode.ACQUIRE -> Params(700L, 350L, 0f, 0L, true)
                 Mode.TRACK -> Params(2000L, 1000L, 0f, 0L, true)
                 Mode.STILL -> Params(2000L, 1000L, 0f, 0L, true)
             }
