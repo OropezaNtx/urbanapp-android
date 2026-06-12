@@ -393,7 +393,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                 val fix = gps.getBestFixForEvent(
                     targetAccM = 8.0,
                     fallbackAccM = 15.0,
-                    timeoutMs = 12_000L,
+                    timeoutMs = 3_000L,
                     highAccuracy = true
                 )
                 val ok = vm.endTripWithFix(tripId, fix)
