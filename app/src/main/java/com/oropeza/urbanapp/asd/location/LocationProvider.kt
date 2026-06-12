@@ -53,7 +53,15 @@ class LocationProvider(private val context: Context) {
 
         // 1) lastLocation (cache)
         val last = try { client.lastLocation.await() } catch (_: Exception) { null }
-        if (last != null) return last
+        if (last != null) {
+            val ageMs = System.currentTimeMillis() - last.time
+            val isFresh = last.time > 0L && ageMs in 0L..5_000L
+            val isAccurateEnough = last.accuracy > 0f && last.accuracy <= 25f
+
+            if (isFresh && isAccurateEnough) {
+                return last
+            }
+        }
 
         // 2) getCurrentLocation (fresco)
         val prio = if (highAccuracy) Priority.PRIORITY_HIGH_ACCURACY
