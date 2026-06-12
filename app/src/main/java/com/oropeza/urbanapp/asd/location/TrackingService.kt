@@ -248,11 +248,11 @@ class TrackingService : Service() {
                 lastSavedLat = null
                 lastSavedLon = null
                 stillCounter = 0
-                Log.i(TAG, "Recording ARMED rápido (${gpsQuality.label}: ${gpsQuality.reason})")
+                Log.i(TAG, "Recording ARMED (${gpsQuality.label}: ${gpsQuality.reason})")
                 switchMode(Mode.TRACK)
-            } else if (!gpsQuality.isUsableForTrack) {
+            } else {
                 if (currentMode != Mode.ACQUIRE) switchMode(Mode.ACQUIRE)
-                updateNotification("Buscando GPS usable: ${gpsQuality.label} ${gpsQuality.reason}")
+                updateNotification("Preparando GPS: ${gpsQuality.label} ${gpsQuality.reason}")
                 return
             }
         }
@@ -282,16 +282,11 @@ class TrackingService : Service() {
                 updateNotification("GPS rechazado: velocidad improbable")
                 return
             }
-            val dynamicJumpM = when (gpsQuality.quality) {
-                GpsQualityEvaluator.Quality.EXCELLENT -> 8.0
-                GpsQualityEvaluator.Quality.GOOD -> 12.0
-                GpsQualityEvaluator.Quality.USABLE -> 18.0
-                else -> jumpM
-            }
+            val hardRejectJumpM = 60.0
 
-            if (distM > dynamicJumpM && accM >= jumpAccM) {
-                Log.d(TAG, "GPS rechazado por salto: ${"%.1f".format(distM)} m / ±${accM.toInt()}m")
-                updateNotification("GPS rechazado: salto ${distM.toInt()}m")
+            if (distM > hardRejectJumpM && accM >= jumpAccM) {
+                Log.d(TAG, "GPS rechazado por salto extremo: ${"%.1f".format(distM)} m / ±${accM.toInt()}m")
+                updateNotification("GPS rechazado: salto extremo ${distM.toInt()}m")
                 return
             }
 

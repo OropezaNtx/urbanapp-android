@@ -442,7 +442,8 @@ private suspend fun createTripFlow(
         val fix = gps.getBestFixForEvent(
             targetAccM = 8.0,
             fallbackAccM = 15.0,
-            timeoutMs = 12_000L
+            timeoutMs = 12_000L,
+            highAccuracy = true
         )
 
         // ✅ CAMBIO CLAVE: si NO_FIX, no bloqueamos el inicio. Creamos el viaje sin coordenadas.
