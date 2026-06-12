@@ -386,7 +386,12 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             try {
                 loadingGps = true
                 gpsMsg = "Cerrando viaje… fijando ubicación final"
-                val fix = gps.getBestFixForEvent(10.0, 25.0, 7_000L, true)
+                val fix = gps.getBestFixForEvent(
+                    targetAccM = 8.0,
+                    fallbackAccM = 15.0,
+                    timeoutMs = 12_000L,
+                    highAccuracy = true
+                )
                 val ok = vm.endTripWithFix(tripId, fix)
                 stopTrackingService()
                 snackbarText = if (ok) "Viaje cerrado ✅ (${fix.status}) acc=±${fix.accM.toInt()}m" else "No se pudo cerrar el viaje."
@@ -645,7 +650,19 @@ private fun InlineAsdCaptureCard(
             }
             UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
             UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
-            Text(lastPoint?.let { "GPS: ±${it.accM.toInt()}M" } ?: "GPS: PENDIENTE", style = MaterialTheme.typography.bodySmall)
+            val gpsStatus = lastPoint?.let {
+                when {
+                    it.accM <= 10 -> "🟢 GPS EXCELENTE ±${it.accM.toInt()}m"
+                    it.accM <= 25 -> "🟢 GPS BUENO ±${it.accM.toInt()}m"
+                    it.accM <= 45 -> "🟡 GPS USABLE ±${it.accM.toInt()}m"
+                    else -> "🔴 GPS DÉBIL ±${it.accM.toInt()}m"
+                }
+            } ?: "🔴 GPS PENDIENTE"
+
+            Text(
+                gpsStatus,
+                style = MaterialTheme.typography.bodyMedium
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f), enabled = !isEnded && !isDelayActive) { Text("LIMPIAR") }
                 Button(onClick = onSave, modifier = Modifier.weight(1f), enabled = !isEnded, colors = ButtonDefaults.buttonColors(containerColor = green)) { Text(if (isDelayActive) "GUARDAR" else "INICIAR") }
