@@ -34,17 +34,17 @@ class TrackingService : Service() {
         private const val TAG = "TrackingService"
     }
 
-    private val requiredAccM = 25.0
-    private val usableAccM = 45.0
-    private val kalmanUseAccM = 45.0
-    private val goodFixNeeded = 1
+    private val requiredAccM = 15.0
+    private val usableAccM = 25.0
+    private val kalmanUseAccM = 25.0
+    private val goodFixNeeded = 2
 
     private val maxSpeedMs = 45.0
-    private val jumpM = 45.0
-    private val jumpAccM = 25.0
-    private val softClampExcellentM = 3.0
-    private val softClampGoodM = 5.0
-    private val softClampUsableM = 8.0
+    private val jumpM = 25.0
+    private val jumpAccM = 15.0
+    private val softClampExcellentM = 2.0
+    private val softClampGoodM = 3.0
+    private val softClampUsableM = 4.0
 
     // Regla de negocio: intentar conservar un punto de ruta cada 2 segundos.
     private val minSaveDistanceM = 0.0
