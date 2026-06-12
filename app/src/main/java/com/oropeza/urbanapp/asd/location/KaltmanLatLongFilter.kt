@@ -71,9 +71,11 @@ class KalmanLatLonFilter(
         fun filter(measurement: Double, r: Double, q: Double): Double {
             val x0 = x
             if (x0 == null) {
-                // Inicializa con la primera medición
+                // Inicializa con la primera medición, pero no se casa con ella.
+                // Si el primer fix viene desplazado, dejamos suficiente incertidumbre
+                // para que los siguientes fixes puedan corregir rápido.
                 x = measurement
-                p = max(1e-12, r)
+                p = max(1e-8, r * 25.0)
                 return measurement
             }
 
