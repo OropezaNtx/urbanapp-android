@@ -182,9 +182,11 @@ class TrackingService : Service() {
         val candidate = if (result.shouldUseKalman) kalmanTrack.update(lat, lon, accM, timeMs, isStationary) else lat to lon
         val savedLat = lastSavedLat
         val savedLon = lastSavedLon
-        val filtered = if (savedLat != null && savedLon != null && result.decision == GpsEngine.Decision.SMOOTH) {
-            GpsEngine.clampStep(savedLat, savedLon, candidate.first, candidate.second, result.maxStepM)
-        } else candidate
+        val filtered = when {
+            result.nextMode == GpsEngine.Mode.STILL && savedLat != null && savedLon != null -> savedLat to savedLon
+            savedLat != null && savedLon != null && result.decision == GpsEngine.Decision.SMOOTH -> GpsEngine.clampStep(savedLat, savedLon, candidate.first, candidate.second, result.maxStepM)
+            else -> candidate
+        }
         lastAcceptedElapsedNanos = if (elapsedNanos > 0L) elapsedNanos else lastAcceptedElapsedNanos
         lastAcceptedTimeMs = timeMs
         lastAcceptedLat = filtered.first
@@ -194,18 +196,19 @@ class TrackingService : Service() {
 
     private fun savePoint(tripId: Long, timeMs: Long, lat: Double, lon: Double, accM: Double, provider: String?, result: GpsEngine.Output) {
         val modeTag = currentMode?.name ?: "NA"
+        val decisionTag = if (modeTag == "STILL") "STILL_LOCK" else result.decision.name
         val p = TrackPoint(
             tripId = tripId,
             timeMs = timeMs,
             lat = lat,
             lon = lon,
             accM = accM,
-            provider = ((provider ?: "fused") + if (result.shouldUseKalman) "+kalman" else "+raw") + "+$modeTag+ARMED+${result.quality.quality.name}+${result.decision.name}"
+            provider = ((provider ?: "fused") + if (result.shouldUseKalman) "+kalman" else "+raw") + "+$modeTag+ARMED+${result.quality.quality.name}+$decisionTag"
         )
         lastSavedTimeMs = timeMs
         lastSavedLat = lat
         lastSavedLon = lon
-        updateNotification("GPS ${result.quality.label} ${accM.toInt()}m $modeTag ${result.decision.name.lowercase()}")
+        updateNotification("GPS ${result.quality.label} ${accM.toInt()}m $modeTag ${decisionTag.lowercase()}")
         scope.launch {
             try {
                 AsdGraph.db.trackDao().insert(p)
