@@ -358,7 +358,11 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                 )
                 clearActiveDelay()
                 resetCaptureForm()
-                snackbarText = "Registro cerrado y guardado ✅"
+                snackbarText = if (activeDelayStatus == "GPS_PENDING") {
+                    "Registro guardado ✅ · GPS pendiente, se completará automáticamente"
+                } else {
+                    "Registro guardado ✅ · GPS ${activeDelayStatus}"
+                }
             } catch (e: Exception) {
                 snackbarText = e.message ?: "Error al cerrar registro."
             }
