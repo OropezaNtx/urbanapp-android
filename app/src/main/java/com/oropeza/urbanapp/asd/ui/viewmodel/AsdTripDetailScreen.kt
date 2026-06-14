@@ -554,6 +554,24 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
 
         LazyColumn(modifier = Modifier.padding(pad).fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
+                TripHeaderCard(
+                    routeName = t.routeName.uppercase(Locale("es", "MX")),
+                    direction = t.direction.uppercase(Locale("es", "MX")),
+                    start = fmt.format(Date(t.startTime)),
+                    end = t.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO",
+                    vehicleEco = t.vehicleEco?.uppercase(Locale("es", "MX")),
+                    plateNumber = t.plateNumber?.uppercase(Locale("es", "MX")),
+                    seatCapacity = t.seatCapacity,
+                    aforador = t.aforador?.uppercase(Locale("es", "MX")),
+                    supervisor = t.supervisor?.uppercase(Locale("es", "MX")),
+                    deviceNumber = t.deviceNumber?.uppercase(Locale("es", "MX")),
+                    isEnded = isEnded,
+                    onEdit = { showEditHeader = true }
+                )
+            }
+            item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount, trackPoints) }
+            item { DemoSummaryCard(summary) }
+            item {
                 InlineAsdCaptureCard(
                     isEnded, isDelayActive, activeElapsedSec, menUp, womenUp, menDown, womenDown, summary.onBoard, summary.menOnBoard, summary.womenOnBoard, maxMenDown, maxWomenDown, t.seatCapacity, exceedsCapacity,
                     selectedDelayCodes, otherDelayDesc, hasLuggage, stopName, notes, lastPoint,
@@ -574,24 +592,6 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             }
             gpsMsg?.let { item { Text(it.uppercase(Locale("es", "MX"))) } }
             if (loadingGps) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-            item {
-                TripHeaderCard(
-                    routeName = t.routeName.uppercase(Locale("es", "MX")),
-                    direction = t.direction.uppercase(Locale("es", "MX")),
-                    start = fmt.format(Date(t.startTime)),
-                    end = t.endTime?.let { fmt.format(Date(it)) } ?: "EN CURSO",
-                    vehicleEco = t.vehicleEco?.uppercase(Locale("es", "MX")),
-                    plateNumber = t.plateNumber?.uppercase(Locale("es", "MX")),
-                    seatCapacity = t.seatCapacity,
-                    aforador = t.aforador?.uppercase(Locale("es", "MX")),
-                    supervisor = t.supervisor?.uppercase(Locale("es", "MX")),
-                    deviceNumber = t.deviceNumber?.uppercase(Locale("es", "MX")),
-                    isEnded = isEnded,
-                    onEdit = { showEditHeader = true }
-                )
-            }
-            item { DemoSummaryCard(summary) }
-            item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount, trackPoints) }
             item {
                 DistanceCard(distanceKm, distanceLoading, {
                     distanceLoading = true
