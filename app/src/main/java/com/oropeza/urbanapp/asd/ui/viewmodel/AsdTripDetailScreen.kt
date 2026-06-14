@@ -32,6 +32,7 @@ import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.export.CsvExporter
+import com.oropeza.urbanapp.asd.export.GpsAuditCsvExporter
 import com.oropeza.urbanapp.asd.export.GpxExporter
 import com.oropeza.urbanapp.asd.export.KmlExporter
 import com.oropeza.urbanapp.asd.location.LatLng
@@ -111,6 +112,12 @@ class AsdTripDetailVM : ViewModel() {
         val simplified = PolylineSmoother.douglasPeucker(smooth, epsilonMeters = 4.0)
         val rebuilt = points.take(simplified.size).mapIndexed { i, p -> p.copy(lat = simplified[i].lat, lon = simplified[i].lon) }
         TrackCsvExporter.exportTrackPointsCsv(context, uri, rebuilt)
+        return true
+    }
+
+    suspend fun exportGpsAuditCsv(context: Context, tripId: Long, uri: Uri): Boolean {
+        val points = AsdGraph.repo.getTrackPointsOnce(tripId)
+        GpsAuditCsvExporter.export(context, uri, points)
         return true
     }
 
@@ -415,6 +422,9 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val exportTrackLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
         uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTrackCsv(context, tripId, it)) "TRACK CSV exportado ✅" else "No se pudo exportar TRACK." }.getOrElse { e -> e.message ?: "Error exportando TRACK." } } }
     }
+    val exportGpsAuditLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
+        uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportGpsAuditCsv(context, tripId, it)) "Auditoría GPS exportada ✅" else "No se pudo exportar auditoría GPS." }.getOrElse { e -> e.message ?: "Error exportando auditoría GPS." } } }
+    }
     val exportGpxLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri: Uri? ->
         uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTripGpx(context, tripId, it)) "GPX exportado ✅" else "No se pudo exportar GPX." }.getOrElse { e -> e.message ?: "Error exportando GPX." } } }
     }
@@ -566,7 +576,14 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                 })
             }
             item { TripActionsCard(isEnded, loadingGps, { onOpenMap(tripId) }, { requestCloseTrip() }) }
-            item { ExportActionsCard({ exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") }, { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") }, { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") }, { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }) }
+            item {
+                ExportActionsCard(
+                { exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") },
+                { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") },
+                { exportGpsAuditLauncher.launch("ASD_auditoria_gps_${t.tripId}.csv") },
+                { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") },
+                { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }
+            )}
             item { Text("EVENTOS REGISTRADOS", style = MaterialTheme.typography.titleMedium) }
             if (stops.isEmpty()) item { Card { Text("AÚN NO HAY EVENTOS. USA EL BLOQUE SUPERIOR PARA REGISTRAR.", modifier = Modifier.padding(12.dp)) } } else items(stops) { EventCard(it, fmt) }
         }
@@ -901,7 +918,25 @@ private fun TrackingStatusCard(
 }
 @Composable private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalculateAll: () -> Unit, onCalculateRecent: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("DISTANCIA", style = MaterialTheme.typography.titleMedium); if (distanceLoading) LinearProgressIndicator(Modifier.fillMaxWidth()) else Text("APROX: ${distanceKm?.let { "%.2f KM".format(it) } ?: "—"}"); Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedButton(enabled = !distanceLoading, onClick = onCalculateRecent, modifier = Modifier.weight(1f)) { Text("15 MIN") }; OutlinedButton(enabled = !distanceLoading, onClick = onCalculateAll, modifier = Modifier.weight(1f)) { Text("TODO") } } } } }
 @Composable private fun TripActionsCard(isEnded: Boolean, loadingGps: Boolean, onOpenMap: () -> Unit, onCloseTrip: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("ACCIONES", style = MaterialTheme.typography.titleMedium); Button(onClick = onOpenMap, modifier = Modifier.fillMaxWidth()) { Text("VER MAPA") }; OutlinedButton(enabled = !isEnded && !loadingGps, onClick = onCloseTrip, modifier = Modifier.fillMaxWidth()) { Text("CERRAR VIAJE") } } } }
-@Composable private fun ExportActionsCard(onExportCsv: () -> Unit, onExportTrack: () -> Unit, onExportGpx: () -> Unit, onExportKml: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium); OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("CSV FINAL") }; OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("KML") }; OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("GPX") }; OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("TRACK CSV") } } } }
+@Composable
+private fun ExportActionsCard(
+    onExportCsv: () -> Unit,
+    onExportTrack: () -> Unit,
+    onExportGpsAudit: () -> Unit,
+    onExportGpx: () -> Unit,
+    onExportKml: () -> Unit
+) {
+    Card {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium)
+            OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("CSV FINAL") }
+            OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("KML") }
+            OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("GPX") }
+            OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("TRACK CSV") }
+            OutlinedButton(onClick = onExportGpsAudit, modifier = Modifier.fillMaxWidth()) { Text("AUDITORÍA GPS") }
+        }
+    }
+}
 @Composable private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) { val up = event.paxMenUp + event.paxWomenUp; val down = event.paxMenDown + event.paxWomenDown; Card { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("${event.stopType} • ${fmt.format(Date(event.timestamp))}", style = MaterialTheme.typography.titleSmall); if (!event.stopName.isNullOrBlank()) Text("PARADA: ${event.stopName}"); Text("SUBEN: $up (H:${event.paxMenUp} M:${event.paxWomenUp})"); Text("BAJAN: $down (H:${event.paxMenDown} M:${event.paxWomenDown})"); Text("DEMORAS: ${event.delayCodes ?: "-"}"); Text("MALETA/BULTO: ${if (event.hasLuggage) "SÍ" else "NO"}"); if (!event.notes.isNullOrBlank()) Text("NOTAS: ${event.notes}"); Text("WP INICIO: ${event.waypointStopId} • WP CIERRE: ${event.waypointStartId}"); if (event.stopLat != 0.0 || event.stopLon != 0.0) Text("GPS: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}M)") else Text("GPS: PENDIENTE") } } }
 
 private fun buildGpsQualitySummary(points: List<TrackPoint>): String {
