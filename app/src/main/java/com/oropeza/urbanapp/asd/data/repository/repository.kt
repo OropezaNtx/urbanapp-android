@@ -153,7 +153,12 @@ class AsdRepository(private val db: AppDatabase) {
             stopAccM = stopAccM,
             stopProvider = stopProvider,
             stopFixTime = stopFixTime,
-            locationStatus = locationStatus
+            locationStatus = locationStatus,
+            startLat = stopLat,
+            startLon = stopLon,
+            startAccM = stopAccM,
+            startProvider = stopProvider,
+            startFixTime = stopFixTime
         )
         return tripId
     }
@@ -180,7 +185,12 @@ class AsdRepository(private val db: AppDatabase) {
             stopAccM = stopAccM,
             stopProvider = stopProvider,
             stopFixTime = stopFixTime,
-            locationStatus = locationStatus
+            locationStatus = locationStatus,
+            startLat = stopLat,
+            startLon = stopLon,
+            startAccM = stopAccM,
+            startProvider = stopProvider,
+            startFixTime = stopFixTime
         )
         tripDao.update(trip.copy(endTime = endMs))
         return true
@@ -202,6 +212,12 @@ class AsdRepository(private val db: AppDatabase) {
         val codes = delayCodes?.split("/", ",", "|", ";")?.map { it.trim().uppercase() }?.filter { it.isNotBlank() }?.toMutableList() ?: mutableListOf()
         if ((up > 0 || down > 0) && !codes.contains("AD")) codes.add(0, "AD")
         return codes.distinct().joinToString("/").ifBlank { null }
+    }
+
+    private fun isTripBoundaryFlag(stopType: String, stopName: String?, delayCodes: String?): Boolean {
+        if (!stopType.equals("BANDERA", ignoreCase = true)) return false
+        val combined = listOfNotNull(stopName, delayCodes).joinToString("/").uppercase()
+        return combined.contains("AD/INICIO") || combined.contains("AD/FINAL")
     }
 
     suspend fun addStopDetailed(
@@ -243,7 +259,11 @@ class AsdRepository(private val db: AppDatabase) {
             val onboard = computeOnBoard(tripId)
             if (down > onboard) throw IllegalStateException("No puedes bajar $down si solo van $onboard a bordo.")
         }
-        val pair = tripDao.reserveWaypointPair(tripId)
+        val pair = if (isTripBoundaryFlag(stopType, stopName, normalizedDelayCodes)) {
+            tripDao.reserveSingleWaypoint(tripId)
+        } else {
+            tripDao.reserveWaypointPair(tripId)
+        }
         val count = when (stopType.uppercase()) {
             "ASCENSO" -> up
             "DESCENSO" -> down
