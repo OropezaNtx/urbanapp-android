@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -42,7 +44,8 @@ class AsdNewTripVM : ViewModel() {
         seatCapacity: Int? = null,
         aforador: String? = null,
         supervisor: String? = null,
-        deviceNumber: String? = null
+        deviceNumber: String? = null,
+        observerSex: String? = null
     ): Long {
         return AsdGraph.repo.createTripWithStartFix(
             planningRouteId = planningRouteId,
@@ -66,7 +69,8 @@ class AsdNewTripVM : ViewModel() {
             seatCapacity = seatCapacity,
             aforador = aforador,
             supervisor = supervisor,
-            deviceNumber = deviceNumber
+            deviceNumber = deviceNumber,
+            observerSex = observerSex
         )
     }
 }
@@ -96,6 +100,7 @@ fun AsdNewTripScreen(
     var aforador by remember { mutableStateOf("") }
     var supervisor by remember { mutableStateOf("") }
     var deviceNumber by remember { mutableStateOf("") }
+    var observerSex by remember { mutableStateOf<String?>(null) } // "H" | "M"
 
     // Encabezado opcional
     var routeNumberTxt by remember { mutableStateOf("") }
@@ -134,7 +139,7 @@ fun AsdNewTripScreen(
             pendingCreate = false
             scope.launch { createTripFlow(vm, gps,
                 planningRouteId, routeName, company, vehicleEco, direction, notes,
-                aforador, supervisor, deviceNumber,
+                aforador, supervisor, deviceNumber, observerSex ?: "",
                 routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
                 onCreated = onCreated,
                 setLoading = { loading = it },
@@ -158,7 +163,7 @@ fun AsdNewTripScreen(
                 createTripFlow(
                     vm, gps,
                     planningRouteId, routeName, company, vehicleEco, direction, notes,
-                    aforador, supervisor, deviceNumber,
+                    aforador, supervisor, deviceNumber, observerSex ?: "",
                     routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
                     onCreated = onCreated,
                     setLoading = { loading = it },
@@ -235,7 +240,7 @@ fun AsdNewTripScreen(
                 )
             }
 
-            Divider()
+            HorizontalDivider()
 
             Text("Campos operativos", style = MaterialTheme.typography.titleMedium)
 
@@ -260,7 +265,27 @@ fun AsdNewTripScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Divider()
+            Text("Sexo del observador *", style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilterChip(
+                    selected = observerSex == "H",
+                    onClick = { observerSex = "H" },
+                    label = { Text("HOMBRE") },
+                    leadingIcon = if (observerSex == "H") {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    } else null
+                )
+                FilterChip(
+                    selected = observerSex == "M",
+                    onClick = { observerSex = "M" },
+                    label = { Text("MUJER") },
+                    leadingIcon = if (observerSex == "M") {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    } else null
+                )
+            }
+
+            HorizontalDivider()
 
             Text("Encabezado (opcional, pero recomendado)", style = MaterialTheme.typography.titleMedium)
 
@@ -313,7 +338,7 @@ fun AsdNewTripScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Divider()
+            HorizontalDivider()
 
             OutlinedTextField(
                 value = notes,
@@ -347,6 +372,11 @@ fun AsdNewTripScreen(
                         return@Button
                     }
 
+                    if (observerSex == null) {
+                        error = "Selecciona el sexo del observador para iniciar el recorrido."
+                        return@Button
+                    }
+
                     requestPermsIfNeededAndCreateOrWait()
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -377,6 +407,7 @@ private suspend fun createTripFlow(
     aforador: String,
     supervisor: String,
     deviceNumber: String,
+    observerSex: String,
     routeNumberTxt: String,
     esFs: String,
     baseStart: String,
@@ -429,7 +460,8 @@ private suspend fun createTripFlow(
                 seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
                 aforador = aforador.ifBlank { null },
                 supervisor = supervisor.ifBlank { null },
-                deviceNumber = deviceNumber.ifBlank { null }
+                deviceNumber = deviceNumber.ifBlank { null },
+                observerSex = observerSex
             )
 
             setLoading(false)
@@ -472,7 +504,8 @@ private suspend fun createTripFlow(
                 seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
                 aforador = aforador.ifBlank { null },
                 supervisor = supervisor.ifBlank { null },
-                deviceNumber = deviceNumber.ifBlank { null }
+                deviceNumber = deviceNumber.ifBlank { null },
+                observerSex = observerSex
             )
 
             setLoading(false)
@@ -510,7 +543,8 @@ private suspend fun createTripFlow(
             seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
             aforador = aforador.ifBlank { null },
             supervisor = supervisor.ifBlank { null },
-            deviceNumber = deviceNumber.ifBlank { null }
+            deviceNumber = deviceNumber.ifBlank { null },
+            observerSex = observerSex
         )
 
         setLoading(false)

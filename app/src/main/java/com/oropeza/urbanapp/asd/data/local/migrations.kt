@@ -185,6 +185,14 @@ object Migrations {
         }
     }
 
+    val MIGRATION_12_13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            if (!tripColumnExists(db, "observerSex")) {
+                db.execSQL("ALTER TABLE Trip ADD COLUMN observerSex TEXT")
+            }
+        }
+    }
+
     private fun addTripOperationalMetadataColumns(db: SupportSQLiteDatabase) {
         if (!tripColumnExists(db, "aforador")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN aforador TEXT")

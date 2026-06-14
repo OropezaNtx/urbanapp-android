@@ -33,7 +33,8 @@ data class Trip(
     // Campos operativos ASD
     val aforador: String? = null,
     val supervisor: String? = null,
-    val deviceNumber: String? = null
+    val deviceNumber: String? = null,
+    val observerSex: String? = null // "H" | "M"
 )
 
 @Entity(

@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -87,7 +89,8 @@ class AsdTripDetailVM : ViewModel() {
         notes: String?,
         aforador: String?,
         supervisor: String?,
-        deviceNumber: String?
+        deviceNumber: String?,
+        observerSex: String?
     ): Boolean = AsdGraph.repo.updateTripHeader(
         tripId = tripId,
         routeName = routeName,
@@ -104,7 +107,8 @@ class AsdTripDetailVM : ViewModel() {
         notes = notes,
         aforador = aforador,
         supervisor = supervisor,
-        deviceNumber = deviceNumber
+        deviceNumber = deviceNumber,
+        observerSex = observerSex
     )
 
     suspend fun exportLayoutFinal(context: Context, tripId: Long, uri: Uri): Boolean {
@@ -218,6 +222,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val stops by vm.stopsFlow(tripId).collectAsState(initial = emptyList())
     val lastPoint by vm.trackLastPointFlow(tripId).collectAsState(initial = null)
     val pointCount by vm.trackCountFlow(tripId).collectAsState(initial = 0)
+    val summary = remember(stops, pointCount) { AsdDemoSummary.from(stops, pointCount) }
     val trackPoints by vm.trackPointsFlow(tripId).collectAsState(initial = emptyList())
     val fmt = remember { SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale("es", "MX")) }
     val fileFmt = remember { SimpleDateFormat("yyyyMMdd_HHmm", Locale("es", "MX")) }
@@ -346,9 +351,21 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     fun upper(value: String): String = value.uppercase(Locale("es", "MX"))
     fun hasValidDelayCause(): Boolean = (menUp + womenUp + menDown + womenDown > 0) || selectedDelayCodes.isNotEmpty() || otherDelayDesc.isNotBlank()
 
-    fun validateGenderOnBoard(summary: AsdDemoSummary): String? {
-        if (menDown > summary.menOnBoard + menUp) return "No puedes bajar $menDown hombres si solo van ${summary.menOnBoard + menUp} hombres disponibles."
-        if (womenDown > summary.womenOnBoard + womenUp) return "No puedes bajar $womenDown mujeres si solo van ${summary.womenOnBoard + womenUp} mujeres disponibles."
+    fun validateGenderOnBoard(summary: AsdDemoSummary, trip: Trip?): String? {
+        val protectedMen = if (trip?.observerSex == "H") 1 else 0
+        val protectedWomen = if (trip?.observerSex == "M") 1 else 0
+
+        val maxM = (summary.menOnBoard + menUp - protectedMen).coerceAtLeast(0)
+        val maxW = (summary.womenOnBoard + womenUp - protectedWomen).coerceAtLeast(0)
+
+        if (menDown > maxM) {
+            return if (protectedMen > 0 && summary.menOnBoard + menUp <= 1) "No puedes bajar al observador durante el recorrido."
+            else "No puedes bajar $menDown hombres si solo hay $maxM disponibles (protegiendo observador)."
+        }
+        if (womenDown > maxW) {
+            return if (protectedWomen > 0 && summary.womenOnBoard + womenUp <= 1) "No puedes bajar a la observadora durante el recorrido."
+            else "No puedes bajar $womenDown mujeres si solo hay $maxW disponibles (protegiendo observador)."
+        }
         return null
     }
 
@@ -362,7 +379,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             snackbarText = "El registro debe tener ascenso/descenso o una demora seleccionada."
             return
         }
-        validateGenderOnBoard(summary)?.let {
+        validateGenderOnBoard(summary, trip)?.let {
             snackbarText = it
             return
         }
@@ -494,10 +511,16 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     }
 
     if (showCloseTripConfirm) {
+        val totalOnBoard = summary.onBoard
+        val confirmText = if (totalOnBoard > 0) {
+            "¿REALMENTE QUIERES CERRAR ESTE VIAJE? QUEDAN $totalOnBoard PASAJEROS A BORDO QUE SERÁN BAJADOS AUTOMÁTICAMENTE EN AD/FINAL."
+        } else {
+            "¿REALMENTE QUIERES CERRAR ESTE VIAJE? NO HAY PASAJEROS A BORDO PARA BAJAR. ESTA ACCIÓN MARCARÁ AD/FINAL."
+        }
         AlertDialog(
             onDismissRequest = { showCloseTripConfirm = false },
             title = { Text("CONFIRMAR CIERRE") },
-            text = { Text("¿REALMENTE QUIERES CERRAR ESTE VIAJE? ESTA ACCIÓN MARCARÁ AD/FINAL.") },
+            text = { Text(confirmText) },
             confirmButton = { Button(onClick = { triggerHaptic(); closeTripNow() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("SÍ, CERRAR VIAJE") } },
             dismissButton = { OutlinedButton(onClick = { triggerHaptic(); showCloseTripConfirm = false }) { Text("NO, REGRESAR") } }
         )
@@ -508,7 +531,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         EditTripHeaderDialog(
             trip = currentTrip,
             onDismiss = { showEditHeader = false },
-            onSave = { routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, headerNotes, aforador, supervisor, deviceNumber ->
+            onSave = { routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, headerNotes, aforador, supervisor, deviceNumber, observerSex ->
                 scope.launch {
                     val ok = vm.updateTripHeader(
                         tripId,
@@ -526,7 +549,8 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                         headerNotes,
                         aforador,
                         supervisor,
-                        deviceNumber
+                        deviceNumber,
+                        observerSex
                     )
                     snackbarText = if (ok) "Encabezado actualizado ✅" else "No se pudo actualizar encabezado."
                     showEditHeader = false
@@ -559,14 +583,19 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             return@Scaffold
         }
         val isEnded = t.endTime != null
-        val summary = remember(stops, pointCount) { AsdDemoSummary.from(stops, pointCount) }
         val lastAgeMs = lastPoint?.let { System.currentTimeMillis() - it.timeMs } ?: Long.MAX_VALUE
         val trackingAlive = lastPoint != null && lastAgeMs in 0..12_000L
         val activeElapsedSec = if (isDelayActive) ((tickMs - activeDelayStartMs).coerceAtLeast(0L) / 1000L) else 0L
         val captureOnBoard = (summary.onBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0)
-        val exceedsCapacity = t.seatCapacity?.let { it > 0 && captureOnBoard > it } ?: false
-        val maxMenDown = summary.menOnBoard + menUp
-        val maxWomenDown = summary.womenOnBoard + womenUp
+
+        val capacityApplies = t.vehicleType?.uppercase(Locale.ROOT) in listOf("COMBI", "VAN", "SPRINTER")
+        val exceedsCapacity = capacityApplies && t.seatCapacity?.let { it > 0 && captureOnBoard > it } ?: false
+
+        val protectedMen = if (t.observerSex == "H") 1 else 0
+        val protectedWomen = if (t.observerSex == "M") 1 else 0
+
+        val maxMenDown = (summary.menOnBoard + menUp - protectedMen).coerceAtLeast(0)
+        val maxWomenDown = (summary.womenOnBoard + womenUp - protectedWomen).coerceAtLeast(0)
 
         LaunchedEffect(tripId, isEnded) {
             if (!isEnded) {
@@ -577,6 +606,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         }
 
         LazyColumn(modifier = Modifier.padding(pad).fillMaxSize().padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // 1. CAPTURA ASD
             item {
                 InlineAsdCaptureCard(
                     isEnded, isDelayActive, activeElapsedSec, menUp, womenUp, menDown, womenDown, summary.onBoard, summary.menOnBoard, summary.womenOnBoard, maxMenDown, maxWomenDown, t.seatCapacity, exceedsCapacity,
@@ -593,11 +623,12 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                     { clearActiveDelay(); resetCaptureForm(); snackbarText = "Registro cancelado" },
                     { saveInlineEvent(summary) },
                     { onOpenMap(tripId) },
-                    { requestCloseTrip() }
+                    { requestCloseTrip() },
+                    t.observerSex
                 )
             }
-            
-            // DURACION RECORRIDO
+
+            // 2. TIEMPO DE RECORRIDO
             item {
                 val start = t.startTime
                 val end = t.endTime ?: tickMs
@@ -610,7 +641,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                 ) {
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("DURACIÓN RECORRIDO", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                            Text("TIEMPO DE RECORRIDO", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
                             Text(formatElapsed(durationSec), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color.White)
                         }
                         if (isEnded) {
@@ -626,6 +657,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                 }
             }
 
+            // 3. DATOS DEL RECORRIDO
             item {
                 TripHeaderCard(
                     routeName = t.routeName.uppercase(Locale("es", "MX")),
@@ -642,9 +674,14 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                     onEdit = { showEditHeader = true }
                 )
             }
+
+            // 4. GPS / TRACKING
             item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount, trackPoints) }
+
+            // 5. RESUMEN OPERATIVO
             item { DemoSummaryCard(summary) }
-            
+
+            // STATUS TRANSITORIOS (Cierre de viaje)
             gpsMsg?.let { msg ->
                 item {
                     Surface(
@@ -671,17 +708,8 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                     strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                 ) 
             }
-            
-            item {
-                ExportActionsCard(
-                    { exportClientXlsxLauncher.launch("ASD_cliente_${t.tripId}_${fileFmt.format(Date())}.xlsx") },
-                    { exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") },
-                    { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") },
-                    { exportGpsAuditLauncher.launch("ASD_auditoria_gps_${t.tripId}.csv") },
-                    { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") },
-                    { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }
-                )
-            }
+
+            // 6. EVENTOS REGISTRADOS
             item { 
                 Text(
                     "HISTORIAL DE EVENTOS", 
@@ -712,6 +740,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                 items(stops) { EventCard(it, fmt) }
             }
 
+            // DISTANCIA (Opcional, antes de exportaciones)
             item {
                 DistanceCard(distanceKm, distanceLoading, {
                     distanceLoading = true
@@ -740,6 +769,18 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                         }
                     }
                 })
+            }
+
+            // 7. EXPORTACIONES (Al final)
+            item {
+                ExportActionsCard(
+                    { exportClientXlsxLauncher.launch("ASD_cliente_${t.tripId}_${fileFmt.format(Date())}.xlsx") },
+                    { exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") },
+                    { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") },
+                    { exportGpsAuditLauncher.launch("ASD_auditoria_gps_${t.tripId}.csv") },
+                    { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") },
+                    { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }
+                )
             }
         }
     }
@@ -780,7 +821,8 @@ private fun InlineAsdCaptureCard(
     onCancelDelay: () -> Unit,
     onSave: () -> Unit,
     onOpenMap: () -> Unit,
-    onCloseTrip: () -> Unit
+    onCloseTrip: () -> Unit,
+    observerSex: String? = null
 ) {
     val haptic = LocalHapticFeedback.current
     fun triggerHaptic() = haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -892,7 +934,7 @@ private fun InlineAsdCaptureCard(
                     modifier = Modifier.weight(1f).height(56.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = cardBg),
-                    border = BorderStroke(2.5.dp, maleColor)
+                    border = BorderStroke(1.5.dp, maleColor)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
@@ -915,7 +957,7 @@ private fun InlineAsdCaptureCard(
                     modifier = Modifier.weight(1f).height(56.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = cardBg),
-                    border = BorderStroke(2.5.dp, femaleColor)
+                    border = BorderStroke(1.5.dp, femaleColor)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
@@ -947,7 +989,8 @@ private fun InlineAsdCaptureCard(
                 maxMen = null,
                 maxWomen = null,
                 maleColor = maleColor,
-                femaleColor = femaleColor
+                femaleColor = femaleColor,
+                observerSex = observerSex
             )
 
             // BAJAN
@@ -963,7 +1006,8 @@ private fun InlineAsdCaptureCard(
                 maxMen = maxMenDown,
                 maxWomen = maxWomenDown,
                 maleColor = maleColor,
-                femaleColor = femaleColor
+                femaleColor = femaleColor,
+                observerSex = observerSex
             )
 
             // SECCION DEMORAS
@@ -1124,7 +1168,8 @@ private fun PassengerSection(
     maxMen: Int? = null,
     maxWomen: Int? = null,
     maleColor: Color,
-    femaleColor: Color
+    femaleColor: Color,
+    observerSex: String? = null
 ) {
     Card(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
@@ -1146,7 +1191,8 @@ private fun PassengerSection(
                     modifier = Modifier.weight(1f),
                     accentColor = maleColor,
                     maxValue = maxMen,
-                    isWoman = false
+                    isWoman = false,
+                    isObserver = observerSex == "H"
                 )
                 PassengerCounterCard(
                     label = "MUJERES",
@@ -1155,7 +1201,8 @@ private fun PassengerSection(
                     modifier = Modifier.weight(1f),
                     accentColor = femaleColor,
                     maxValue = maxWomen,
-                    isWoman = true
+                    isWoman = true,
+                    isObserver = observerSex == "M"
                 )
             }
         }
@@ -1170,7 +1217,8 @@ private fun PassengerCounterCard(
     modifier: Modifier = Modifier,
     accentColor: Color,
     maxValue: Int? = null,
-    isWoman: Boolean
+    isWoman: Boolean,
+    isObserver: Boolean = false
 ) {
     val isAlert = maxValue != null && maxValue <= 0
     val redAcc = Color(0xFFFF4B4B)
@@ -1182,7 +1230,7 @@ private fun PassengerCounterCard(
         modifier = modifier.heightIn(min = 150.dp, max = 170.dp),
         color = cardBg,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-        border = BorderStroke(if (isAlert) 3.dp else 2.5.dp, if (isAlert) alertCol else accentColor)
+        border = BorderStroke(if (isAlert) 1.5.dp else 1.5.dp, if (isAlert) alertCol else accentColor)
     ) {
         Column(
             Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
@@ -1202,7 +1250,12 @@ private fun PassengerCounterCard(
             Text(value.toString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = displayValColor)
             
             if (isAlert) {
-                Text(if (isWoman) "Sin pasajeras disponibles" else "Sin pasajeros disponibles", style = MaterialTheme.typography.labelSmall, color = redAcc, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                val alertMsg = if (isObserver) {
+                    if (isWoman) "Solo observadora a bordo" else "Solo observador a bordo"
+                } else {
+                    if (isWoman) "Sin pasajeras disponibles" else "Sin pasajeros disponibles"
+                }
+                Text(alertMsg, style = MaterialTheme.typography.labelSmall, color = redAcc, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1296,7 +1349,7 @@ private fun UpperNextTextField(value: String, onValueChange: (String) -> Unit, l
 private fun EditTripHeaderDialog(
     trip: Trip,
     onDismiss: () -> Unit,
-    onSave: (String, String?, String?, String, Int?, String?, String?, String?, String?, String?, Int?, String?, String?, String?, String?) -> Unit
+    onSave: (String, String?, String?, String, Int?, String?, String?, String?, String?, String?, Int?, String?, String?, String?, String?, String?) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     fun upper(v: String) = v.uppercase(Locale("es", "MX"))
@@ -1314,6 +1367,7 @@ private fun EditTripHeaderDialog(
     var aforador by rememberSaveable(trip.tripId) { mutableStateOf(trip.aforador?.uppercase(Locale("es", "MX")) ?: "") }
     var supervisor by rememberSaveable(trip.tripId) { mutableStateOf(trip.supervisor?.uppercase(Locale("es", "MX")) ?: "") }
     var deviceNumber by rememberSaveable(trip.tripId) { mutableStateOf(trip.deviceNumber?.uppercase(Locale("es", "MX")) ?: "") }
+    var observerSex by rememberSaveable(trip.tripId) { mutableStateOf(trip.observerSex ?: "") }
     var headerNotes by rememberSaveable(trip.tripId) { mutableStateOf(trip.notes?.uppercase(Locale("es", "MX")) ?: "") }
 
     @Composable
@@ -1339,6 +1393,27 @@ private fun EditTripHeaderDialog(
                 NextField(label = "AFORADOR", value = aforador, change = { aforador = it })
                 NextField(label = "SUPERVISOR", value = supervisor, change = { supervisor = it })
                 NextField(label = "NO. DISPOSITIVO", value = deviceNumber, change = { deviceNumber = it })
+
+                Text("SEXO DEL OBSERVADOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = observerSex == "H",
+                        onClick = { observerSex = "H" },
+                        label = { Text("HOMBRE") },
+                        leadingIcon = if (observerSex == "H") {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        } else null
+                    )
+                    FilterChip(
+                        selected = observerSex == "M",
+                        onClick = { observerSex = "M" },
+                        label = { Text("MUJER") },
+                        leadingIcon = if (observerSex == "M") {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        } else null
+                    )
+                }
+
                 NextField(label = "ECO", value = vehicleEco, change = { vehicleEco = it })
                 NextField(label = "SENTIDO", value = direction, change = { direction = it })
                 NextField(label = "NO. RECORRIDO", value = routeNumber, change = { routeNumber = it }, number = true)
@@ -1368,7 +1443,8 @@ private fun EditTripHeaderDialog(
                     headerNotes.ifBlank { null },
                     aforador.ifBlank { null },
                     supervisor.ifBlank { null },
-                    deviceNumber.ifBlank { null }
+                    deviceNumber.ifBlank { null },
+                    observerSex.ifBlank { null }
                 )
             }) { Text("GUARDAR") }
         },
@@ -1649,7 +1725,7 @@ private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalcul
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716))
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("DISTANCIA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("TIEMPO DE RECORRIDO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
             
             Surface(
                 color = Color(0xFF101C1A),

@@ -47,7 +47,8 @@ class AsdRepository(private val db: AppDatabase) {
         notes: String?,
         aforador: String? = null,
         supervisor: String? = null,
-        deviceNumber: String? = null
+        deviceNumber: String? = null,
+        observerSex: String? = null
     ): Boolean {
         val current = tripDao.getByIdOnce(tripId) ?: return false
         val updated = current.copy(
@@ -65,7 +66,8 @@ class AsdRepository(private val db: AppDatabase) {
             notes = cleanText(notes),
             aforador = cleanText(aforador),
             supervisor = cleanText(supervisor),
-            deviceNumber = cleanText(deviceNumber)
+            deviceNumber = cleanText(deviceNumber),
+            observerSex = cleanText(observerSex)
         )
         return tripDao.update(updated) > 0
     }
@@ -111,7 +113,8 @@ class AsdRepository(private val db: AppDatabase) {
         seatCapacity: Int? = null,
         aforador: String? = null,
         supervisor: String? = null,
-        deviceNumber: String? = null
+        deviceNumber: String? = null,
+        observerSex: String? = null
     ): Long {
         val start = System.currentTimeMillis()
         val tripId = tripDao.insert(
@@ -133,17 +136,22 @@ class AsdRepository(private val db: AppDatabase) {
                 seatCapacity = seatCapacity,
                 aforador = cleanText(aforador),
                 supervisor = cleanText(supervisor),
-                deviceNumber = cleanText(deviceNumber)
+                deviceNumber = cleanText(deviceNumber),
+                observerSex = cleanText(observerSex)
             )
         )
+
+        val mUp = if (observerSex == "H") 1 else 0
+        val wUp = if (observerSex == "M") 1 else 0
+
         addStopDetailed(
             tripId = tripId,
             stopType = "BANDERA",
             stopTimeMs = start,
             startTimeMs = start,
             stopName = "AD/INICIO",
-            notes = null,
-            menUp = 0, womenUp = 0, menDown = 0, womenDown = 0,
+            notes = "OBSERVADOR A BORDO",
+            menUp = mUp, womenUp = wUp, menDown = 0, womenDown = 0,
             hasLuggage = false,
             delayCodes = "AD/INICIO",
             otherDelayDesc = null,
@@ -167,15 +175,21 @@ class AsdRepository(private val db: AppDatabase) {
         val trip = tripDao.getByIdOnce(tripId) ?: return false
         val activeDelay = delayDao.getActiveDelay(tripId)
         if (activeDelay != null) return false
+        val activeBandera = stopDao.getActiveBandera(tripId)
+        if (activeBandera != null) return false
+
         val endMs = System.currentTimeMillis()
+
+        val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
+
         addStopDetailed(
             tripId = tripId,
             stopType = "BANDERA",
             stopTimeMs = endMs,
             startTimeMs = endMs,
             stopName = "AD/FINAL",
-            notes = null,
-            menUp = 0, womenUp = 0, menDown = 0, womenDown = 0,
+            notes = "FINALIZANDO CON PASAJEROS RESTANTES",
+            menUp = 0, womenUp = 0, menDown = mOnBoard, womenDown = wOnBoard,
             hasLuggage = false,
             delayCodes = "AD/FINAL",
             otherDelayDesc = null,
@@ -194,6 +208,17 @@ class AsdRepository(private val db: AppDatabase) {
         )
         tripDao.update(trip.copy(endTime = endMs))
         return true
+    }
+
+    private suspend fun computeDetailedOnBoard(tripId: Long): Pair<Int, Int> {
+        val stops = stopDao.getByTripOnce(tripId)
+        var mOnboard = 0
+        var wOnboard = 0
+        for (s in stops) {
+            mOnboard += (s.paxMenUp - s.paxMenDown)
+            wOnboard += (s.paxWomenUp - s.paxWomenDown)
+        }
+        return max(0, mOnboard) to max(0, wOnboard)
     }
 
     private suspend fun computeOnBoard(tripId: Long): Int {
