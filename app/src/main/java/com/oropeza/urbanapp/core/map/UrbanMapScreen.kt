@@ -294,13 +294,19 @@ private fun coordinateKey(lat: Double, lon: Double): String {
 }
 
 private fun markerHueFor(point: UrbanMapPoint): Float {
-    return when (point.status?.uppercase(Locale.ROOT)) {
-        "START", "INICIO", "OK", "GPS", "FUSED", "FIX_OK" -> BitmapDescriptorFactory.HUE_GREEN
-        "END", "FIN", "FINAL", "NO_FIX", "INVALID" -> BitmapDescriptorFactory.HUE_RED
-        "ASCENSO", "DESCENSO", "ASD", "EVENTO", "AD" -> BitmapDescriptorFactory.HUE_AZURE
-        "DEMORA", "DELAY", "BANDERA" -> BitmapDescriptorFactory.HUE_ORANGE
-        "COMBINED", "ASD_DEMORA" -> BitmapDescriptorFactory.HUE_VIOLET
-        "LOW_ACCURACY", "APPROX", "NETWORK", "FIX_USABLE" -> BitmapDescriptorFactory.HUE_YELLOW
+    val status = point.status.orEmpty().uppercase(Locale.ROOT)
+    val module = point.module.orEmpty().uppercase(Locale.ROOT)
+    val title = point.title.uppercase(Locale.ROOT)
+    val text = "$status $module $title"
+    return when {
+        text.contains("START") || text.contains("INICIO RECORRIDO") || text.contains("AD/INICIO") -> BitmapDescriptorFactory.HUE_GREEN
+        text.contains("END") || text.contains("FIN") || text.contains("FINAL") || text.contains("AD/FINAL") -> BitmapDescriptorFactory.HUE_RED
+        text.contains("ASD_EVENT_START") || text.contains("WP") -> BitmapDescriptorFactory.HUE_VIOLET
+        text.contains("COMBINED") || text.contains("ASD_DEMORA") -> BitmapDescriptorFactory.HUE_MAGENTA
+        text.contains("DEMORA") || text.contains("DELAY") || text.contains("BANDERA") || text.contains("CONG") -> BitmapDescriptorFactory.HUE_ORANGE
+        text.contains("ASCENSO") || text.contains("DESCENSO") || text.contains("ASD") || text.contains("EVENTO") || text.contains("AD") -> BitmapDescriptorFactory.HUE_AZURE
+        text.contains("LOW_ACCURACY") || text.contains("APPROX") || text.contains("NETWORK") || text.contains("FIX_USABLE") -> BitmapDescriptorFactory.HUE_YELLOW
+        text.contains("OK") || text.contains("GPS") || text.contains("FUSED") || text.contains("FIX_OK") -> BitmapDescriptorFactory.HUE_GREEN
         else -> BitmapDescriptorFactory.HUE_RED
     }
 }
