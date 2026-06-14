@@ -985,18 +985,92 @@ private fun ExportActionsCard(
     Card {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium)
+            
+            HorizontalDivider()
+            Text("ENTREGABLE CLIENTE", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             Button(onClick = onExportClientXlsx, modifier = Modifier.fillMaxWidth()) {
                 Text("EXCEL CLIENTE")
             }
-            OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("CSV FINAL") }
+            
+            HorizontalDivider()
+            Text("AUDITORÍA INTERNA", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            OutlinedButton(onClick = onExportGpsAudit, modifier = Modifier.fillMaxWidth()) { Text("AUDITORÍA GPS") }
+            OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("TRACK CSV") }
+            
+            HorizontalDivider()
+            Text("GEO", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("KML") }
             OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("GPX") }
-            OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("TRACK CSV") }
-            OutlinedButton(onClick = onExportGpsAudit, modifier = Modifier.fillMaxWidth()) { Text("AUDITORÍA GPS") }
+            
+            HorizontalDivider()
+            Text("LEGADO", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("CSV FINAL") }
         }
     }
 }
-@Composable private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) { val up = event.paxMenUp + event.paxWomenUp; val down = event.paxMenDown + event.paxWomenDown; Card { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("${event.stopType} • ${fmt.format(Date(event.timestamp))}", style = MaterialTheme.typography.titleSmall); if (!event.stopName.isNullOrBlank()) Text("PARADA: ${event.stopName}"); Text("SUBEN: $up (H:${event.paxMenUp} M:${event.paxWomenUp})"); Text("BAJAN: $down (H:${event.paxMenDown} M:${event.paxWomenDown})"); Text("DEMORAS: ${event.delayCodes ?: "-"}"); Text("MALETA/BULTO: ${if (event.hasLuggage) "SÍ" else "NO"}"); if (!event.notes.isNullOrBlank()) Text("NOTAS: ${event.notes}"); Text("WP INICIO: ${event.waypointStopId} • WP CIERRE: ${event.waypointStartId}"); if (event.stopLat != 0.0 || event.stopLon != 0.0) Text("GPS: ${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}M)") else Text("GPS: PENDIENTE") } } }
+@Composable
+private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) {
+    val up = event.paxMenUp + event.paxWomenUp
+    val down = event.paxMenDown + event.paxWomenDown
+    val hasPax = up > 0 || down > 0
+    val hasDelay = !event.delayCodes.isNullOrBlank() || event.stopType.uppercase(Locale("es", "MX")) in setOf("DEMORA", "BANDERA", "DELAY")
+    
+    val friendlyType = when {
+        hasPax && hasDelay -> "ASD + DEMORA"
+        hasDelay -> "DEMORA"
+        else -> "ASCENSO / DESCENSO / ASD"
+    }
+
+    Card {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    "WP ${event.waypointStopId} → ${event.waypointStartId}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    friendlyType,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            
+            Text(fmt.format(Date(event.timestamp)), style = MaterialTheme.typography.bodyMedium)
+
+            if (!event.stopName.isNullOrBlank()) {
+                Text("PARADA: ${event.stopName}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Suben: $up", style = MaterialTheme.typography.bodyMedium)
+                Text("Bajan: $down", style = MaterialTheme.typography.bodyMedium)
+            }
+            
+            Text("Detalle: (H:${event.paxMenUp} M:${event.paxWomenUp}) | (H:${event.paxMenDown} M:${event.paxWomenDown})", style = MaterialTheme.typography.bodySmall)
+
+            if (!event.delayCodes.isNullOrBlank()) {
+                Text("DEMORAS: ${event.delayCodes}", style = MaterialTheme.typography.bodySmall)
+            }
+
+            Text("MALETA/BULTO: ${if (event.hasLuggage) "SÍ" else "NO"}", style = MaterialTheme.typography.bodySmall)
+
+            if (!event.notes.isNullOrBlank()) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text("Observaciones:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(event.notes, style = MaterialTheme.typography.bodySmall)
+            }
+
+            val gpsText = if (event.stopLat != 0.0 || event.stopLon != 0.0) {
+                "${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}m)"
+            } else {
+                "PENDIENTE"
+            }
+            Text("GPS: $gpsText", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+        }
+    }
+}
 
 private fun buildGpsQualitySummary(points: List<TrackPoint>): String {
     if (points.isEmpty()) return "-"
