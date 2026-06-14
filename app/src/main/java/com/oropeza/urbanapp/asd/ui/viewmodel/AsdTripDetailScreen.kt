@@ -678,71 +678,287 @@ private fun InlineAsdCaptureCard(
     val totalUp = menUp + womenUp
     val totalDown = menDown + womenDown
     val estimatedOnBoard = (currentOnBoard + totalUp - totalDown).coerceAtLeast(0)
-    val delayCodes = listOf("C", "S", "TM", "CND", "VI", "VD", "PP", "CONG", "O")
+    
     val green = Color(0xFF2E7D32)
     val red = Color(0xFFC62828)
 
-    Card(border = if (isDelayActive) BorderStroke(2.dp, green) else null) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Text("CAPTURA EN CAMPO", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Text(if (isDelayActive) "ACTIVO ${formatElapsed(activeElapsedSec)}" else "LISTO", color = if (isDelayActive) green else Color.Unspecified, fontWeight = FontWeight.Bold)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = onCloseDelay, modifier = Modifier.weight(1f), enabled = !isEnded && isDelayActive, colors = ButtonDefaults.buttonColors(containerColor = green)) { Text("GUARDAR Y CERRAR") }
-                Button(onClick = onCancelDelay, modifier = Modifier.weight(1f), enabled = !isEnded && isDelayActive, colors = ButtonDefaults.buttonColors(containerColor = red)) { Text("ABORTAR") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                SummaryMetric("SUBEN", totalUp.toString(), Modifier.weight(1f))
-                SummaryMetric("BAJAN", totalDown.toString(), Modifier.weight(1f))
-                SummaryMetric("A BORDO", estimatedOnBoard.toString(), Modifier.weight(1f), isError = exceedsCapacity)
-            }
-            Text("A BORDO: H ${menOnBoard + menUp - menDown} • M ${womenOnBoard + womenUp - womenDown}", style = MaterialTheme.typography.bodySmall, color = if (menDown > maxMenDown || womenDown > maxWomenDown) MaterialTheme.colorScheme.error else Color.Unspecified)
-            if (exceedsCapacity) Text("⚠ SUPERA CAPACIDAD (${seatCapacity ?: 0})", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-            
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            
-            Text("SUBEN", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                CounterBox("👨 HOMBRES", menUp, onMenUpChange, Modifier.weight(1f))
-                CounterBox("👩 MUJERES", womenUp, onWomenUpChange, Modifier.weight(1f))
-            }
-            
-            Text("BAJAN", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                CounterBox("👨 HOMBRES", menDown, onMenDownChange, Modifier.weight(1f), maxValue = maxMenDown)
-                CounterBox("👩 MUJERES", womenDown, onWomenDownChange, Modifier.weight(1f), maxValue = maxWomenDown)
-            }
-            
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            
-            Text("DEMORAS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            DelayCodeGrid(delayCodes, selectedDelayCodes, onToggleDelayCode)
-            Text("C=CONGESTIÓN, S=SEMAFORIZACIÓN, TM=TRÁFICO MIXTO, VI=VUELTA IZQUIERDA, VD=VUELTA DERECHA, PP=PASE PEATONAL.", style = MaterialTheme.typography.bodySmall)
-            if (selectedDelayCodes.contains("O")) UpperNextTextField(otherDelayDesc, onOtherDelayDescChange, "DESCRIPCIÓN DE OTRO", singleLine = true)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange)
-                Text("MALETA / BULTO")
-            }
-            UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
-            UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
-            val gpsStatus = lastPoint?.let {
-                when {
-                    it.accM <= 10 -> "🟢 GPS EXCELENTE ±${it.accM.toInt()}m"
-                    it.accM <= 25 -> "🟢 GPS BUENO ±${it.accM.toInt()}m"
-                    it.accM <= 45 -> "🟡 GPS USABLE ±${it.accM.toInt()}m"
-                    else -> "🔴 GPS DÉBIL ±${it.accM.toInt()}m"
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        border = if (isDelayActive) BorderStroke(2.dp, green) else null,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // HEADER
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text("CAPTURA EN CAMPO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        if (isDelayActive) "REGISTRO ACTIVO • ${formatElapsed(activeElapsedSec)}" else "LISTO PARA INICIAR",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isDelayActive) green else MaterialTheme.colorScheme.outline,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-            } ?: "🔴 GPS PENDIENTE"
-
-            Text(
-                gpsStatus,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f), enabled = !isEnded && !isDelayActive) { Text("LIMPIAR") }
-                Button(onClick = onSave, modifier = Modifier.weight(1f), enabled = !isEnded, colors = ButtonDefaults.buttonColors(containerColor = green)) { Text(if (isDelayActive) "GUARDAR REGISTRO" else "INICIAR REGISTRO") }
+                if (isDelayActive) {
+                    IconButton(onClick = onCancelDelay, modifier = Modifier.size(32.dp)) {
+                        Text("✕", color = red, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                    }
+                }
             }
+
+            // TOP BUTTONS
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = onSave,
+                    modifier = Modifier.weight(1f),
+                    enabled = !isEnded,
+                    colors = ButtonDefaults.buttonColors(containerColor = green),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                ) {
+                    Text(if (isDelayActive) "GUARDAR REGISTRO" else "INICIAR REGISTRO", fontWeight = FontWeight.Bold)
+                }
+                if (isDelayActive) {
+                    OutlinedButton(
+                        onClick = onCancelDelay,
+                        modifier = Modifier.weight(0.4f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = red),
+                        border = BorderStroke(1.dp, red),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                    ) {
+                        Text("ABORTAR", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+
+            // RESUMEN METRICS
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                ProMetric("SUBEN", totalUp.toString(), Modifier.weight(1f), color = green)
+                ProMetric("BAJAN", totalDown.toString(), Modifier.weight(1f), color = red)
+                ProMetric("A BORDO", estimatedOnBoard.toString(), Modifier.weight(1f), isError = exceedsCapacity)
+            }
+
+            if (exceedsCapacity) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "⚠ SUPERA CAPACIDAD (${seatCapacity ?: 0})",
+                        modifier = Modifier.padding(8.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            // SECCION SUBEN
+            PassengerSection(
+                title = "SUBEN",
+                total = totalUp,
+                menValue = menUp,
+                womenValue = womenUp,
+                onMenChange = onMenUpChange,
+                onWomenChange = onWomenUpChange,
+                accentColor = green
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            // SECCION BAJAN
+            PassengerSection(
+                title = "BAJAN",
+                total = totalDown,
+                menValue = menDown,
+                womenValue = womenDown,
+                onMenChange = onMenDownChange,
+                onWomenChange = onWomenDownChange,
+                accentColor = red,
+                maxMen = maxMenDown,
+                maxWomen = maxWomenDown
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            // SECCION DEMORAS
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("DEMORAS", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    DelayTile("🚦", "SEMÁFORO", "S", selectedDelayCodes.contains("S"), onToggleDelayCode)
+                    DelayTile("🚗", "CONGESTIÓN", "C", selectedDelayCodes.contains("C"), onToggleDelayCode)
+                    DelayTile("🚌", "TRÁFICO MIXTO", "TM", selectedDelayCodes.contains("TM"), onToggleDelayCode)
+                    DelayTile("🚧", "COND. VIAL", "CND", selectedDelayCodes.contains("CND"), onToggleDelayCode)
+                    DelayTile("↩", "VUELTA IZQ", "VI", selectedDelayCodes.contains("VI"), onToggleDelayCode)
+                    DelayTile("↪", "VUELTA DER", "VD", selectedDelayCodes.contains("VD"), onToggleDelayCode)
+                    DelayTile("🚶", "PEATONAL", "PP", selectedDelayCodes.contains("PP"), onToggleDelayCode)
+                    DelayTile("⛔", "OTRO", "O", selectedDelayCodes.contains("O"), onToggleDelayCode)
+                }
+                
+                if (selectedDelayCodes.contains("O")) {
+                    UpperNextTextField(otherDelayDesc, onOtherDelayDescChange, "DESCRIPCIÓN DE OTRO", singleLine = true)
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            // OBSERVACIONES Y EXTRA
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("OBSERVACIONES", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange)
+                    Text("MALETA / BULTO", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.weight(1f))
+                }
+
+                UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
+                UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
+                
+                val gpsStatus = lastPoint?.let {
+                    when {
+                        it.accM <= 10 -> "🟢 GPS EXCELENTE ±${it.accM.toInt()}m"
+                        it.accM <= 25 -> "🟢 GPS BUENO ±${it.accM.toInt()}m"
+                        it.accM <= 45 -> "🟡 GPS USABLE ±${it.accM.toInt()}m"
+                        else -> "🔴 GPS DÉBIL ±${it.accM.toInt()}m"
+                    }
+                } ?: "🔴 GPS PENDIENTE"
+
+                Text(gpsStatus, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+            }
+
+            // BOTTOM BUTTON
+            Button(
+                onClick = onSave,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                enabled = !isEnded,
+                colors = ButtonDefaults.buttonColors(containerColor = green),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+            ) {
+                Text("GUARDAR REGISTRO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            
+            if (!isDelayActive) {
+                OutlinedButton(
+                    onClick = onClear,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isEnded,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                ) {
+                    Text("LIMPIAR CAMPOS")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProMetric(label: String, value: String, modifier: Modifier = Modifier, isError: Boolean = false, color: Color? = null) {
+    val displayColor = if (isError) MaterialTheme.colorScheme.error else color ?: MaterialTheme.colorScheme.onSurface
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        border = if (isError) BorderStroke(1.dp, MaterialTheme.colorScheme.error) else null
+    ) {
+        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = displayColor)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = displayColor.copy(alpha = 0.8f))
+        }
+    }
+}
+
+@Composable
+private fun PassengerSection(
+    title: String,
+    total: Int,
+    menValue: Int,
+    womenValue: Int,
+    onMenChange: (Int) -> Unit,
+    onWomenChange: (Int) -> Unit,
+    accentColor: Color,
+    maxMen: Int? = null,
+    maxWomen: Int? = null
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text("TOTAL: $total", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = accentColor)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PassengerCounterCard("👨 HOMBRES", menValue, onMenChange, Modifier.weight(1f), accentColor, maxMen)
+            PassengerCounterCard("👩 MUJERES", womenValue, onWomenChange, Modifier.weight(1f), accentColor, maxWomen)
+        }
+    }
+}
+
+@Composable
+private fun PassengerCounterCard(
+    label: String,
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    accentColor: Color,
+    maxValue: Int? = null
+) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    ) {
+        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Text(value.toString(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = accentColor)
+            
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                CounterBtn("-1", { onValueChange(value - 1) }, value > 0)
+                CounterBtn("+1", { onValueChange(value + 1) }, maxValue == null || value < maxValue)
+                CounterBtn("+2", { onValueChange(value + 2) }, maxValue == null || value + 1 < maxValue)
+                CounterBtn("+5", { onValueChange(value + 5) }, maxValue == null || value + 4 < maxValue)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CounterBtn(text: String, onClick: () -> Unit, enabled: Boolean) {
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.widthIn(min = 36.dp).height(32.dp),
+        contentPadding = PaddingValues(0.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+    ) {
+        Text(text, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun DelayTile(icon: String, label: String, code: String, isSelected: Boolean, onToggle: (String) -> Unit) {
+    val color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    
+    Surface(
+        onClick = { onToggle(code) },
+        color = color,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        border = if (!isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+        modifier = Modifier.height(44.dp)
+    ) {
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(icon)
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = contentColor)
         }
     }
 }
