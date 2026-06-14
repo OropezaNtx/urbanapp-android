@@ -30,6 +30,13 @@ interface TripDao {
         updateNextWaypoint(tripId, base + 2)
         return WaypointPair(inId = base, outId = base + 1)
     }
+
+    @Transaction
+    suspend fun reserveSingleWaypoint(tripId: Long): WaypointPair {
+        val base = getNextWaypoint(tripId)
+        updateNextWaypoint(tripId, base + 1)
+        return WaypointPair(inId = base, outId = base)
+    }
 }
 
 @Dao
@@ -199,69 +206,6 @@ interface FovObservationDao {
     @Query("SELECT * FROM FovObservation WHERE sessionId = :sessionId ORDER BY timeMs ASC")
     fun getBySession(sessionId: Long): Flow<List<FovObservation>>
 
-    @Query("SELECT * FROM FovObservation WHERE sessionId = :sessionId ORDER BY timeMs ASC")
-    suspend fun getBySessionOnce(sessionId: Long): List<FovObservation>
-
     @Query("SELECT MAX(seqInSession) FROM FovObservation WHERE sessionId = :sessionId")
     suspend fun getMaxSeq(sessionId: Long): Int?
-
-    @Query("SELECT * FROM FovObservation WHERE folio = :folio LIMIT 1")
-    suspend fun getByFolioOnce(folio: String): FovObservation?
-}
-
-@Dao
-interface FovRouteMasterDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(item: FovRouteMaster): Long
-
-    @Query("SELECT * FROM FovRouteMaster WHERE routeUid = :uid LIMIT 1")
-    suspend fun getByUidOnce(uid: String): FovRouteMaster?
-
-    @Query("""
-        SELECT * FROM FovRouteMaster
-        WHERE ruta LIKE '%' || :q || '%'
-           OR numeroRutaEmpresa LIKE '%' || :q || '%'
-           OR derroteroLetrero LIKE '%' || :q || '%'
-        ORDER BY ruta ASC
-        LIMIT 200
-    """)
-    suspend fun searchOnce(q: String): List<FovRouteMaster>
-}
-
-data class FovSessionRow(
-    @Embedded val s: FovSession,
-    val catalogCount: Int
-)
-
-@Dao
-interface FovSessionDao {
-    @Insert suspend fun insert(s: FovSession): Long
-
-    @Query("SELECT * FROM FovSession ORDER BY createdAt DESC")
-    fun getAll(): Flow<List<FovSession>>
-
-    @Query("""
-        SELECT 
-          s.*,
-          COALESCE(c.cnt, 0) AS catalogCount
-        FROM FovSession s
-        LEFT JOIN (
-          SELECT poiKey, COUNT(*) AS cnt
-          FROM FovPoiCatalogItem
-          WHERE active = 1
-          GROUP BY poiKey
-        ) c
-        ON c.poiKey = s.poiKey
-        ORDER BY s.createdAt DESC
-    """)
-    fun getAllWithCatalogCount(): Flow<List<FovSessionRow>>
-
-    @Query("SELECT * FROM FovSession WHERE sessionId = :id LIMIT 1")
-    fun getById(id: Long): Flow<FovSession?>
-
-    @Query("SELECT * FROM FovSession WHERE sessionId = :id LIMIT 1")
-    suspend fun getByIdOnce(id: Long): FovSession?
-
-    @Query("UPDATE FovSession SET endedAt = :endedAt WHERE sessionId = :sessionId")
-    suspend fun endSession(sessionId: Long, endedAt: Long): Int
 }
