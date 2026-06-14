@@ -18,6 +18,7 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.*
 import com.oropeza.urbanapp.BuildConfig
+import java.util.Locale
 import kotlin.math.roundToLong
 
 @Composable
