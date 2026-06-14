@@ -20,6 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -789,12 +790,15 @@ private fun InlineAsdCaptureCard(
     val estimatedOnBoard = (currentOnBoard + totalUp - totalDown).coerceAtLeast(0)
     
     val greenAcc = Color(0xFF35D36B)
-    val blueAcc = Color(0xFF2D9CFF)
     val redAcc = Color(0xFFFF4B4B)
-    val pinkAcc = Color(0xFFFF69B4)
     val cardBg = Color(0xFF0D1716)
     val cardBorder = Color(0xFF223A36)
     val internalBg = Color(0xFF101C1A)
+
+    val maleColor = Color(0xFF3B82F6)
+    val femaleColor = Color(0xFFEC4899)
+    val boardColor = Color(0xFF22C55E)
+    val alightColor = Color(0xFFEF4444)
 
     var showStopField by rememberSaveable { mutableStateOf(false) }
     var showNotesField by rememberSaveable { mutableStateOf(false) }
@@ -802,29 +806,41 @@ private fun InlineAsdCaptureCard(
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, if (isDelayActive) greenAcc else cardBorder),
+        border = if (isDelayActive) BorderStroke(4.dp, Color(0xFF33E676)) else BorderStroke(1.dp, cardBorder),
         colors = CardDefaults.cardColors(containerColor = cardBg)
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             // HEADER ACTION CARD
+            val activeGreen = Color(0xFF33E676)
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 72.dp, max = 86.dp)
+                    .then(
+                        if (isDelayActive) {
+                            Modifier.shadow(
+                                elevation = 8.dp,
+                                spotColor = activeGreen,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                            )
+                        } else Modifier
+                    ),
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = internalBg),
-                border = BorderStroke(1.dp, if (isDelayActive) greenAcc.copy(alpha = 0.5f) else cardBorder)
+                border = BorderStroke(if (isDelayActive) 4.dp else 1.dp, if (isDelayActive) activeGreen else cardBorder)
             ) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(14.dp).background(if (isDelayActive) greenAcc else Color.Gray, androidx.compose.foundation.shape.CircleShape))
+                    Box(modifier = Modifier.size(12.dp).background(if (isDelayActive) greenAcc else Color.Gray, androidx.compose.foundation.shape.CircleShape))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (isDelayActive) "REGISTRO ACTIVO" else "LISTO PARA CAPTURA",
+                            if (isDelayActive) "ACTIVO" else "LISTO",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isDelayActive) greenAcc else Color.White
                         )
                         Text(
-                            if (isDelayActive) "Captura en curso · ${formatElapsed(activeElapsedSec)}" else "Presiona +1, +5 o una demora para iniciar automáticamente",
+                            if (isDelayActive) formatElapsed(activeElapsedSec) else "Captura automática",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.7f)
                         )
@@ -850,8 +866,8 @@ private fun InlineAsdCaptureCard(
 
             // METRICS
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                ProMetric("SUBEN", totalUp.toString(), Modifier.weight(1f), color = greenAcc)
-                ProMetric("BAJAN", totalDown.toString(), Modifier.weight(1f), color = redAcc)
+                ProMetric("SUBEN", totalUp.toString(), Modifier.weight(1f), color = boardColor)
+                ProMetric("BAJAN", totalDown.toString(), Modifier.weight(1f), color = alightColor)
                 ProMetric("A BORDO", estimatedOnBoard.toString(), Modifier.weight(1f), isError = exceedsCapacity)
             }
 
@@ -867,24 +883,54 @@ private fun InlineAsdCaptureCard(
             }
 
             // ON BOARD COMPACT BANDS
-            Card(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = internalBg),
-                border = BorderStroke(1.dp, cardBorder)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(Modifier.padding(vertical = 6.dp, horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    Surface(modifier = Modifier.size(20.dp), shape = androidx.compose.foundation.shape.CircleShape, color = blueAcc.copy(alpha = 0.2f)) {
-                        Box(contentAlignment = Alignment.Center) { Text("H", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = blueAcc) }
+                // HOMBRES
+                Card(
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = BorderStroke(2.5.dp, maleColor)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(modifier = Modifier.size(20.dp), shape = androidx.compose.foundation.shape.CircleShape, color = maleColor.copy(alpha = 0.2f)) {
+                                Box(contentAlignment = Alignment.Center) { Text("H", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = maleColor) }
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text("HOMBRES", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        Text("${menOnBoard + menUp - menDown}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = maleColor)
                     }
-                    Text(" HOMBRES ${menOnBoard + menUp - menDown}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                    Spacer(Modifier.width(16.dp))
-                    Box(Modifier.width(1.dp).height(12.dp).background(cardBorder))
-                    Spacer(Modifier.width(16.dp))
-                    Surface(modifier = Modifier.size(20.dp), shape = androidx.compose.foundation.shape.CircleShape, color = pinkAcc.copy(alpha = 0.2f)) {
-                        Box(contentAlignment = Alignment.Center) { Text("M", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = pinkAcc) }
+                }
+
+                // MUJERES
+                Card(
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    border = BorderStroke(2.5.dp, femaleColor)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(modifier = Modifier.size(20.dp), shape = androidx.compose.foundation.shape.CircleShape, color = femaleColor.copy(alpha = 0.2f)) {
+                                Box(contentAlignment = Alignment.Center) { Text("M", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = femaleColor) }
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text("MUJERES", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        Text("${womenOnBoard + womenUp - womenDown}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = femaleColor)
                     }
-                    Text(" MUJERES ${womenOnBoard + womenUp - womenDown}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
 
@@ -897,8 +943,11 @@ private fun InlineAsdCaptureCard(
                 womenValue = womenUp,
                 onMenChange = onMenUpChange,
                 onWomenChange = onWomenUpChange,
-                accentColor = greenAcc,
-                isSuben = true
+                accentColor = boardColor,
+                maxMen = null,
+                maxWomen = null,
+                maleColor = maleColor,
+                femaleColor = femaleColor
             )
 
             // BAJAN
@@ -910,10 +959,11 @@ private fun InlineAsdCaptureCard(
                 womenValue = womenDown,
                 onMenChange = onMenDownChange,
                 onWomenChange = onWomenDownChange,
-                accentColor = blueAcc,
-                isSuben = false,
+                accentColor = alightColor,
                 maxMen = maxMenDown,
-                maxWomen = maxWomenDown
+                maxWomen = maxWomenDown,
+                maleColor = maleColor,
+                femaleColor = femaleColor
             )
 
             // SECCION DEMORAS
@@ -1026,7 +1076,7 @@ private fun InlineAsdCaptureCard(
                     colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
                 ) {
-                    Text("GUARDAR REGISTRO", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                    Text("GUARDAR", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.ExtraBold, color = Color.Black)
                 }
             }
 
@@ -1071,14 +1121,15 @@ private fun PassengerSection(
     onMenChange: (Int) -> Unit,
     onWomenChange: (Int) -> Unit,
     accentColor: Color,
-    isSuben: Boolean,
     maxMen: Int? = null,
-    maxWomen: Int? = null
+    maxWomen: Int? = null,
+    maleColor: Color,
+    femaleColor: Color
 ) {
     Card(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A)),
-        border = BorderStroke(1.dp, Color(0xFF1E3834)),
+        border = BorderStroke(3.dp, accentColor),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1093,7 +1144,7 @@ private fun PassengerSection(
                     value = menValue,
                     onValueChange = onMenChange,
                     modifier = Modifier.weight(1f),
-                    accentColor = if (isSuben) Color(0xFF35D36B) else Color(0xFF2D9CFF),
+                    accentColor = maleColor,
                     maxValue = maxMen,
                     isWoman = false
                 )
@@ -1102,7 +1153,7 @@ private fun PassengerSection(
                     value = womenValue,
                     onValueChange = onWomenChange,
                     modifier = Modifier.weight(1f),
-                    accentColor = Color(0xFFFF69B4),
+                    accentColor = femaleColor,
                     maxValue = maxWomen,
                     isWoman = true
                 )
@@ -1123,17 +1174,21 @@ private fun PassengerCounterCard(
 ) {
     val isAlert = maxValue != null && maxValue <= 0
     val redAcc = Color(0xFFFF4B4B)
+    val alertCol = Color(0xFFFF5252)
     val cardBg = if (isAlert) Color(0xFF1A0F0F) else Color(0xFF101C1A)
-    val cardBorder = if (isAlert) redAcc else Color(0xFF203B37)
     val displayValColor = if (isAlert) redAcc else accentColor
 
     Surface(
-        modifier = modifier,
+        modifier = modifier.heightIn(min = 150.dp, max = 170.dp),
         color = cardBg,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, cardBorder)
+        border = BorderStroke(if (isAlert) 3.dp else 2.5.dp, if (isAlert) alertCol else accentColor)
     ) {
-        Column(Modifier.padding(vertical = 10.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 Surface(modifier = Modifier.size(18.dp), shape = androidx.compose.foundation.shape.CircleShape, color = accentColor.copy(alpha = 0.2f)) {
                     Box(contentAlignment = Alignment.Center) {
@@ -1141,7 +1196,7 @@ private fun PassengerCounterCard(
                     }
                 }
                 Spacer(Modifier.width(6.dp))
-                Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
+                Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = accentColor)
             }
             
             Text(value.toString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = displayValColor)
@@ -1150,17 +1205,16 @@ private fun PassengerCounterCard(
                 Text(if (isWoman) "Sin pasajeras disponibles" else "Sin pasajeros disponibles", style = MaterialTheme.typography.labelSmall, color = redAcc, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                ProCounterButton("-1", { onValueChange(value - 1) }, value > 0 && !isAlert, isRed = true)
-                ProCounterButton("+1", { onValueChange(value + 1) }, maxValue == null || value < maxValue)
-                ProCounterButton("+5", { onValueChange(value + 5) }, maxValue == null || value + 4 < maxValue)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                ProCounterButton("-1", { onValueChange(value - 1) }, value > 0 && !isAlert, isRed = true, modifier = Modifier.weight(1f))
+                ProCounterButton("+1", { onValueChange(value + 1) }, maxValue == null || value < maxValue, modifier = Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun ProCounterButton(text: String, onClick: () -> Unit, enabled: Boolean, isRed: Boolean = false) {
+private fun ProCounterButton(text: String, onClick: () -> Unit, enabled: Boolean, isRed: Boolean = false, modifier: Modifier = Modifier) {
     val haptic = LocalHapticFeedback.current
     val borderCol = if (isRed) Color(0xFFFF4B4B) else if (enabled) Color(0xFF1E8E4D) else Color(0xFF1E8E4D).copy(alpha = 0.15f)
     val textCol = if (isRed) Color(0xFFFF6B6B) else if (enabled) Color(0xFF4DFF91) else Color(0xFF4DFF91).copy(alpha = 0.2f)
@@ -1171,10 +1225,10 @@ private fun ProCounterButton(text: String, onClick: () -> Unit, enabled: Boolean
             onClick()
         },
         enabled = enabled,
-        modifier = Modifier.width(64.dp).height(44.dp),
+        modifier = modifier.height(48.dp),
         contentPadding = PaddingValues(0.dp),
         border = BorderStroke(1.dp, borderCol),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(text, style = androidx.compose.ui.text.TextStyle(fontSize = 14.sp), fontWeight = FontWeight.Bold, color = textCol)
