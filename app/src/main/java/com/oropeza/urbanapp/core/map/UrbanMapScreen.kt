@@ -294,13 +294,13 @@ private fun coordinateKey(lat: Double, lon: Double): String {
 }
 
 private fun markerHueFor(point: UrbanMapPoint): Float {
-    return when (point.status?.uppercase()) {
-        "OK", "GPS", "FUSED", "FIX_OK" -> BitmapDescriptorFactory.HUE_GREEN
-        "ASCENSO" -> BitmapDescriptorFactory.HUE_AZURE
-        "DESCENSO" -> BitmapDescriptorFactory.HUE_ORANGE
-        "BANDERA" -> BitmapDescriptorFactory.HUE_VIOLET
+    return when (point.status?.uppercase(Locale.ROOT)) {
+        "START", "INICIO", "OK", "GPS", "FUSED", "FIX_OK" -> BitmapDescriptorFactory.HUE_GREEN
+        "END", "FIN", "FINAL", "NO_FIX", "INVALID" -> BitmapDescriptorFactory.HUE_RED
+        "ASCENSO", "DESCENSO", "ASD", "EVENTO", "AD" -> BitmapDescriptorFactory.HUE_AZURE
+        "DEMORA", "DELAY", "BANDERA" -> BitmapDescriptorFactory.HUE_ORANGE
+        "COMBINED", "ASD_DEMORA" -> BitmapDescriptorFactory.HUE_VIOLET
         "LOW_ACCURACY", "APPROX", "NETWORK", "FIX_USABLE" -> BitmapDescriptorFactory.HUE_YELLOW
-        "NO_FIX", "INVALID" -> BitmapDescriptorFactory.HUE_RED
         else -> BitmapDescriptorFactory.HUE_RED
     }
 }
