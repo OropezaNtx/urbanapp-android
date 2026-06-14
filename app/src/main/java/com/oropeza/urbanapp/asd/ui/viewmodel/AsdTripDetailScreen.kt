@@ -405,16 +405,42 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         scope.launch {
             try {
                 loadingGps = true
-                gpsMsg = "Cerrando viaje… fijando ubicación final"
-                val fix = gps.getBestFixForEvent(
-                    targetAccM = 8.0,
-                    fallbackAccM = 15.0,
-                    timeoutMs = 3_000L,
-                    highAccuracy = true
-                )
+                gpsMsg = "Cerrando viaje…"
+
+                val now = System.currentTimeMillis()
+                val recentPoint = lastPoint?.takeIf {
+                    it.lat != 0.0 &&
+                            it.lon != 0.0 &&
+                            now - it.timeMs <= 10_000L &&
+                            it.accM <= 25.0
+                }
+
+                val fix = if (recentPoint != null) {
+                    LocationFix(
+                        lat = recentPoint.lat,
+                        lon = recentPoint.lon,
+                        accM = recentPoint.accM,
+                        provider = recentPoint.provider,
+                        fixTime = recentPoint.timeMs,
+                        status = "GPS_LAST_FAST_CLOSE"
+                    )
+                } else {
+                    gpsMsg = "Cerrando viaje… buscando GPS rápido"
+                    gps.getBestFixForEvent(
+                        targetAccM = 10.0,
+                        fallbackAccM = 25.0,
+                        timeoutMs = 1_500L,
+                        highAccuracy = true
+                    )
+                }
+
                 val ok = vm.endTripWithFix(tripId, fix)
                 stopTrackingService()
-                snackbarText = if (ok) "Viaje cerrado ✅ (${fix.status}) acc=±${fix.accM.toInt()}m" else "No se pudo cerrar el viaje."
+                snackbarText = if (ok) {
+                    "Viaje cerrado ✅ (${fix.status}) acc=±${fix.accM.toInt()}m"
+                } else {
+                    "No se pudo cerrar el viaje."
+                }
             } catch (e: Exception) {
                 snackbarText = e.message ?: "Error al cerrar viaje."
             } finally {
