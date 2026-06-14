@@ -13,6 +13,7 @@ import org.apache.poi.ss.usermodel.FillPatternType
 import org.apache.poi.ss.usermodel.HorizontalAlignment
 import org.apache.poi.ss.usermodel.IndexedColors
 import org.apache.poi.ss.usermodel.Workbook
+import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -48,12 +49,22 @@ object AsdClientXlsxExporter {
 
     private fun createResumenSheet(wb: Workbook, styles: Styles, trip: Trip, events: List<StopEvent>, trackPoints: List<TrackPoint>) {
         val sheet = wb.createSheet("Resumen")
-        var r = 0
-        sheet.createRow(r++).apply {
-            createCell(0).setCellValue("URBAN APP - REPORTE ASD")
+        sheet.addMergedRegion(CellRangeAddress(0, 0, 0, 3))
+        sheet.addMergedRegion(CellRangeAddress(1, 1, 0, 3))
+        sheet.createRow(0).apply {
+            createCell(0).setCellValue("URBAN APP")
+            getCell(0).cellStyle = styles.brand
+        }
+        sheet.createRow(1).apply {
+            createCell(0).setCellValue("REPORTE PROFESIONAL ASD")
             getCell(0).cellStyle = styles.title
         }
-        r++
+        var r = 3
+        fun section(title: String) {
+            val row = sheet.createRow(r++)
+            row.createCell(0).setCellValue(title)
+            row.getCell(0).cellStyle = styles.section
+        }
         fun item(label: String, value: String) {
             val row = sheet.createRow(r++)
             row.createCell(0).setCellValue(label)
@@ -61,6 +72,10 @@ object AsdClientXlsxExporter {
             row.getCell(0).cellStyle = styles.header
             row.getCell(1).cellStyle = styles.value
         }
+        val boardings = events.sumOf { it.paxMenUp + it.paxWomenUp }
+        val alightings = events.sumOf { it.paxMenDown + it.paxWomenDown }
+        val delays = events.count { it.hasDelay() }
+        section("Datos del recorrido")
         item("Ruta", trip.routeName)
         item("Empresa", trip.company.orDash())
         item("Sentido", trip.direction)
@@ -71,16 +86,22 @@ object AsdClientXlsxExporter {
         item("Inicio", dtf.format(Date(trip.startTime)))
         item("Fin", trip.endTime?.let { dtf.format(Date(it)) } ?: "EN CURSO")
         item("Capacidad", trip.seatCapacity?.toString() ?: "-")
-        item("Eventos", events.size.toString())
-        item("Ascensos", events.sumOf { it.paxMenUp + it.paxWomenUp }.toString())
-        item("Descensos", events.sumOf { it.paxMenDown + it.paxWomenDown }.toString())
-        item("Demoras", events.count { it.hasDelay() }.toString())
-        item("Puntos GPS", trackPoints.size.toString())
+        r++
+        section("Resumen ejecutivo")
+        item("Eventos registrados", events.size.toString())
+        item("Ascensos", boardings.toString())
+        item("Descensos", alightings.toString())
+        item("Demoras", delays.toString())
+        item("Demanda neta", (boardings - alightings).coerceAtLeast(0).toString())
         item("Distancia GPS", formatDistance(distanceMeters(trackPoints)))
+        item("Puntos GPS", trackPoints.size.toString())
         item("Precisión promedio", avgAccuracyText(trackPoints))
+        item("Calidad GPS", gpsClientQuality(trackPoints))
         item("Observaciones", trip.notes.orDash())
-        sheet.setColumnWidth(0, 24 * 256)
-        sheet.setColumnWidth(1, 42 * 256)
+        sheet.setColumnWidth(0, 26 * 256)
+        sheet.setColumnWidth(1, 48 * 256)
+        sheet.setColumnWidth(2, 18 * 256)
+        sheet.setColumnWidth(3, 18 * 256)
     }
 
     private fun createEventosSheet(wb: Workbook, styles: Styles, events: List<StopEvent>) {
@@ -152,6 +173,7 @@ object AsdClientXlsxExporter {
     private fun writeHeader(sheet: org.apache.poi.ss.usermodel.Sheet, rowIndex: Int, headers: List<String>, styles: Styles) {
         val row = sheet.createRow(rowIndex)
         headers.forEachIndexed { c, h -> row.createCell(c).setCellValue(h); row.getCell(c).cellStyle = styles.header }
+        sheet.createFreezePane(0, rowIndex + 1)
     }
 
     private fun autosize(sheet: org.apache.poi.ss.usermodel.Sheet, cols: Int) {
@@ -163,9 +185,20 @@ object AsdClientXlsxExporter {
     }
 
     private class Styles(wb: Workbook) {
+        val brand: CellStyle = wb.createCellStyle().apply {
+            alignment = HorizontalAlignment.CENTER
+            fillForegroundColor = IndexedColors.DARK_BLUE.index
+            fillPattern = FillPatternType.SOLID_FOREGROUND
+            val f = wb.createFont(); f.bold = true; f.color = IndexedColors.WHITE.index; f.fontHeightInPoints = 20; setFont(f)
+        }
         val title: CellStyle = wb.createCellStyle().apply {
             alignment = HorizontalAlignment.CENTER
-            val f = wb.createFont(); f.bold = true; f.fontHeightInPoints = 16; setFont(f)
+            val f = wb.createFont(); f.bold = true; f.fontHeightInPoints = 15; setFont(f)
+        }
+        val section: CellStyle = wb.createCellStyle().apply {
+            fillForegroundColor = IndexedColors.GREY_25_PERCENT.index
+            fillPattern = FillPatternType.SOLID_FOREGROUND
+            val f = wb.createFont(); f.bold = true; f.fontHeightInPoints = 12; setFont(f)
         }
         val header: CellStyle = wb.createCellStyle().apply {
             fillForegroundColor = IndexedColors.DARK_BLUE.index
@@ -180,6 +213,15 @@ object AsdClientXlsxExporter {
     private fun String?.orDash(): String = this?.takeIf { it.isNotBlank() } ?: "-"
     private fun simpleGps(lat: Double, lon: Double, acc: Double): String = if (lat != 0.0 || lon != 0.0) "${"%.6f".format(Locale.US, lat)}, ${"%.6f".format(Locale.US, lon)} ±${acc.roundToInt()}m" else "GPS pendiente"
     private fun avgAccuracyText(points: List<TrackPoint>): String = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.average().takeIf { !it.isNaN() }?.let { "±${it.roundToInt()}m" } ?: "-"
+    private fun gpsClientQuality(points: List<TrackPoint>): String {
+        val avg = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.average().takeIf { !it.isNaN() } ?: return "-"
+        return when {
+            avg <= 8.0 -> "Excelente"
+            avg <= 15.0 -> "Buena"
+            avg <= 25.0 -> "Usable"
+            else -> "Débil"
+        }
+    }
     private fun formatDistance(m: Double): String = if (m < 1000.0) "${m.roundToInt()} m" else "${"%.2f".format(Locale.US, m / 1000.0)} km"
     private fun delayLabel(code: String): String = when (code) {
         "C" -> "Congestión"
