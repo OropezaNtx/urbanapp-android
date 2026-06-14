@@ -936,17 +936,21 @@ private fun TrackingStatusCard(
     val diag = remember(lastPoint?.provider) {
         com.oropeza.urbanapp.asd.location.GpsProviderDiagnostics.parse(lastPoint?.provider)
     }
-    val ageText = if (lastAgeMs == Long.MAX_VALUE) "-" else "${lastAgeMs / 1000}s"
-    val qualityText = diag.quality.ifBlank {
-        lastPoint?.let {
-            when {
-                it.accM <= 10.0 -> "EXCELLENT"
-                it.accM <= 25.0 -> "GOOD"
-                it.accM <= 45.0 -> "USABLE"
-                else -> "POOR"
-            }
-        } ?: "-"
+    
+    val ageSec = if (lastAgeMs == Long.MAX_VALUE) null else (lastAgeMs / 1000)
+    val ageText = ageSec?.let { "${it}s" } ?: "-"
+
+    val (statusText, statusColor, score) = when {
+        lastPoint == null -> Triple("⚫ GPS PENDIENTE", Color.Gray, 0)
+        lastPoint.accM <= 10.0 -> {
+            if (lastPoint.accM <= 5.0) Triple("🟢 GPS EXCELENTE", Color(0xFF2E7D32), 100)
+            else Triple("🟢 GPS EXCELENTE", Color(0xFF2E7D32), 90)
+        }
+        lastPoint.accM <= 25.0 -> Triple("🟢 GPS BUENO", Color(0xFF43A047), 75)
+        lastPoint.accM <= 45.0 -> Triple("🟡 GPS USABLE", Color(0xFFFBC02D), 55)
+        else -> Triple("🔴 GPS DÉBIL", Color(0xFFD32F2F), 25)
     }
+
     val qualitySummary = remember(trackPoints) {
         buildGpsQualitySummary(trackPoints)
     }
@@ -954,20 +958,69 @@ private fun TrackingStatusCard(
     Card {
         Column(
             Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("ESTADO DE TRACKING", style = MaterialTheme.typography.titleMedium)
-            Text(if (trackingAlive) "ACTIVO (${ageText})" else "SIN SEÑAL RECIENTE")
-            lastPoint?.let {
-                Text("CALIDAD GPS: $qualityText")
-                Text("PRECISIÓN: ±${it.accM.toInt()} M")
-                Text("MODO: ${diag.mode.ifBlank { "-" }}")
-                Text("FILTRO: ${diag.filter.ifBlank { "-" }}")
-                Text("ESTADO: ${diag.state.ifBlank { "-" }}")
-                Text("PROVEEDOR: ${diag.providerRaw.ifBlank { it.provider }}")
-            } ?: Text("AÚN NO HAY PUNTOS.")
-            Text("PUNTOS: $pointCount")
-            Text("CALIDAD RECORRIDO: $qualitySummary")
+            Text("GPS / TRACKING", style = MaterialTheme.typography.titleMedium)
+            
+            Text(
+                statusText,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = statusColor
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                LinearProgressIndicator(
+                    progress = { score / 100f },
+                    modifier = Modifier.fillMaxWidth().height(8.dp),
+                    color = statusColor,
+                    trackColor = statusColor.copy(alpha = 0.2f)
+                )
+                Text(
+                    "CONFIANZA GPS: $score%",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = statusColor
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row {
+                        Text("Precisión: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(lastPoint?.let { "±${it.accM.toInt()}m" } ?: "-", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row {
+                        Text("Edad: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(ageText, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row {
+                        Text("Puntos: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(pointCount.toString(), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row {
+                        Text("Modo: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(diag.mode.ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row {
+                        Text("Filtro: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(diag.filter.ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row {
+                        Text("Estado: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(diag.state.ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            
+            Text("CALIDAD RECORRIDO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Text(qualitySummary, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
