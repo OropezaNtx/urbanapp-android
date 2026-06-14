@@ -32,6 +32,7 @@ import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.export.CsvExporter
+import com.oropeza.urbanapp.asd.export.AsdClientXlsxExporter
 import com.oropeza.urbanapp.asd.export.GpsAuditCsvExporter
 import com.oropeza.urbanapp.asd.export.GpxExporter
 import com.oropeza.urbanapp.asd.export.KmlExporter
@@ -102,6 +103,14 @@ class AsdTripDetailVM : ViewModel() {
     suspend fun exportLayoutFinal(context: Context, tripId: Long, uri: Uri): Boolean {
         val trip = AsdGraph.repo.getTripOnce(tripId) ?: return false
         CsvExporter.exportLayoutFinal(context, uri, trip, AsdGraph.repo.getStopsOnce(tripId), AsdGraph.repo.getDelaysOnce(tripId))
+        return true
+    }
+
+    suspend fun exportClientXlsx(context: Context, tripId: Long, uri: Uri): Boolean {
+        val trip = AsdGraph.repo.getTripOnce(tripId) ?: return false
+        val events = AsdGraph.repo.getStopsOnce(tripId)
+        val points = AsdGraph.repo.getTrackPointsOnce(tripId)
+        AsdClientXlsxExporter.export(context, uri, trip, events, points)
         return true
     }
 
@@ -419,6 +428,17 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val exportCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
         uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportLayoutFinal(context, tripId, it)) "CSV final exportado ✅" else "No se pudo exportar CSV." }.getOrElse { e -> e.message ?: "Error exportando CSV." } } }
     }
+    val exportClientXlsxLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ) { uri: Uri? ->
+        uri?.let {
+            scope.launch {
+                snackbarText = runCatching {
+                    if (vm.exportClientXlsx(context, tripId, it)) "Excel cliente exportado ✅" else "No se pudo exportar Excel cliente."
+                }.getOrElse { e -> e.message ?: "Error exportando Excel cliente." }
+            }
+        }
+    }
     val exportTrackLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
         uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTrackCsv(context, tripId, it)) "TRACK CSV exportado ✅" else "No se pudo exportar TRACK." }.getOrElse { e -> e.message ?: "Error exportando TRACK." } } }
     }
@@ -578,12 +598,14 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             item { TripActionsCard(isEnded, loadingGps, { onOpenMap(tripId) }, { requestCloseTrip() }) }
             item {
                 ExportActionsCard(
-                { exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") },
-                { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") },
-                { exportGpsAuditLauncher.launch("ASD_auditoria_gps_${t.tripId}.csv") },
-                { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") },
-                { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }
-            )}
+                    { exportClientXlsxLauncher.launch("ASD_cliente_${t.tripId}_${fileFmt.format(Date())}.xlsx") },
+                    { exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") },
+                    { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") },
+                    { exportGpsAuditLauncher.launch("ASD_auditoria_gps_${t.tripId}.csv") },
+                    { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") },
+                    { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }
+                )
+            }
             item { Text("EVENTOS REGISTRADOS", style = MaterialTheme.typography.titleMedium) }
             if (stops.isEmpty()) item { Card { Text("AÚN NO HAY EVENTOS. USA EL BLOQUE SUPERIOR PARA REGISTRAR.", modifier = Modifier.padding(12.dp)) } } else items(stops) { EventCard(it, fmt) }
         }
@@ -920,15 +942,19 @@ private fun TrackingStatusCard(
 @Composable private fun TripActionsCard(isEnded: Boolean, loadingGps: Boolean, onOpenMap: () -> Unit, onCloseTrip: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("ACCIONES", style = MaterialTheme.typography.titleMedium); Button(onClick = onOpenMap, modifier = Modifier.fillMaxWidth()) { Text("VER MAPA") }; OutlinedButton(enabled = !isEnded && !loadingGps, onClick = onCloseTrip, modifier = Modifier.fillMaxWidth()) { Text("CERRAR VIAJE") } } } }
 @Composable
 private fun ExportActionsCard(
+    onExportClientXlsx: () -> Unit,
     onExportCsv: () -> Unit,
     onExportTrack: () -> Unit,
     onExportGpsAudit: () -> Unit,
     onExportGpx: () -> Unit,
     onExportKml: () -> Unit
-) {
+){
     Card {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium)
+            Button(onClick = onExportClientXlsx, modifier = Modifier.fillMaxWidth()) {
+                Text("EXCEL CLIENTE")
+            }
             OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("CSV FINAL") }
             OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("KML") }
             OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("GPX") }
