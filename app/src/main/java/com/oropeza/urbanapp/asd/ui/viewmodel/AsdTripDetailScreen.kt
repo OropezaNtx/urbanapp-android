@@ -786,55 +786,65 @@ private fun InlineAsdCaptureCard(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             // SECCION DEMORAS
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("DEMORAS", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                
-                @OptIn(ExperimentalLayoutApi::class)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    DelayTile("🚦", "SEMÁFORO", "S", selectedDelayCodes.contains("S"), onToggleDelayCode)
-                    DelayTile("🚗", "CONGESTIÓN", "C", selectedDelayCodes.contains("C"), onToggleDelayCode)
-                    DelayTile("🚌", "TRÁFICO MIXTO", "TM", selectedDelayCodes.contains("TM"), onToggleDelayCode)
-                    DelayTile("🚧", "COND. VIAL", "CND", selectedDelayCodes.contains("CND"), onToggleDelayCode)
-                    DelayTile("↩", "VUELTA IZQ", "VI", selectedDelayCodes.contains("VI"), onToggleDelayCode)
-                    DelayTile("↪", "VUELTA DER", "VD", selectedDelayCodes.contains("VD"), onToggleDelayCode)
-                    DelayTile("🚶", "PEATONAL", "PP", selectedDelayCodes.contains("PP"), onToggleDelayCode)
-                    DelayTile("⛔", "OTRO", "O", selectedDelayCodes.contains("O"), onToggleDelayCode)
-                }
-                
-                if (selectedDelayCodes.contains("O")) {
-                    UpperNextTextField(otherDelayDesc, onOtherDelayDescChange, "DESCRIPCIÓN DE OTRO", singleLine = true)
+            Card(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("DEMORAS", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        DelayTile("🚦", "SEMÁFORO", "S", selectedDelayCodes.contains("S"), onToggle = onToggleDelayCode)
+                        DelayTile("🚗", "CONGESTIÓN", "C", selectedDelayCodes.contains("C"), onToggleDelayColor = Color(0xFFE65100), onToggle = onToggleDelayCode)
+                        DelayTile("🚌", "TRÁFICO MIXTO", "TM", selectedDelayCodes.contains("TM"), onToggleDelayColor = Color(0xFFE65100), onToggle = onToggleDelayCode)
+                        DelayTile("🚧", "COND. VIAL", "CND", selectedDelayCodes.contains("CND"), onToggleDelayColor = Color(0xFFE65100), onToggle = onToggleDelayCode)
+                        DelayTile("↩", "VUELTA IZQ", "VI", selectedDelayCodes.contains("VI"), onToggle = onToggleDelayCode)
+                        DelayTile("↪", "VUELTA DER", "VD", selectedDelayCodes.contains("VD"), onToggle = onToggleDelayCode)
+                        DelayTile("🚶", "PEATONAL", "PP", selectedDelayCodes.contains("PP"), onToggle = onToggleDelayCode)
+                        DelayTile("⛔", "OTRO", "O", selectedDelayCodes.contains("O"), onToggle = onToggleDelayCode)
+                    }
+                    
+                    if (selectedDelayCodes.contains("O")) {
+                        UpperNextTextField(otherDelayDesc, onOtherDelayDescChange, "DESCRIPCIÓN DE OTRO", singleLine = true)
+                    }
                 }
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             // OBSERVACIONES Y EXTRA
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("OBSERVACIONES", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange)
-                    Text("MALETA / BULTO", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.weight(1f))
-                }
-
-                UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
-                UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
-                
-                val gpsStatus = lastPoint?.let {
-                    when {
-                        it.accM <= 10 -> "🟢 GPS EXCELENTE ±${it.accM.toInt()}m"
-                        it.accM <= 25 -> "🟢 GPS BUENO ±${it.accM.toInt()}m"
-                        it.accM <= 45 -> "🟡 GPS USABLE ±${it.accM.toInt()}m"
-                        else -> "🔴 GPS DÉBIL ±${it.accM.toInt()}m"
+            Card(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("OBSERVACIONES", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange)
+                        Text("MALETA / BULTO", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.weight(1f))
                     }
-                } ?: "🔴 GPS PENDIENTE"
 
-                Text(gpsStatus, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+                    UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
+                    UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
+                    
+                    val gpsStatus = lastPoint?.let {
+                        when {
+                            it.accM <= 10 -> "🟢 GPS EXCELENTE ±${it.accM.toInt()}m"
+                            it.accM <= 25 -> "🟢 GPS BUENO ±${it.accM.toInt()}m"
+                            it.accM <= 45 -> "🟡 GPS USABLE ±${it.accM.toInt()}m"
+                            else -> "🔴 GPS DÉBIL ±${it.accM.toInt()}m"
+                        }
+                    } ?: "🔴 GPS PENDIENTE"
+
+                    Text(gpsStatus, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+                }
             }
 
             // BOTTOM BUTTON
@@ -945,9 +955,19 @@ private fun CounterBtn(text: String, onClick: () -> Unit, enabled: Boolean) {
 }
 
 @Composable
-private fun DelayTile(icon: String, label: String, code: String, isSelected: Boolean, onToggle: (String) -> Unit) {
-    val color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-    val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+private fun DelayTile(
+    icon: String,
+    label: String,
+    code: String,
+    isSelected: Boolean,
+    onToggleDelayColor: Color = MaterialTheme.colorScheme.primary,
+    onToggle: (String) -> Unit
+) {
+    val color = if (isSelected) onToggleDelayColor else MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = if (isSelected) {
+        if (onToggleDelayColor == MaterialTheme.colorScheme.primary) MaterialTheme.colorScheme.onPrimary 
+        else Color.White
+    } else MaterialTheme.colorScheme.onSurfaceVariant
     
     Surface(
         onClick = { onToggle(code) },
@@ -1119,28 +1139,118 @@ private fun TripHeaderCard(
     isEnded: Boolean,
     onEdit: () -> Unit
 ) {
-    Card {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("RECORRIDO ASD", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = onEdit, enabled = !isEnded) { Text("EDITAR") }
+    Card(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text(routeName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                    Surface(
+                        color = if (isEnded) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            if (isEnded) "VIAJE CERRADO" else "EN CURSO",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                OutlinedButton(
+                    onClick = onEdit,
+                    enabled = !isEnded,
+                    modifier = Modifier.height(32.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                ) {
+                    Text("EDITAR", style = MaterialTheme.typography.labelSmall)
+                }
             }
-            Text("RUTA: $routeName")
-            Text("SENTIDO: $direction")
-            Text("AFORADOR: ${aforador ?: "-"}")
-            Text("SUPERVISOR: ${supervisor ?: "-"}")
-            Text("DISPOSITIVO: ${deviceNumber ?: "-"}")
-            Text("INICIO: $start")
-            Text("FIN: $end")
-            Text("UNIDAD: ECO ${vehicleEco ?: "-"} • PLACA ${plateNumber ?: "-"}")
-            Text("CAPACIDAD: ${seatCapacity ?: "-"}")
-            Text(if (isEnded) "ESTADO: CERRADO" else "ESTADO: EN CURSO")
+
+            Text("SENTIDO: $direction", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    LabelValue("UNIDAD", "ECO ${vehicleEco ?: "-"} • ${plateNumber ?: "-"}")
+                    LabelValue("CAPACIDAD", seatCapacity?.toString() ?: "-")
+                }
+                Column(Modifier.weight(1f)) {
+                    LabelValue("INICIO", start)
+                    LabelValue("FIN", end)
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("AFORADOR: ${aforador ?: "-"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Text("SUPERVISOR: ${supervisor ?: "-"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Text("DISPOSITIVO: ${deviceNumber ?: "-"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            }
+            
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Text(
+                    "CATÁLOGO: NO VINCULADO",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
         }
     }
 }
 
-@Composable private fun DemoSummaryCard(summary: AsdDemoSummary) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium); Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("EVENTOS", summary.events.toString(), Modifier.weight(1f)); SummaryMetric("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f)); SummaryMetric("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f)) }; Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetric("A BORDO", summary.onBoard.toString(), Modifier.weight(1f)); SummaryMetric("H/M", "${summary.menOnBoard}/${summary.womenOnBoard}", Modifier.weight(1f)); SummaryMetric("GPS", summary.trackPoints.toString(), Modifier.weight(1f)) } } } }
-@Composable private fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier, isError: Boolean = false) { Card(modifier = modifier) { Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = MaterialTheme.typography.titleLarge, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified, fontWeight = FontWeight.Bold); Text(label, style = MaterialTheme.typography.bodySmall, color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified) } } }
+@Composable
+private fun LabelValue(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.Bold)
+        Text(value, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun DemoSummaryCard(summary: AsdDemoSummary) {
+    Card(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                SummaryMetricBox("EVENTOS", summary.events.toString(), Modifier.weight(1f))
+                SummaryMetricBox("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f))
+                SummaryMetricBox("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                SummaryMetricBox("A BORDO", summary.onBoard.toString(), Modifier.weight(1f), color = Color(0xFF1976D2))
+                SummaryMetricBox("H / M", "${summary.menOnBoard}/${summary.womenOnBoard}", Modifier.weight(1f))
+                SummaryMetricBox("GPS", summary.trackPoints.toString(), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryMetricBox(label: String, value: String, modifier: Modifier = Modifier, color: Color? = null) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    ) {
+        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = color ?: Color.Unspecified)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+        }
+    }
+}
+
 @Composable
 private fun TrackingStatusCard(
     trackingAlive: Boolean,
@@ -1171,26 +1281,35 @@ private fun TrackingStatusCard(
         buildGpsQualitySummary(trackPoints)
     }
 
-    Card {
+    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
         Column(
-            Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("GPS / TRACKING", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("GPS / TRACKING", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                if (trackingAlive) {
+                    Surface(color = Color(0xFF2E7D32).copy(alpha = 0.1f), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)) {
+                        Text("LIVE", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
             
             Text(
                 statusText,
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.ExtraBold,
                 color = statusColor
             )
 
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 LinearProgressIndicator(
                     progress = { score / 100f },
                     modifier = Modifier.fillMaxWidth().height(8.dp),
                     color = statusColor,
-                    trackColor = statusColor.copy(alpha = 0.2f)
+                    trackColor = statusColor.copy(alpha = 0.2f),
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                 )
                 Text(
                     "CONFIANZA GPS: $score%",
@@ -1200,48 +1319,130 @@ private fun TrackingStatusCard(
                 )
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
             Row(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row {
-                        Text("Precisión: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Text(lastPoint?.let { "±${it.accM.toInt()}m" } ?: "-", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Row {
-                        Text("Edad: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Text(ageText, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Row {
-                        Text("Puntos: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Text(pointCount.toString(), style = MaterialTheme.typography.bodySmall)
-                    }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    StatusRow("Precisión", lastPoint?.let { "±${it.accM.toInt()}m" } ?: "-")
+                    StatusRow("Edad", ageText)
+                    StatusRow("Puntos", pointCount.toString())
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row {
-                        Text("Modo: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Text(diag.mode.ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Row {
-                        Text("Filtro: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Text(diag.filter.ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Row {
-                        Text("Estado: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Text(diag.state.ifBlank { "-" }, style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    StatusRow("Modo", diag.mode.ifBlank { "-" })
+                    StatusRow("Filtro", diag.filter.ifBlank { "-" })
+                    StatusRow("Estado", diag.state.ifBlank { "-" })
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            
+            Text("CALIDAD RECORRIDO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
+            Text(qualitySummary, style = MaterialTheme.typography.bodySmall)
+            
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                GpsChip("KALMAN ON")
+                GpsChip("OFFLINE READY")
+                if (lastPoint?.accM ?: 100.0 <= 10.0) GpsChip("HDOP OK")
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusRow(label: String, value: String) {
+    Row {
+        Text("$label: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
+        Text(value, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun GpsChip(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Text(text, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalculateAll: () -> Unit, onCalculateRecent: () -> Unit) {
+    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("DISTANCIA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(Modifier.padding(16.dp), contentAlignment = Alignment.Center) {
+                    if (distanceLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    } else {
+                        Text(
+                            distanceKm?.let { "%.2f KM".format(it) } ?: "—",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            
-            Text("CALIDAD RECORRIDO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-            Text(qualitySummary, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    enabled = !distanceLoading,
+                    onClick = onCalculateRecent,
+                    modifier = Modifier.weight(1f),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                ) {
+                    Text("15 MIN")
+                }
+                OutlinedButton(
+                    enabled = !distanceLoading,
+                    onClick = onCalculateAll,
+                    modifier = Modifier.weight(1f),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                ) {
+                    Text("TODO")
+                }
+            }
         }
     }
 }
-@Composable private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalculateAll: () -> Unit, onCalculateRecent: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("DISTANCIA", style = MaterialTheme.typography.titleMedium); if (distanceLoading) LinearProgressIndicator(Modifier.fillMaxWidth()) else Text("APROX: ${distanceKm?.let { "%.2f KM".format(it) } ?: "—"}"); Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedButton(enabled = !distanceLoading, onClick = onCalculateRecent, modifier = Modifier.weight(1f)) { Text("15 MIN") }; OutlinedButton(enabled = !distanceLoading, onClick = onCalculateAll, modifier = Modifier.weight(1f)) { Text("TODO") } } } } }
-@Composable private fun TripActionsCard(isEnded: Boolean, loadingGps: Boolean, onOpenMap: () -> Unit, onCloseTrip: () -> Unit) { Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("ACCIONES", style = MaterialTheme.typography.titleMedium); Button(onClick = onOpenMap, modifier = Modifier.fillMaxWidth()) { Text("VER MAPA") }; OutlinedButton(enabled = !isEnded && !loadingGps, onClick = onCloseTrip, modifier = Modifier.fillMaxWidth()) { Text("CERRAR VIAJE") } } } }
+
+@Composable
+private fun TripActionsCard(isEnded: Boolean, loadingGps: Boolean, onOpenMap: () -> Unit, onCloseTrip: () -> Unit) {
+    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("ACCIONES DE VIAJE", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            
+            Button(
+                onClick = onOpenMap,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+            ) {
+                Text("VER MAPA", fontWeight = FontWeight.Bold)
+            }
+            
+            OutlinedButton(
+                enabled = !isEnded && !loadingGps,
+                onClick = onCloseTrip,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                border = BorderStroke(1.dp, if (!isEnded && !loadingGps) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Text("CERRAR VIAJE", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
 @Composable
 private fun ExportActionsCard(
     onExportClientXlsx: () -> Unit,
@@ -1251,92 +1452,138 @@ private fun ExportActionsCard(
     onExportGpx: () -> Unit,
     onExportKml: () -> Unit
 ){
-    Card {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium)
+    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             
-            HorizontalDivider()
-            Text("ENTREGABLE CLIENTE", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-            Button(onClick = onExportClientXlsx, modifier = Modifier.fillMaxWidth()) {
-                Text("EXCEL CLIENTE")
+            ExportGroup("ENTREGABLE CLIENTE") {
+                Button(onClick = onExportClientXlsx, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) {
+                    Text("EXCEL CLIENTE")
+                }
             }
             
-            HorizontalDivider()
-            Text("AUDITORÍA INTERNA", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-            OutlinedButton(onClick = onExportGpsAudit, modifier = Modifier.fillMaxWidth()) { Text("AUDITORÍA GPS") }
-            OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth()) { Text("TRACK CSV") }
+            ExportGroup("AUDITORÍA INTERNA") {
+                OutlinedButton(onClick = onExportGpsAudit, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("AUDITORÍA GPS") }
+                OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("TRACK CSV") }
+            }
             
-            HorizontalDivider()
-            Text("GEO", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-            OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth()) { Text("KML") }
-            OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth()) { Text("GPX") }
+            ExportGroup("GEO") {
+                OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("KML") }
+                OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("GPX") }
+            }
             
-            HorizontalDivider()
-            Text("LEGADO", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-            OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth()) { Text("CSV FINAL") }
+            ExportGroup("LEGADO") {
+                OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("CSV FINAL") }
+            }
         }
     }
 }
+
+@Composable
+private fun ExportGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
+        content()
+        HorizontalDivider(modifier = Modifier.padding(top = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    }
+}
+
 @Composable
 private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) {
     val up = event.paxMenUp + event.paxWomenUp
     val down = event.paxMenDown + event.paxWomenDown
     val hasPax = up > 0 || down > 0
-    val hasDelay = !event.delayCodes.isNullOrBlank() || event.stopType.uppercase(Locale("es", "MX")) in setOf("DEMORA", "BANDERA", "DELAY")
+    val codes = event.delayCodes.orEmpty().uppercase(Locale.ROOT)
+    
+    val isInicio = codes.contains("AD/INICIO")
+    val isFinal = codes.contains("AD/FINAL")
+    val hasDelay = !event.delayCodes.isNullOrBlank() && !isInicio && !isFinal
     
     val friendlyType = when {
+        isInicio -> "INICIO"
+        isFinal -> "FINAL"
         hasPax && hasDelay -> "ASD + DEMORA"
         hasDelay -> "DEMORA"
-        else -> "ASCENSO / DESCENSO / ASD"
+        hasPax -> "ASD"
+        else -> "REGISTRO"
     }
 
-    Card {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    Card(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        border = if (isInicio || isFinal) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "WP ${event.waypointStopId} → ${event.waypointStartId}",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold
                 )
-                Text(
-                    friendlyType,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
+                Surface(
+                    color = when(friendlyType) {
+                        "INICIO" -> Color(0xFF2E7D32)
+                        "FINAL" -> Color(0xFFC62828)
+                        else -> MaterialTheme.colorScheme.primaryContainer
+                    },
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        friendlyType,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isInicio || isFinal) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
             
-            Text(fmt.format(Date(event.timestamp)), style = MaterialTheme.typography.bodyMedium)
+            Text(fmt.format(Date(event.timestamp)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
 
             if (!event.stopName.isNullOrBlank()) {
-                Text("PARADA: ${event.stopName}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        "PARADA: ${event.stopName}",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Suben: $up", style = MaterialTheme.typography.bodyMedium)
-                Text("Bajan: $down", style = MaterialTheme.typography.bodyMedium)
+                Column {
+                    Text("SUBEN: $up", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("H:${event.paxMenUp} M:${event.paxWomenUp}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                }
+                Column {
+                    Text("BAJAN: $down", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("H:${event.paxMenDown} M:${event.paxWomenDown}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                }
             }
-            
-            Text("Detalle: (H:${event.paxMenUp} M:${event.paxWomenUp}) | (H:${event.paxMenDown} M:${event.paxWomenDown})", style = MaterialTheme.typography.bodySmall)
 
-            if (!event.delayCodes.isNullOrBlank()) {
-                Text("DEMORAS: ${event.delayCodes}", style = MaterialTheme.typography.bodySmall)
+            if (hasDelay) {
+                Text("DEMORAS: ${event.delayCodes}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE65100), fontWeight = FontWeight.Bold)
             }
 
-            Text("MALETA/BULTO: ${if (event.hasLuggage) "SÍ" else "NO"}", style = MaterialTheme.typography.bodySmall)
+            if (event.hasLuggage) {
+                Text("🧳 MALETA / BULTO", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            }
 
             if (!event.notes.isNullOrBlank()) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                Text("Observaciones:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Text("OBSERVACIONES:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
                 Text(event.notes, style = MaterialTheme.typography.bodySmall)
             }
 
             val gpsText = if (event.stopLat != 0.0 || event.stopLon != 0.0) {
-                "${"%.5f".format(event.stopLat)}, ${"%.5f".format(event.stopLon)} (±${event.stopAccM.toInt()}m)"
+                "±${event.stopAccM.toInt()}m"
             } else {
                 "PENDIENTE"
             }
-            Text("GPS: $gpsText", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            Text("GPS: $gpsText", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
         }
     }
 }
