@@ -685,7 +685,7 @@ private fun InlineAsdCaptureCard(
     Card(border = if (isDelayActive) BorderStroke(2.dp, green) else null) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Text("REGISTRO ASD", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text("CAPTURA EN CAMPO", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Text(if (isDelayActive) "ACTIVO ${formatElapsed(activeElapsedSec)}" else "LISTO", color = if (isDelayActive) green else Color.Unspecified, fontWeight = FontWeight.Bold)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -699,17 +699,24 @@ private fun InlineAsdCaptureCard(
             }
             Text("A BORDO: H ${menOnBoard + menUp - menDown} • M ${womenOnBoard + womenUp - womenDown}", style = MaterialTheme.typography.bodySmall, color = if (menDown > maxMenDown || womenDown > maxWomenDown) MaterialTheme.colorScheme.error else Color.Unspecified)
             if (exceedsCapacity) Text("⚠ SUPERA CAPACIDAD (${seatCapacity ?: 0})", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-            Text("SUBEN", style = MaterialTheme.typography.titleSmall)
+            
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            
+            Text("SUBEN", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 CounterBox("👨 HOMBRES", menUp, onMenUpChange, Modifier.weight(1f))
                 CounterBox("👩 MUJERES", womenUp, onWomenUpChange, Modifier.weight(1f))
             }
-            Text("BAJAN", style = MaterialTheme.typography.titleSmall)
+            
+            Text("BAJAN", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 CounterBox("👨 HOMBRES", menDown, onMenDownChange, Modifier.weight(1f), maxValue = maxMenDown)
                 CounterBox("👩 MUJERES", womenDown, onWomenDownChange, Modifier.weight(1f), maxValue = maxWomenDown)
             }
-            Text("DEMORAS", style = MaterialTheme.typography.titleSmall)
+            
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            
+            Text("DEMORAS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             DelayCodeGrid(delayCodes, selectedDelayCodes, onToggleDelayCode)
             Text("C=CONGESTIÓN, S=SEMAFORIZACIÓN, TM=TRÁFICO MIXTO, VI=VUELTA IZQUIERDA, VD=VUELTA DERECHA, PP=PASE PEATONAL.", style = MaterialTheme.typography.bodySmall)
             if (selectedDelayCodes.contains("O")) UpperNextTextField(otherDelayDesc, onOtherDelayDescChange, "DESCRIPCIÓN DE OTRO", singleLine = true)
@@ -734,7 +741,7 @@ private fun InlineAsdCaptureCard(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f), enabled = !isEnded && !isDelayActive) { Text("LIMPIAR") }
-                Button(onClick = onSave, modifier = Modifier.weight(1f), enabled = !isEnded, colors = ButtonDefaults.buttonColors(containerColor = green)) { Text(if (isDelayActive) "GUARDAR" else "INICIAR") }
+                Button(onClick = onSave, modifier = Modifier.weight(1f), enabled = !isEnded, colors = ButtonDefaults.buttonColors(containerColor = green)) { Text(if (isDelayActive) "GUARDAR REGISTRO" else "INICIAR REGISTRO") }
             }
         }
     }
