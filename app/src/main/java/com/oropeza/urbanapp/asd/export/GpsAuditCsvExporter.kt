@@ -15,6 +15,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 object GpsAuditCsvExporter {
+    private const val GAP_THRESHOLD_SEC = 10.0
     private val dtf = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale("es", "MX"))
 
     suspend fun export(context: Context, uri: Uri, points: List<TrackPoint>) = withContext(Dispatchers.IO) {
@@ -23,6 +24,9 @@ object GpsAuditCsvExporter {
             "trip_id",
             "time_ms",
             "fecha_hora",
+            "segment_id",
+            "is_segment_start",
+            "is_time_gap",
             "delta_seg",
             "dist_prev_m",
             "lat",
@@ -38,15 +42,22 @@ object GpsAuditCsvExporter {
             "is_still_lock",
             "provider_raw"
         )
+        var segmentId = 1
         val rows = ordered.mapIndexed { index, p ->
             val previous = ordered.getOrNull(index - 1)
             val deltaSec = previous?.let { ((p.timeMs - it.timeMs).coerceAtLeast(0L) / 1000.0) } ?: 0.0
-            val distPrevM = previous?.let { haversineMeters(it.lat, it.lon, p.lat, p.lon) } ?: 0.0
+            val isTimeGap = index > 0 && deltaSec > GAP_THRESHOLD_SEC
+            if (isTimeGap) segmentId += 1
+            val isSegmentStart = index == 0 || isTimeGap
+            val distPrevM = if (isSegmentStart) 0.0 else previous?.let { haversineMeters(it.lat, it.lon, p.lat, p.lon) } ?: 0.0
             val diag = GpsAuditDiagnostics.parse(p.provider)
             listOf(
                 p.tripId,
                 p.timeMs,
                 dtf.format(Date(p.timeMs)),
+                segmentId,
+                isSegmentStart,
+                isTimeGap,
                 String.format(Locale.US, "%.2f", deltaSec),
                 String.format(Locale.US, "%.2f", distPrevM),
                 p.lat,
