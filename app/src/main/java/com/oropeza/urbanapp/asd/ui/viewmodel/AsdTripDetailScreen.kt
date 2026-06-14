@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -238,6 +239,8 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     var showEditHeader by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val isDelayActive = activeDelayStartMs > 0L
+
+    val bgApp = Color(0xFF07110F)
 
     LaunchedEffect(activeDelayStartMs) {
         while (activeDelayStartMs > 0L) {
@@ -521,10 +524,12 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     }
 
     Scaffold(
+        containerColor = bgApp,
         topBar = {
             TopAppBar(
-                title = { Text((trip?.routeName ?: "ASD").uppercase(Locale("es", "MX"))) },
-                navigationIcon = { TextButton(onClick = onBack) { Text("ATRÁS") } }
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = bgApp, titleContentColor = Color.White, navigationIconContentColor = Color.White),
+                title = { Text((trip?.routeName ?: "ASD").uppercase(Locale("es", "MX")), fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth()) },
+                navigationIcon = { TextButton(onClick = onBack) { Text("ATRÁS", color = Color.White) } }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -590,8 +595,32 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                     { resetCaptureForm() }
                 )
             }
-            gpsMsg?.let { item { Text(it.uppercase(Locale("es", "MX"))) } }
-            if (loadingGps) item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+            gpsMsg?.let { msg ->
+                item {
+                    Surface(
+                        color = Color(0xFF35D36B).copy(alpha = 0.1f),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)
+                    ) {
+                        Text(
+                            msg.uppercase(Locale("es", "MX")),
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF35D36B),
+                            fontWeight = FontWeight.Bold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+            if (loadingGps) item { 
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp).height(4.dp),
+                    color = Color(0xFF35D36B),
+                    trackColor = Color(0xFF35D36B).copy(alpha = 0.2f),
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                ) 
+            }
             item {
                 DistanceCard(distanceKm, distanceLoading, {
                     distanceLoading = true
@@ -632,8 +661,35 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                     { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }
                 )
             }
-            item { Text("EVENTOS REGISTRADOS", style = MaterialTheme.typography.titleMedium) }
-            if (stops.isEmpty()) item { Card { Text("AÚN NO HAY EVENTOS. USA EL BLOQUE SUPERIOR PARA REGISTRAR.", modifier = Modifier.padding(12.dp)) } } else items(stops) { EventCard(it, fmt) }
+            item { 
+                Text(
+                    "HISTORIAL DE EVENTOS", 
+                    style = MaterialTheme.typography.titleMedium, 
+                    fontWeight = FontWeight.ExtraBold, 
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                ) 
+            }
+            if (stops.isEmpty()) {
+                item { 
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A)),
+                        border = BorderStroke(1.dp, Color(0xFF223A36))
+                    ) { 
+                        Text(
+                            "AÚN NO HAY EVENTOS. USA EL BLOQUE SUPERIOR PARA REGISTRAR.", 
+                            modifier = Modifier.padding(20.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.5f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        ) 
+                    } 
+                } 
+            } else {
+                items(stops) { EventCard(it, fmt) }
+            }
         }
     }
 }
@@ -679,62 +735,64 @@ private fun InlineAsdCaptureCard(
     val totalDown = menDown + womenDown
     val estimatedOnBoard = (currentOnBoard + totalUp - totalDown).coerceAtLeast(0)
     
-    val green = Color(0xFF2E7D32)
-    val red = Color(0xFFC62828)
+    val greenAcc = Color(0xFF35D36B)
+    val redAcc = Color(0xFFFF4B4B)
+    val cardBg = Color(0xFF101C1A)
+    val cardBorder = Color(0xFF223A36)
+    val internalBg = Color(0xFF0B1716)
+    val internalBorder = Color(0xFF1E3834)
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-        border = if (isDelayActive) BorderStroke(2.dp, green) else null,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, cardBorder),
+        colors = CardDefaults.cardColors(containerColor = cardBg)
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // HEADER
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f)) {
-                    Text("CAPTURA EN CAMPO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-                    Text(
-                        if (isDelayActive) "REGISTRO ACTIVO • ${formatElapsed(activeElapsedSec)}" else "LISTO PARA INICIAR",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isDelayActive) green else MaterialTheme.colorScheme.outline,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                if (isDelayActive) {
-                    IconButton(onClick = onCancelDelay, modifier = Modifier.size(32.dp)) {
-                        Text("✕", color = red, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // NEW HEADER CARD
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = internalBg),
+                border = BorderStroke(1.dp, internalBorder)
+            ) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(12.dp).background(if (isDelayActive) greenAcc else Color.Gray, androidx.compose.foundation.shape.CircleShape))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (isDelayActive) "REGISTRO ACTIVO" else "LISTO PARA INICIAR",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDelayActive) greenAcc else Color.White
+                        )
+                        if (isDelayActive) {
+                            Text(formatElapsed(activeElapsedSec), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
+                        }
                     }
-                }
-            }
-
-            // TOP BUTTONS
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = onSave,
-                    modifier = Modifier.weight(1f),
-                    enabled = !isEnded,
-                    colors = ButtonDefaults.buttonColors(containerColor = green),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-                ) {
-                    Text(if (isDelayActive) "GUARDAR REGISTRO" else "INICIAR REGISTRO", fontWeight = FontWeight.Bold)
-                }
-                if (isDelayActive) {
-                    OutlinedButton(
-                        onClick = onCancelDelay,
-                        modifier = Modifier.weight(0.4f),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = red),
-                        border = BorderStroke(1.dp, red),
+                    Button(
+                        onClick = onSave,
+                        enabled = !isEnded,
+                        colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                        modifier = Modifier.height(36.dp),
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                     ) {
-                        Text("ABORTAR", style = MaterialTheme.typography.labelSmall)
+                        Text(if (isDelayActive) "GUARDAR" else "INICIAR", fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                    }
+                    if (isDelayActive) {
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(onClick = onCancelDelay, modifier = Modifier.size(36.dp)) {
+                            Text("✕", color = redAcc, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                        }
                     }
                 }
             }
 
             // RESUMEN METRICS
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                ProMetric("SUBEN", totalUp.toString(), Modifier.weight(1f), color = green)
-                ProMetric("BAJAN", totalDown.toString(), Modifier.weight(1f), color = red)
+                ProMetric("SUBEN", totalUp.toString(), Modifier.weight(1f), color = greenAcc)
+                ProMetric("BAJAN", totalDown.toString(), Modifier.weight(1f), color = redAcc)
                 ProMetric("A BORDO", estimatedOnBoard.toString(), Modifier.weight(1f), isError = exceedsCapacity)
             }
 
@@ -755,58 +813,75 @@ private fun InlineAsdCaptureCard(
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
             // SECCION SUBEN
-            PassengerSection(
-                title = "SUBEN",
-                total = totalUp,
-                menValue = menUp,
-                womenValue = womenUp,
-                onMenChange = onMenUpChange,
-                onWomenChange = onWomenUpChange,
-                accentColor = green
-            )
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Card(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = internalBg),
+                border = BorderStroke(1.dp, internalBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("↑ SUBEN", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = greenAcc)
+                        Spacer(Modifier.weight(1f))
+                        Text("TOTAL: $totalUp", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = greenAcc)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PassengerCounterCard("👨 HOMBRES", menUp, onMenUpChange, Modifier.weight(1f), greenAcc)
+                        PassengerCounterCard("👩 MUJERES", womenUp, onWomenUpChange, Modifier.weight(1f), greenAcc)
+                    }
+                }
+            }
 
             // SECCION BAJAN
-            PassengerSection(
-                title = "BAJAN",
-                total = totalDown,
-                menValue = menDown,
-                womenValue = womenDown,
-                onMenChange = onMenDownChange,
-                onWomenChange = onWomenDownChange,
-                accentColor = red,
-                maxMen = maxMenDown,
-                maxWomen = maxWomenDown
-            )
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Card(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = internalBg),
+                border = BorderStroke(1.dp, internalBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("↓ BAJAN", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF42A5F5))
+                        Spacer(Modifier.weight(1f))
+                        Text("TOTAL: $totalDown", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFF42A5F5))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PassengerCounterCard("👨 HOMBRES", menDown, onMenDownChange, Modifier.weight(1f), redAcc, maxMenDown)
+                        PassengerCounterCard("👩 MUJERES", womenDown, onWomenDownChange, Modifier.weight(1f), redAcc, maxWomenDown)
+                    }
+                }
+            }
 
             // SECCION DEMORAS
             Card(
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = internalBg),
+                border = BorderStroke(1.dp, internalBorder),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("DEMORAS", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("DEMORAS", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
                     
                     @OptIn(ExperimentalLayoutApi::class)
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        DelayTile("🚦", "SEMÁFORO", "S", selectedDelayCodes.contains("S"), onToggle = onToggleDelayCode)
-                        DelayTile("🚗", "CONGESTIÓN", "C", selectedDelayCodes.contains("C"), onToggleDelayColor = Color(0xFFE65100), onToggle = onToggleDelayCode)
-                        DelayTile("🚌", "TRÁFICO MIXTO", "TM", selectedDelayCodes.contains("TM"), onToggleDelayColor = Color(0xFFE65100), onToggle = onToggleDelayCode)
-                        DelayTile("🚧", "COND. VIAL", "CND", selectedDelayCodes.contains("CND"), onToggleDelayColor = Color(0xFFE65100), onToggle = onToggleDelayCode)
-                        DelayTile("↩", "VUELTA IZQ", "VI", selectedDelayCodes.contains("VI"), onToggle = onToggleDelayCode)
-                        DelayTile("↪", "VUELTA DER", "VD", selectedDelayCodes.contains("VD"), onToggle = onToggleDelayCode)
-                        DelayTile("🚶", "PEATONAL", "PP", selectedDelayCodes.contains("PP"), onToggle = onToggleDelayCode)
-                        DelayTile("⛔", "OTRO", "O", selectedDelayCodes.contains("O"), onToggle = onToggleDelayCode)
+                        val items = listOf(
+                            Triple("🚦", "SEMÁFORO", "S"),
+                            Triple("🚗", "CONGESTIÓN", "C"),
+                            Triple("🚌", "TRÁFICO MIXTO", "TM"),
+                            Triple("🚧", "COND. VIAL", "CND"),
+                            Triple("↩", "VUELTA IZQ", "VI"),
+                            Triple("↪", "VUELTA DER", "VD"),
+                            Triple("🚶", "PEATONAL", "PP"),
+                            Triple("⛔", "OTRO", "O")
+                        )
+                        items.forEach { (icon, name, code) ->
+                            DelayTile(icon, name, code, selectedDelayCodes.contains(code), onToggle = onToggleDelayCode, modifier = Modifier.weight(1f).minimumInteractiveComponentSize())
+                        }
                     }
                     
                     if (selectedDelayCodes.contains("O")) {
@@ -815,20 +890,20 @@ private fun InlineAsdCaptureCard(
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-            // OBSERVACIONES Y EXTRA
+            // OBSERVACIONES
             Card(
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = internalBg),
+                border = BorderStroke(1.dp, internalBorder),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("OBSERVACIONES", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("OBSERVACIONES", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
                     
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange)
-                        Text("MALETA / BULTO", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.weight(1f))
+                        Spacer(Modifier.width(8.dp))
+                        Text("MALETA / BULTO", style = MaterialTheme.typography.bodyMedium, color = Color.White)
                     }
 
                     UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
@@ -843,7 +918,7 @@ private fun InlineAsdCaptureCard(
                         }
                     } ?: "🔴 GPS PENDIENTE"
 
-                    Text(gpsStatus, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+                    Text(gpsStatus, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.5f))
                 }
             }
 
@@ -852,20 +927,19 @@ private fun InlineAsdCaptureCard(
                 onClick = onSave,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 enabled = !isEnded,
-                colors = ButtonDefaults.buttonColors(containerColor = green),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
             ) {
-                Text("GUARDAR REGISTRO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("GUARDAR REGISTRO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = Color.Black)
             }
             
             if (!isDelayActive) {
-                OutlinedButton(
+                TextButton(
                     onClick = onClear,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isEnded,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    enabled = !isEnded
                 ) {
-                    Text("LIMPIAR CAMPOS")
+                    Text("LIMPIAR CAMPOS", color = Color.White.copy(alpha = 0.4f), style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -874,41 +948,16 @@ private fun InlineAsdCaptureCard(
 
 @Composable
 private fun ProMetric(label: String, value: String, modifier: Modifier = Modifier, isError: Boolean = false, color: Color? = null) {
-    val displayColor = if (isError) MaterialTheme.colorScheme.error else color ?: MaterialTheme.colorScheme.onSurface
+    val displayColor = if (isError) MaterialTheme.colorScheme.error else color ?: Color.White
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-        border = if (isError) BorderStroke(1.dp, MaterialTheme.colorScheme.error) else null
+        color = Color(0xFF0B1716),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, if (isError) MaterialTheme.colorScheme.error else Color(0xFF1E3834))
     ) {
-        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = displayColor)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = displayColor.copy(alpha = 0.8f))
-        }
-    }
-}
-
-@Composable
-private fun PassengerSection(
-    title: String,
-    total: Int,
-    menValue: Int,
-    womenValue: Int,
-    onMenChange: (Int) -> Unit,
-    onWomenChange: (Int) -> Unit,
-    accentColor: Color,
-    maxMen: Int? = null,
-    maxWomen: Int? = null
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            Text("TOTAL: $total", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = accentColor)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PassengerCounterCard("👨 HOMBRES", menValue, onMenChange, Modifier.weight(1f), accentColor, maxMen)
-            PassengerCounterCard("👩 MUJERES", womenValue, onWomenChange, Modifier.weight(1f), accentColor, maxWomen)
+        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = displayColor)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = displayColor.copy(alpha = 0.6f), fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -924,15 +973,16 @@ private fun PassengerCounterCard(
 ) {
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        color = Color(0xFF101C1A),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, Color(0xFF203B37))
     ) {
         Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-            Text(value.toString(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = accentColor)
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
+            Text(value.toString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = accentColor)
             
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                CounterBtn("-1", { onValueChange(value - 1) }, value > 0)
+                CounterBtn("-1", { onValueChange(value - 1) }, value > 0, isRed = true)
                 CounterBtn("+1", { onValueChange(value + 1) }, maxValue == null || value < maxValue)
                 CounterBtn("+2", { onValueChange(value + 2) }, maxValue == null || value + 1 < maxValue)
                 CounterBtn("+5", { onValueChange(value + 5) }, maxValue == null || value + 4 < maxValue)
@@ -942,15 +992,19 @@ private fun PassengerCounterCard(
 }
 
 @Composable
-private fun CounterBtn(text: String, onClick: () -> Unit, enabled: Boolean) {
-    FilledTonalButton(
+private fun CounterBtn(text: String, onClick: () -> Unit, enabled: Boolean, isRed: Boolean = false) {
+    val borderCol = if (isRed) Color(0xFFFF4B4B) else Color(0xFF1E8E4D)
+    val textCol = if (isRed) Color(0xFFFF6B6B) else Color(0xFF4DFF91)
+    
+    OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.widthIn(min = 36.dp).height(32.dp),
+        modifier = Modifier.widthIn(min = 34.dp).height(32.dp),
         contentPadding = PaddingValues(0.dp),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+        border = BorderStroke(1.dp, if (enabled) borderCol else borderCol.copy(alpha = 0.2f)),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
     ) {
-        Text(text, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+        Text(text, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = if (enabled) textCol else textCol.copy(alpha = 0.2f))
     }
 }
 
@@ -960,25 +1014,24 @@ private fun DelayTile(
     label: String,
     code: String,
     isSelected: Boolean,
-    onToggleDelayColor: Color = MaterialTheme.colorScheme.primary,
+    modifier: Modifier = Modifier,
     onToggle: (String) -> Unit
 ) {
-    val color = if (isSelected) onToggleDelayColor else MaterialTheme.colorScheme.surfaceVariant
-    val contentColor = if (isSelected) {
-        if (onToggleDelayColor == MaterialTheme.colorScheme.primary) MaterialTheme.colorScheme.onPrimary 
-        else Color.White
-    } else MaterialTheme.colorScheme.onSurfaceVariant
+    val bg = if (isSelected) Color(0xFF2A2112) else Color(0xFF101C1A)
+    val border = if (isSelected) Color(0xFFFF9800) else Color(0xFF203B37)
+    val contentColor = if (isSelected) Color(0xFFFFB74D) else Color.White
     
     Surface(
         onClick = { onToggle(code) },
-        color = color,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-        border = if (!isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
-        modifier = Modifier.height(44.dp)
+        color = bg,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, border),
+        modifier = modifier.height(86.dp)
     ) {
-        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(icon)
-            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = contentColor)
+        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text(icon, style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(4.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = contentColor, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }
@@ -992,6 +1045,14 @@ private fun UpperNextTextField(value: String, onValueChange: (String) -> Unit, l
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
         singleLine = singleLine,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color(0xFF07110F),
+            unfocusedContainerColor = Color(0xFF07110F),
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            focusedBorderColor = Color(0xFF35D36B),
+            unfocusedBorderColor = Color(0xFF1E3834)
+        ),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
     )
@@ -1140,22 +1201,25 @@ private fun TripHeaderCard(
     onEdit: () -> Unit
 ) {
     Card(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xFF223A36)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A))
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
-                    Text(routeName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+                    Text(routeName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = Color.White)
                     Surface(
-                        color = if (isEnded) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                        color = if (isEnded) Color(0xFFFF4B4B).copy(alpha = 0.2f) else Color(0xFF35D36B).copy(alpha = 0.2f),
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                     ) {
                         Text(
                             if (isEnded) "VIAJE CERRADO" else "EN CURSO",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = if (isEnded) Color(0xFFFF4B4B) else Color(0xFF35D36B)
                         )
                     }
                 }
@@ -1164,13 +1228,14 @@ private fun TripHeaderCard(
                     enabled = !isEnded,
                     modifier = Modifier.height(32.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    border = BorderStroke(1.dp, Color(0xFF1E8E4D)),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
                 ) {
-                    Text("EDITAR", style = MaterialTheme.typography.labelSmall)
+                    Text("EDITAR", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4DFF91))
                 }
             }
 
-            Text("SENTIDO: $direction", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text("SENTIDO: $direction", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color.White)
             
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
@@ -1183,24 +1248,24 @@ private fun TripHeaderCard(
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            HorizontalDivider(color = Color(0xFF223A36))
 
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("AFORADOR: ${aforador ?: "-"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                Text("SUPERVISOR: ${supervisor ?: "-"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                Text("DISPOSITIVO: ${deviceNumber ?: "-"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Text("AFORADOR: ${aforador ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                Text("SUPERVISOR: ${supervisor ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                Text("DISPOSITIVO: ${deviceNumber ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
             }
             
             Surface(
-                color = MaterialTheme.colorScheme.surface,
+                color = Color(0xFF0B1716),
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                border = BorderStroke(1.dp, Color(0xFF1E3834))
             ) {
                 Text(
                     "CATÁLOGO: NO VINCULADO",
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline
+                    color = Color.White.copy(alpha = 0.5f)
                 )
             }
         }
@@ -1210,26 +1275,29 @@ private fun TripHeaderCard(
 @Composable
 private fun LabelValue(label: String, value: String) {
     Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, fontWeight = FontWeight.Bold)
-        Text(value, style = MaterialTheme.typography.bodySmall)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f), fontWeight = FontWeight.Bold)
+        Text(value, style = MaterialTheme.typography.bodySmall, color = Color.White)
     }
 }
 
 @Composable
 private fun DemoSummaryCard(summary: AsdDemoSummary) {
     Card(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xFF223A36)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A))
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
             
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 SummaryMetricBox("EVENTOS", summary.events.toString(), Modifier.weight(1f))
-                SummaryMetricBox("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f))
-                SummaryMetricBox("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f))
+                SummaryMetricBox("ASCENSOS", summary.boardings.toString(), Modifier.weight(1f), valColor = Color(0xFF35D36B))
+                SummaryMetricBox("DESCENSOS", summary.alightings.toString(), Modifier.weight(1f), valColor = Color(0xFFFF4B4B))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                SummaryMetricBox("A BORDO", summary.onBoard.toString(), Modifier.weight(1f), color = Color(0xFF1976D2))
+                SummaryMetricBox("A BORDO", summary.onBoard.toString(), Modifier.weight(1f), valColor = Color.White)
                 SummaryMetricBox("H / M", "${summary.menOnBoard}/${summary.womenOnBoard}", Modifier.weight(1f))
                 SummaryMetricBox("GPS", summary.trackPoints.toString(), Modifier.weight(1f))
             }
@@ -1238,15 +1306,16 @@ private fun DemoSummaryCard(summary: AsdDemoSummary) {
 }
 
 @Composable
-private fun SummaryMetricBox(label: String, value: String, modifier: Modifier = Modifier, color: Color? = null) {
+private fun SummaryMetricBox(label: String, value: String, modifier: Modifier = Modifier, valColor: Color? = null) {
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        color = Color(0xFF0B1716),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, Color(0xFF1E3834))
     ) {
-        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = color ?: Color.Unspecified)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = valColor ?: Color.White)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = (valColor ?: Color.White).copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -1269,29 +1338,34 @@ private fun TrackingStatusCard(
     val (statusText, statusColor, score) = when {
         lastPoint == null -> Triple("⚫ GPS PENDIENTE", Color.Gray, 0)
         lastPoint.accM <= 10.0 -> {
-            if (lastPoint.accM <= 5.0) Triple("🟢 GPS EXCELENTE", Color(0xFF2E7D32), 100)
-            else Triple("🟢 GPS EXCELENTE", Color(0xFF2E7D32), 90)
+            if (lastPoint.accM <= 5.0) Triple("🟢 GPS EXCELENTE", Color(0xFF35D36B), 100)
+            else Triple("🟢 GPS EXCELENTE", Color(0xFF35D36B), 90)
         }
-        lastPoint.accM <= 25.0 -> Triple("🟢 GPS BUENO", Color(0xFF43A047), 75)
-        lastPoint.accM <= 45.0 -> Triple("🟡 GPS USABLE", Color(0xFFFBC02D), 55)
-        else -> Triple("🔴 GPS DÉBIL", Color(0xFFD32F2F), 25)
+        lastPoint.accM <= 25.0 -> Triple("🟢 GPS BUENO", Color(0xFF35D36B).copy(alpha = 0.8f), 75)
+        lastPoint.accM <= 45.0 -> Triple("🟡 GPS USABLE", Color(0xFFFF9800), 55)
+        else -> Triple("🔴 GPS DÉBIL", Color(0xFFFF4B4B), 25)
     }
 
     val qualitySummary = remember(trackPoints) {
         buildGpsQualitySummary(trackPoints)
     }
 
-    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xFF223A36)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A))
+    ) {
         Column(
             Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("GPS / TRACKING", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("GPS / TRACKING", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(Modifier.weight(1f))
                 if (trackingAlive) {
-                    Surface(color = Color(0xFF2E7D32).copy(alpha = 0.1f), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)) {
-                        Text("LIVE", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                    Surface(color = Color(0xFF35D36B).copy(alpha = 0.1f), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)) {
+                        Text("LIVE", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFF35D36B), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1319,7 +1393,7 @@ private fun TrackingStatusCard(
                 )
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            HorizontalDivider(color = Color(0xFF223A36))
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1334,16 +1408,16 @@ private fun TrackingStatusCard(
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            HorizontalDivider(color = Color(0xFF223A36))
             
-            Text("CALIDAD RECORRIDO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
-            Text(qualitySummary, style = MaterialTheme.typography.bodySmall)
+            Text("CALIDAD RECORRIDO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.4f))
+            Text(qualitySummary, style = MaterialTheme.typography.bodySmall, color = Color.White)
             
             @OptIn(ExperimentalLayoutApi::class)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 GpsChip("KALMAN ON")
                 GpsChip("OFFLINE READY")
-                if (lastPoint?.accM ?: 100.0 <= 10.0) GpsChip("HDOP OK")
+                if ((lastPoint?.accM ?: 100.0) <= 10.0) GpsChip("HDOP OK")
             }
         }
     }
@@ -1352,42 +1426,48 @@ private fun TrackingStatusCard(
 @Composable
 private fun StatusRow(label: String, value: String) {
     Row {
-        Text("$label: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
-        Text(value, style = MaterialTheme.typography.bodySmall)
+        Text("$label: ", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.4f))
+        Text(value, style = MaterialTheme.typography.bodySmall, color = Color.White)
     }
 }
 
 @Composable
 private fun GpsChip(text: String) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        color = Color(0xFF0B1716),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+        border = BorderStroke(1.dp, Color(0xFF1E3834))
     ) {
-        Text(text, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+        Text(text, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
     }
 }
 
 @Composable
 private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalculateAll: () -> Unit, onCalculateRecent: () -> Unit) {
-    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xFF223A36)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A))
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("DISTANCIA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("DISTANCIA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
             
             Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                color = Color(0xFF0B1716),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, Color(0xFF1E3834)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Box(Modifier.padding(16.dp), contentAlignment = Alignment.Center) {
                     if (distanceLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF35D36B))
                     } else {
                         Text(
                             distanceKm?.let { "%.2f KM".format(it) } ?: "—",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = Color(0xFF35D36B)
                         )
                     }
                 }
@@ -1398,17 +1478,19 @@ private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalcul
                     enabled = !distanceLoading,
                     onClick = onCalculateRecent,
                     modifier = Modifier.weight(1f),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                    border = BorderStroke(1.dp, Color(0xFF223A36)),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
                 ) {
-                    Text("15 MIN")
+                    Text("15 MIN", color = Color.White)
                 }
                 OutlinedButton(
                     enabled = !distanceLoading,
                     onClick = onCalculateAll,
                     modifier = Modifier.weight(1f),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                    border = BorderStroke(1.dp, Color(0xFF223A36)),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
                 ) {
-                    Text("TODO")
+                    Text("TODO", color = Color.White)
                 }
             }
         }
@@ -1417,25 +1499,31 @@ private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalcul
 
 @Composable
 private fun TripActionsCard(isEnded: Boolean, loadingGps: Boolean, onOpenMap: () -> Unit, onCloseTrip: () -> Unit) {
-    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xFF223A36)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A))
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("ACCIONES DE VIAJE", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("ACCIONES DE VIAJE", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
             
             Button(
                 onClick = onOpenMap,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D36B)),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
             ) {
-                Text("VER MAPA", fontWeight = FontWeight.Bold)
+                Text("VER MAPA", fontWeight = FontWeight.ExtraBold, color = Color.Black)
             }
             
             OutlinedButton(
                 enabled = !isEnded && !loadingGps,
                 onClick = onCloseTrip,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                border = BorderStroke(1.dp, if (!isEnded && !loadingGps) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant)
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF4B4B)),
+                border = BorderStroke(1.dp, if (!isEnded && !loadingGps) Color(0xFFFF4B4B) else Color(0xFF223A36))
             ) {
                 Text("CERRAR VIAJE", fontWeight = FontWeight.Bold)
             }
@@ -1452,28 +1540,33 @@ private fun ExportActionsCard(
     onExportGpx: () -> Unit,
     onExportKml: () -> Unit
 ){
-    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xFF223A36)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A))
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("EXPORTACIONES", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
             
             ExportGroup("ENTREGABLE CLIENTE") {
-                Button(onClick = onExportClientXlsx, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) {
-                    Text("EXCEL CLIENTE")
+                Button(onClick = onExportClientXlsx, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D36B))) {
+                    Text("EXCEL CLIENTE", color = Color.Black, fontWeight = FontWeight.Bold)
                 }
             }
             
             ExportGroup("AUDITORÍA INTERNA") {
-                OutlinedButton(onClick = onExportGpsAudit, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("AUDITORÍA GPS") }
-                OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("TRACK CSV") }
+                OutlinedButton(onClick = onExportGpsAudit, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFF223A36))) { Text("AUDITORÍA GPS", color = Color.White) }
+                OutlinedButton(onClick = onExportTrack, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFF223A36))) { Text("TRACK CSV", color = Color.White) }
             }
             
             ExportGroup("GEO") {
-                OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("KML") }
-                OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("GPX") }
+                OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFF223A36))) { Text("KML", color = Color.White) }
+                OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFF223A36))) { Text("GPX", color = Color.White) }
             }
             
             ExportGroup("LEGADO") {
-                OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) { Text("CSV FINAL") }
+                OutlinedButton(onClick = onExportCsv, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFF223A36))) { Text("CSV FINAL", color = Color.White) }
             }
         }
     }
@@ -1481,10 +1574,10 @@ private fun ExportActionsCard(
 
 @Composable
 private fun ExportGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.4f))
         content()
-        HorizontalDivider(modifier = Modifier.padding(top = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        HorizontalDivider(modifier = Modifier.padding(top = 4.dp), color = Color(0xFF223A36))
     }
 }
 
@@ -1509,73 +1602,82 @@ private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) {
     }
 
     Card(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-        border = if (isInicio || isFinal) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, if (isInicio || isFinal) Color(0xFF35D36B).copy(alpha = 0.5f) else Color(0xFF223A36)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A))
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "WP ${event.waypointStopId} → ${event.waypointStartId}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
                 )
                 Surface(
                     color = when(friendlyType) {
-                        "INICIO" -> Color(0xFF2E7D32)
-                        "FINAL" -> Color(0xFFC62828)
-                        else -> MaterialTheme.colorScheme.primaryContainer
+                        "INICIO" -> Color(0xFF35D36B).copy(alpha = 0.2f)
+                        "FINAL" -> Color(0xFFFF4B4B).copy(alpha = 0.2f)
+                        else -> Color(0xFF42A5F5).copy(alpha = 0.2f)
                     },
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
                 ) {
                     Text(
                         friendlyType,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (isInicio || isFinal) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
+                        color = when(friendlyType) {
+                            "INICIO" -> Color(0xFF35D36B)
+                            "FINAL" -> Color(0xFFFF4B4B)
+                            else -> Color(0xFF42A5F5)
+                        }
                     )
                 }
             }
             
-            Text(fmt.format(Date(event.timestamp)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            Text(fmt.format(Date(event.timestamp)), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
 
             if (!event.stopName.isNullOrBlank()) {
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                    color = Color(0xFF0B1716),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Color(0xFF1E3834))
                 ) {
                     Text(
                         "PARADA: ${event.stopName}",
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                 }
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column {
-                    Text("SUBEN: $up", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    Text("H:${event.paxMenUp} M:${event.paxWomenUp}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Text("SUBEN: $up", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF35D36B))
+                    Text("H:${event.paxMenUp} M:${event.paxWomenUp}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f))
                 }
                 Column {
-                    Text("BAJAN: $down", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    Text("H:${event.paxMenDown} M:${event.paxWomenDown}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Text("BAJAN: $down", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFFFF4B4B))
+                    Text("H:${event.paxMenDown} M:${event.paxWomenDown}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f))
                 }
             }
 
             if (hasDelay) {
-                Text("DEMORAS: ${event.delayCodes}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE65100), fontWeight = FontWeight.Bold)
+                Text("DEMORAS: ${event.delayCodes}", style = MaterialTheme.typography.bodySmall, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
             }
 
             if (event.hasLuggage) {
-                Text("🧳 MALETA / BULTO", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                Text("🧳 MALETA / BULTO", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color.White)
             }
 
             if (!event.notes.isNullOrBlank()) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                Text("OBSERVACIONES:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
-                Text(event.notes, style = MaterialTheme.typography.bodySmall)
+                HorizontalDivider(color = Color(0xFF223A36))
+                Text("Observaciones:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.4f))
+                Text(event.notes, style = MaterialTheme.typography.bodySmall, color = Color.White)
             }
 
             val gpsText = if (event.stopLat != 0.0 || event.stopLon != 0.0) {
@@ -1583,7 +1685,7 @@ private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) {
             } else {
                 "PENDIENTE"
             }
-            Text("GPS: $gpsText", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            Text("GPS: $gpsText", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f))
         }
     }
 }
