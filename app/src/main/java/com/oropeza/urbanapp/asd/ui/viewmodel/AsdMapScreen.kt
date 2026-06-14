@@ -25,6 +25,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
+import com.oropeza.urbanapp.asd.location.GpsAuditDiagnostics
+import com.oropeza.urbanapp.asd.location.GpsAuditSummary
 import com.oropeza.urbanapp.asd.location.LatLng
 import com.oropeza.urbanapp.asd.location.PolylineSmoother
 import com.oropeza.urbanapp.core.map.UrbanMapPoint
@@ -71,8 +73,8 @@ fun AsdMapScreen(
         AsdMapMetrics.from(validTrackPoints, stopEvents, mapPoints.size)
     }
     val timelineItems = remember(trip, stopEvents) { buildAsdTimeline(trip?.startTime, stopEvents, trip?.endTime) }
-    val startPoint = remember(rawPoints) { rawPoints.firstOrNull()?.copy(title = "INICIO RECORRIDO ASD") }
-    val endPoint = remember(rawPoints) { rawPoints.lastOrNull()?.copy(title = "ÚLTIMO PUNTO ASD")?.takeIf { rawPoints.size >= 2 } }
+    val startPoint = remember(rawPoints) { rawPoints.firstOrNull()?.copy(title = "INICIO RECORRIDO ASD", status = "START") }
+    val endPoint = remember(rawPoints) { rawPoints.lastOrNull()?.copy(title = "FIN / ÚLTIMO PUNTO ASD", status = "END")?.takeIf { rawPoints.size >= 2 } }
     val locatePoint = remember(rawPoints) {
         rawPoints.lastOrNull()?.copy(
             id = "asd-current-location",
@@ -100,6 +102,7 @@ fun AsdMapScreen(
                 showPointMarkers = false,
                 emptyMessage = "ESTE VIAJE AÚN NO TIENE TRACKPOINTS CON GPS VÁLIDO."
             )
+            PremiumGpsDashboard(metrics, Modifier.align(Alignment.TopStart).padding(12.dp))
             AsdMapLegend(Modifier.align(Alignment.TopEnd).padding(12.dp))
             Button(
                 enabled = locatePoint != null,
@@ -126,16 +129,28 @@ fun AsdMapScreen(
 }
 
 @Composable
+private fun PremiumGpsDashboard(metrics: AsdMapMetrics, modifier: Modifier = Modifier) {
+    Card(modifier = modifier) {
+        Column(Modifier.padding(10.dp)) {
+            Text(metrics.gpsStatusText, style = MaterialTheme.typography.titleSmall)
+            Text("${metrics.accuracyText} · ${metrics.modeText} · ${metrics.coverageText}", style = MaterialTheme.typography.bodySmall)
+            Text("Puntos: ${metrics.pointCount} · Kalman ${metrics.kalmanText}", style = MaterialTheme.typography.bodySmall)
+            Text("Still lock: ${metrics.stillLockText} · Smooth: ${metrics.smoothText}", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
 private fun AsdMapLegend(modifier: Modifier = Modifier) {
     Card(modifier = modifier) {
         Column(Modifier.padding(10.dp)) {
             Text("LEYENDA", style = MaterialTheme.typography.titleSmall)
-            Text("🔵 RUTA", style = MaterialTheme.typography.bodySmall)
+            Text("🔵 RUTA SMOOTH", style = MaterialTheme.typography.bodySmall)
             Text("🟢 INICIO RECORRIDO", style = MaterialTheme.typography.bodySmall)
             Text("🔴 FIN / ÚLTIMO PUNTO", style = MaterialTheme.typography.bodySmall)
-            Text("🟣 WP INICIO REGISTRO", style = MaterialTheme.typography.bodySmall)
-            Text("🟣 WP CIERRE REGISTRO", style = MaterialTheme.typography.bodySmall)
-            Text("AD = ASCENSO / DESCENSO", style = MaterialTheme.typography.bodySmall)
+            Text("🔵 EVENTO ASD", style = MaterialTheme.typography.bodySmall)
+            Text("🟠 DEMORA", style = MaterialTheme.typography.bodySmall)
+            Text("🟣 WP INICIO / CIERRE", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -167,13 +182,18 @@ private fun StopEvent.timelineLabel(): String {
 
 private fun List<TrackPoint>.toSmoothedMapPoints(): List<UrbanMapPoint> {
     if (isEmpty()) return emptyList()
-    if (size < 5) return map { it.toUrbanMapPoint() }
+    if (size < 3) return map { it.toUrbanMapPoint() }
     val raw = map { LatLng(it.lat, it.lon) }
     val smooth = PolylineSmoother.movingAverage(raw, window = 3)
-    val simplified = PolylineSmoother.douglasPeucker(smooth, epsilonMeters = 2.5)
-    return simplified.mapIndexed { index, point ->
+    return smooth.mapIndexed { index, point ->
         val source = this[index.coerceAtMost(lastIndex)]
-        source.toUrbanMapPoint().copy(id = "smooth-${source.id}-$index", lat = point.lat, lon = point.lon, title = "RUTA SUAVIZADA")
+        source.toUrbanMapPoint().copy(
+            id = "smooth-${source.id}-$index",
+            lat = point.lat,
+            lon = point.lon,
+            title = "RUTA SMOOTH",
+            subtitle = "${source.provider} | ACC ${source.accM.roundToInt()}M | PUNTO ${index + 1}/${size}"
+        )
     }
 }
 
@@ -299,13 +319,23 @@ private data class AsdMapMetrics(
     val alightingPax: Int,
     val distanceText: String,
     val durationText: String,
-    val accuracyText: String
+    val accuracyText: String,
+    val gpsStatusText: String,
+    val modeText: String,
+    val coverageText: String,
+    val kalmanText: String,
+    val stillLockText: String,
+    val smoothText: String
 ) {
     companion object {
         fun from(points: List<TrackPoint>, events: List<StopEvent>, displayedPointCount: Int): AsdMapMetrics {
             val distanceM = points.zipWithNext().sumOf { (a, b) -> haversineMeters(a.lat, a.lon, b.lat, b.lon) }
             val durationMs = if (points.size >= 2) (points.last().timeMs - points.first().timeMs).coerceAtLeast(0L) else 0L
             val avgAcc = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.averageOrNull()
+            val audit = GpsAuditSummary.from(points)
+            val last = points.lastOrNull()
+            val lastDiag = GpsAuditDiagnostics.parse(last?.provider)
+            val lastAcc = last?.accM ?: avgAcc ?: 9999.0
             return AsdMapMetrics(
                 pointCount = points.size,
                 displayedPointCount = displayedPointCount,
@@ -317,9 +347,22 @@ private data class AsdMapMetrics(
                 alightingPax = events.sumOf { it.paxMenDown + it.paxWomenDown },
                 distanceText = distanceText(distanceM),
                 durationText = durationText(durationMs),
-                accuracyText = avgAcc?.let { "${it.roundToInt()}M" } ?: "-"
+                accuracyText = avgAcc?.let { "±${it.roundToInt()}M" } ?: "-",
+                gpsStatusText = gpsStatusText(lastAcc),
+                modeText = lastDiag.mode.ifBlank { "TRACK" },
+                coverageText = "Cobertura ${audit.coverageText}",
+                kalmanText = percentText(audit.kalmanPoints, audit.totalPoints),
+                stillLockText = percentText(audit.stillLockPoints, audit.totalPoints),
+                smoothText = percentText(audit.smoothedPoints, audit.totalPoints)
             )
         }
+        private fun gpsStatusText(accM: Double): String = when {
+            accM <= 8.0 -> "🟢 GPS EXCELENTE"
+            accM <= 15.0 -> "🟢 GPS BUENO"
+            accM <= 25.0 -> "🟡 GPS USABLE"
+            else -> "🔴 GPS DÉBIL"
+        }
+        private fun percentText(count: Int, total: Int): String = if (total <= 0) "-" else "${((count.toDouble() / total.toDouble()) * 100.0).roundToInt()}%"
         private fun distanceText(distanceM: Double): String = when {
             distanceM <= 0.0 -> "-"
             distanceM < 1000.0 -> "${distanceM.roundToInt()}M"
