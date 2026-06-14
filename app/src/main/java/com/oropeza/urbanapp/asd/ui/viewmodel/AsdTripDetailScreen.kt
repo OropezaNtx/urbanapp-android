@@ -14,21 +14,23 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
@@ -204,6 +206,9 @@ class AsdTripDetailVM : ViewModel() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    fun triggerHaptic() = haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+
     val vm: AsdTripDetailVM = viewModel()
     val context = LocalContext.current
     val gps = remember { LocationProvider(context) }
@@ -246,10 +251,12 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val bgApp = Color(0xFF07110F)
     val greenAcc = Color(0xFF35D36B)
 
-    LaunchedEffect(activeDelayStartMs) {
-        while (activeDelayStartMs > 0L) {
-            tickMs = System.currentTimeMillis()
-            kotlinx.coroutines.delay(1000L)
+    LaunchedEffect(trip?.endTime) {
+        if (trip?.endTime == null) {
+            while (true) {
+                tickMs = System.currentTimeMillis()
+                kotlinx.coroutines.delay(1000L)
+            }
         }
     }
 
@@ -384,7 +391,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                 snackbarText = if (activeDelayStatus == "GPS_PENDING") {
                     "Registro guardado ✅ · GPS pendiente, se completará automáticamente"
                 } else {
-                    "Registro guardado ✅ · GPS ${activeDelayStatus}"
+                    "Registro guardado ✅ · GPS $activeDelayStatus"
                 }
             } catch (e: Exception) {
                 snackbarText = e.message ?: "Error al cerrar registro."
@@ -490,8 +497,8 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             onDismissRequest = { showCloseTripConfirm = false },
             title = { Text("CONFIRMAR CIERRE") },
             text = { Text("¿REALMENTE QUIERES CERRAR ESTE VIAJE? ESTA ACCIÓN MARCARÁ AD/FINAL.") },
-            confirmButton = { Button(onClick = { closeTripNow() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("SÍ, CERRAR VIAJE") } },
-            dismissButton = { OutlinedButton(onClick = { showCloseTripConfirm = false }) { Text("NO, REGRESAR") } }
+            confirmButton = { Button(onClick = { triggerHaptic(); closeTripNow() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("SÍ, CERRAR VIAJE") } },
+            dismissButton = { OutlinedButton(onClick = { triggerHaptic(); showCloseTripConfirm = false }) { Text("NO, REGRESAR") } }
         )
     }
 
@@ -535,12 +542,12 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                 title = { 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text((trip?.routeName ?: "ASD").uppercase(Locale("es", "MX")), fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { onOpenMap(tripId) }) {
+                        TextButton(onClick = { triggerHaptic(); onOpenMap(tripId) }) {
                             Text("🗺 VER MAPA", color = greenAcc, fontWeight = FontWeight.Bold)
                         }
                     }
                 },
-                navigationIcon = { TextButton(onClick = onBack) { Text("ATRÁS", color = Color.White) } }
+                navigationIcon = { TextButton(onClick = { triggerHaptic(); onBack() }) { Text("ATRÁS", color = Color.White) } }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -582,13 +589,42 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                     { ensureActiveDelayFromInput(); hasLuggage = it },
                     { ensureActiveDelayFromInput(); stopName = upper(it) },
                     { ensureActiveDelayFromInput(); notes = upper(it) },
-                    { closeActiveDelay(summary) },
                     { clearActiveDelay(); resetCaptureForm(); snackbarText = "Registro cancelado" },
                     { saveInlineEvent(summary) },
-                    { resetCaptureForm() }
+                    { onOpenMap(tripId) },
+                    { requestCloseTrip() }
                 )
             }
-            item { TripActionsCard(isEnded, loadingGps, { onOpenMap(tripId) }, { requestCloseTrip() }) }
+            
+            // DURACION RECORRIDO
+            item {
+                val start = t.startTime
+                val end = t.endTime ?: tickMs
+                val durationSec = (end - start).coerceAtLeast(0L) / 1000L
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Color(0xFF223A36)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716))
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("DURACIÓN RECORRIDO", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                            Text(formatElapsed(durationSec), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                        }
+                        if (isEnded) {
+                            Surface(color = Color(0xFFFF4B4B).copy(alpha = 0.1f), shape = RoundedCornerShape(8.dp)) {
+                                Text("FINALIZADO", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = Color(0xFFFF4B4B), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Surface(color = greenAcc.copy(alpha = 0.1f), shape = RoundedCornerShape(8.dp)) {
+                                Text("EN TIEMPO REAL", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = greenAcc, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 TripHeaderCard(
                     routeName = t.routeName.uppercase(Locale("es", "MX")),
@@ -607,35 +643,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             }
             item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount, trackPoints) }
             item { DemoSummaryCard(summary) }
-            item {
-                DistanceCard(distanceKm, distanceLoading, {
-                    distanceLoading = true
-                    distanceKm = null
-                    scope.launch {
-                        try {
-                            distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsOnce(tripId)) / 1000.0 }
-                        } catch (e: Exception) {
-                            snackbarText = e.message ?: "Error calculando distancia."
-                        } finally {
-                            distanceLoading = false
-                        }
-                    }
-                }, {
-                    distanceLoading = true
-                    distanceKm = null
-                    scope.launch {
-                        try {
-                            val toMs = System.currentTimeMillis()
-                            val fromMs = toMs - 15 * 60 * 1000L
-                            distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsBetweenOnce(tripId, fromMs, toMs)) / 1000.0 }
-                        } catch (e: Exception) {
-                            snackbarText = e.message ?: "Error calculando distancia."
-                        } finally {
-                            distanceLoading = false
-                        }
-                    }
-                })
-            }
+            
             gpsMsg?.let { msg ->
                 item {
                     Surface(
@@ -662,6 +670,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                     strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                 ) 
             }
+            
             item {
                 ExportActionsCard(
                     { exportClientXlsxLauncher.launch("ASD_cliente_${t.tripId}_${fileFmt.format(Date())}.xlsx") },
@@ -701,6 +710,36 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             } else {
                 items(stops) { EventCard(it, fmt) }
             }
+
+            item {
+                DistanceCard(distanceKm, distanceLoading, {
+                    distanceLoading = true
+                    distanceKm = null
+                    scope.launch {
+                        try {
+                            distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsOnce(tripId)) / 1000.0 }
+                        } catch (e: Exception) {
+                            snackbarText = e.message ?: "Error calculando distancia."
+                        } finally {
+                            distanceLoading = false
+                        }
+                    }
+                }, {
+                    distanceLoading = true
+                    distanceKm = null
+                    scope.launch {
+                        try {
+                            val toMs = System.currentTimeMillis()
+                            val fromMs = toMs - 15 * 60 * 1000L
+                            distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsBetweenOnce(tripId, fromMs, toMs)) / 1000.0 }
+                        } catch (e: Exception) {
+                            snackbarText = e.message ?: "Error calculando distancia."
+                        } finally {
+                            distanceLoading = false
+                        }
+                    }
+                })
+            }
         }
     }
 }
@@ -737,11 +776,14 @@ private fun InlineAsdCaptureCard(
     onHasLuggageChange: (Boolean) -> Unit,
     onStopNameChange: (String) -> Unit,
     onNotesChange: (String) -> Unit,
-    onCloseDelay: () -> Unit,
     onCancelDelay: () -> Unit,
     onSave: () -> Unit,
-    onClear: () -> Unit
+    onOpenMap: () -> Unit,
+    onCloseTrip: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+    fun triggerHaptic() = haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+
     val totalUp = menUp + womenUp
     val totalDown = menDown + womenDown
     val estimatedOnBoard = (currentOnBoard + totalUp - totalDown).coerceAtLeast(0)
@@ -749,11 +791,13 @@ private fun InlineAsdCaptureCard(
     val greenAcc = Color(0xFF35D36B)
     val blueAcc = Color(0xFF2D9CFF)
     val redAcc = Color(0xFFFF4B4B)
-    val orangeAcc = Color(0xFFFF9800)
     val pinkAcc = Color(0xFFFF69B4)
     val cardBg = Color(0xFF0D1716)
     val cardBorder = Color(0xFF223A36)
     val internalBg = Color(0xFF101C1A)
+
+    var showStopField by rememberSaveable { mutableStateOf(false) }
+    var showNotesField by rememberSaveable { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
@@ -774,28 +818,30 @@ private fun InlineAsdCaptureCard(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (isDelayActive) "REGISTRO ACTIVO" else "LISTO PARA INICIAR",
+                            if (isDelayActive) "REGISTRO ACTIVO" else "LISTO PARA CAPTURA",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isDelayActive) greenAcc else Color.White
                         )
-                        if (isDelayActive) {
-                            Text(formatElapsed(activeElapsedSec), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
-                        }
-                    }
-                    Button(
-                        onClick = onSave,
-                        enabled = !isEnded,
-                        colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
-                        contentPadding = PaddingValues(horizontal = 20.dp),
-                        modifier = Modifier.height(44.dp),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
-                    ) {
-                        Text(if (isDelayActive) "GUARDAR" else "INICIAR", fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                        Text(
+                            if (isDelayActive) "Captura en curso · ${formatElapsed(activeElapsedSec)}" else "Presiona +1, +5 o una demora para iniciar automáticamente",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
                     }
                     if (isDelayActive) {
+                        Button(
+                            onClick = { triggerHaptic(); onSave() },
+                            enabled = !isEnded,
+                            colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
+                            contentPadding = PaddingValues(horizontal = 20.dp),
+                            modifier = Modifier.height(44.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                        ) {
+                            Text("GUARDAR", fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                        }
                         Spacer(Modifier.width(8.dp))
-                        IconButton(onClick = onCancelDelay, modifier = Modifier.size(44.dp)) {
+                        IconButton(onClick = { triggerHaptic(); onCancelDelay() }, modifier = Modifier.size(44.dp)) {
                             Text("✕", color = redAcc, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
                         }
                     }
@@ -916,48 +962,83 @@ private fun InlineAsdCaptureCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("OBSERVACIONES", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("OBSERVACIONES", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = hasLuggage,
+                            onCheckedChange = { triggerHaptic(); onHasLuggageChange(it) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = greenAcc),
+                            modifier = Modifier.scale(0.8f)
+                        )
+                        Text("MALETA", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
+                    }
                     
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Switch(checked = hasLuggage, onCheckedChange = onHasLuggageChange, colors = SwitchDefaults.colors(checkedThumbColor = greenAcc))
-                        Spacer(Modifier.width(12.dp))
-                        Text("MALETA / BULTO", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = showStopField || stopName.isNotBlank(),
+                            onClick = { triggerHaptic(); showStopField = !showStopField },
+                            label = { Text("+ PARADA") },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = greenAcc.copy(alpha = 0.2f), selectedLabelColor = greenAcc)
+                        )
+                        FilterChip(
+                            selected = showNotesField || notes.isNotBlank(),
+                            onClick = { triggerHaptic(); showNotesField = !showNotesField },
+                            label = { Text("+ NOTA") },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = greenAcc.copy(alpha = 0.2f), selectedLabelColor = greenAcc)
+                        )
                     }
 
-                    UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
-                    UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
+                    if (showStopField || stopName.isNotBlank()) {
+                        UpperNextTextField(stopName, onStopNameChange, "PARADA / REFERENCIA", singleLine = true)
+                    }
+                    if (showNotesField || notes.isNotBlank()) {
+                        UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
+                    }
                     
                     val gpsStatus = lastPoint?.let {
                         when {
-                            it.accM <= 10 -> "🟢 GPS EXCELENTE ±${it.accM.toInt()}m"
-                            it.accM <= 25 -> "🟢 GPS BUENO ±${it.accM.toInt()}m"
-                            it.accM <= 45 -> "🟡 GPS USABLE ±${it.accM.toInt()}m"
-                            else -> "🔴 GPS DÉBIL ±${it.accM.toInt()}m"
+                            it.accM <= 10 -> "🟢 EXCELENTE ±${it.accM.toInt()}m"
+                            it.accM <= 25 -> "🟢 BUENO ±${it.accM.toInt()}m"
+                            it.accM <= 45 -> "🟡 USABLE ±${it.accM.toInt()}m"
+                            else -> "🔴 DÉBIL ±${it.accM.toInt()}m"
                         }
-                    } ?: "🔴 GPS PENDIENTE"
+                    } ?: "🔴 PENDIENTE"
 
-                    Text(gpsStatus, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.5f))
+                    Text("GPS $gpsStatus", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
                 }
             }
 
-            // BOTTOM BUTTON
-            Button(
-                onClick = onSave,
-                modifier = Modifier.fillMaxWidth().height(60.dp),
-                enabled = !isEnded,
-                colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
-            ) {
-                Text("GUARDAR REGISTRO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = Color.Black)
-            }
-            
-            if (!isDelayActive) {
-                TextButton(
-                    onClick = onClear,
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                    enabled = !isEnded
+            // BOTTOM BUTTONS
+            Row(modifier = Modifier.fillMaxWidth().height(60.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = { triggerHaptic(); onOpenMap() },
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF101C1A)),
+                    border = BorderStroke(1.dp, greenAcc.copy(alpha = 0.5f)),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
                 ) {
-                    Text("LIMPIAR CAMPOS", color = Color.White.copy(alpha = 0.3f), style = MaterialTheme.typography.labelLarge)
+                    Text("🗺 VER MAPA", color = greenAcc, fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = { triggerHaptic(); onSave() },
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    enabled = !isEnded,
+                    colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+                ) {
+                    Text("GUARDAR REGISTRO", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                }
+            }
+
+            if (!isEnded) {
+                Button(
+                    onClick = { triggerHaptic(); onCloseTrip() },
+                    modifier = Modifier.fillMaxWidth().height(60.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF101C1A)),
+                    border = BorderStroke(1.dp, Color(0xFFFF4B4B).copy(alpha = 0.5f)),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+                ) {
+                    Text("🏁 FINALIZAR RECORRIDO", color = Color(0xFFFF4B4B), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1072,7 +1153,6 @@ private fun PassengerCounterCard(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 ProCounterButton("-1", { onValueChange(value - 1) }, value > 0 && !isAlert, isRed = true)
                 ProCounterButton("+1", { onValueChange(value + 1) }, maxValue == null || value < maxValue)
-                ProCounterButton("+2", { onValueChange(value + 2) }, maxValue == null || value + 1 < maxValue)
                 ProCounterButton("+5", { onValueChange(value + 5) }, maxValue == null || value + 4 < maxValue)
             }
         }
@@ -1081,19 +1161,23 @@ private fun PassengerCounterCard(
 
 @Composable
 private fun ProCounterButton(text: String, onClick: () -> Unit, enabled: Boolean, isRed: Boolean = false) {
-    val borderCol = if (isRed) Color(0xFFFF4B4B) else Color(0xFF1E8E4D)
-    val textCol = if (isRed) Color(0xFFFF6B6B) else Color(0xFF4DFF91)
+    val haptic = LocalHapticFeedback.current
+    val borderCol = if (isRed) Color(0xFFFF4B4B) else if (enabled) Color(0xFF1E8E4D) else Color(0xFF1E8E4D).copy(alpha = 0.15f)
+    val textCol = if (isRed) Color(0xFFFF6B6B) else if (enabled) Color(0xFF4DFF91) else Color(0xFF4DFF91).copy(alpha = 0.2f)
     
     OutlinedButton(
-        onClick = onClick,
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onClick()
+        },
         enabled = enabled,
-        modifier = Modifier.width(50.dp).height(42.dp),
+        modifier = Modifier.width(64.dp).height(44.dp),
         contentPadding = PaddingValues(0.dp),
-        border = BorderStroke(1.dp, if (enabled) borderCol else borderCol.copy(alpha = 0.15f)),
+        border = BorderStroke(1.dp, borderCol),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(text, style = androidx.compose.ui.text.TextStyle(fontSize = androidx.compose.ui.unit.sp(14)), fontWeight = FontWeight.Bold, color = if (enabled) textCol else textCol.copy(alpha = 0.2f))
+            Text(text, style = androidx.compose.ui.text.TextStyle(fontSize = 14.sp), fontWeight = FontWeight.Bold, color = textCol)
         }
     }
 }
@@ -1107,22 +1191,26 @@ private fun DelayTile(
     modifier: Modifier = Modifier,
     onToggle: (String) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
     val bg = if (isSelected) Color(0xFF2A2112) else Color(0xFF101C1A)
-    val border = if (isSelected) Color(0xFFFF9800) else Color(0xFF203B37)
+    val borderCol = if (isSelected) Color(0xFFFF9800) else Color(0xFF203B37)
     val contentColor = if (isSelected) Color(0xFFFFB74D) else Color.White
     
     Surface(
-        onClick = { onToggle(code) },
+        onClick = { 
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onToggle(code) 
+        },
         color = bg,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, border),
-        modifier = modifier.heightIn(min = 72.dp)
+        border = BorderStroke(1.dp, borderCol),
+        modifier = modifier.height(76.dp)
     ) {
         Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 Text(icon, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.width(6.dp))
-                Text(label, style = androidx.compose.ui.text.TextStyle(fontSize = androidx.compose.ui.unit.sp(13)), fontWeight = FontWeight.Bold, color = contentColor, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text(label, style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp), fontWeight = FontWeight.Bold, color = contentColor, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             Text(code, style = MaterialTheme.typography.labelSmall, color = contentColor.copy(alpha = 0.5f))
         }
@@ -1548,40 +1636,6 @@ private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalcul
                 ) {
                     Text("TODO", color = Color.White)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TripActionsCard(isEnded: Boolean, loadingGps: Boolean, onOpenMap: () -> Unit, onCloseTrip: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, Color(0xFF223A36)),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716))
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("ACCIONES DE VIAJE", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-            
-            Button(
-                onClick = onOpenMap,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D36B)),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
-            ) {
-                Text("VER MAPA", fontWeight = FontWeight.ExtraBold, color = Color.Black)
-            }
-            
-            OutlinedButton(
-                enabled = !isEnded && !loadingGps,
-                onClick = onCloseTrip,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF4B4B)),
-                border = BorderStroke(1.dp, if (!isEnded && !loadingGps) Color(0xFFFF4B4B) else Color(0xFF223A36))
-            ) {
-                Text("CERRAR VIAJE", fontWeight = FontWeight.Bold)
             }
         }
     }
