@@ -58,332 +58,54 @@ fun AsdMapScreen(
     val stopEvents by vm.stopsFlow(tripId).collectAsState(initial = emptyList())
     var locateRequestKey by remember { mutableIntStateOf(0) }
 
-    val validTrackPoints = remember(trackPoints) {
-        trackPoints.filter { isValidCoordinate(it.lat, it.lon) }.sortedBy { it.timeMs }
-    }
+    val validTrackPoints = remember(trackPoints) { trackPoints.filter { isValidCoordinate(it.lat, it.lon) }.sortedBy { it.timeMs } }
     val rawPoints = remember(validTrackPoints) { validTrackPoints.map { it.toUrbanMapPoint() } }
     val mapPoints = remember(validTrackPoints) { validTrackPoints.toSmoothedMapPoints() }
     val eventMarkers = remember(stopEvents) {
-        stopEvents
-            .sortedBy { it.timestamp }
-            .flatMap { it.toUrbanMapWaypointPoints() }
-            .sortedWith(compareBy<UrbanMapPoint> { it.timestampMs ?: Long.MAX_VALUE }.thenBy { it.id })
+        stopEvents.sortedBy { it.timestamp }.flatMap { it.toUrbanMapWaypointPoints() }.sortedWith(compareBy<UrbanMapPoint> { it.timestampMs ?: Long.MAX_VALUE }.thenBy { it.id })
     }
-    val metrics = remember(validTrackPoints, stopEvents, mapPoints) {
-        AsdMapMetrics.from(validTrackPoints, stopEvents, mapPoints.size)
-    }
+    val metrics = remember(validTrackPoints, stopEvents, mapPoints) { AsdMapMetrics.from(validTrackPoints, stopEvents, mapPoints.size) }
     val timelineItems = remember(trip, stopEvents) { buildAsdTimeline(trip?.startTime, stopEvents, trip?.endTime) }
     val startPoint = remember(rawPoints) { rawPoints.firstOrNull()?.copy(title = "INICIO RECORRIDO ASD", status = "START") }
     val endPoint = remember(rawPoints) { rawPoints.lastOrNull()?.copy(title = "FIN / ÚLTIMO PUNTO ASD", status = "END")?.takeIf { rawPoints.size >= 2 } }
-    val locatePoint = remember(rawPoints) {
-        rawPoints.lastOrNull()?.copy(
-            id = "asd-current-location",
-            title = "UBICACIÓN ACTUAL / ÚLTIMO GPS",
-            subtitle = "ÚLTIMO PUNTO REGISTRADO DEL RECORRIDO"
-        )
-    }
+    val locatePoint = remember(rawPoints) { rawPoints.lastOrNull()?.copy(id = "asd-current-location", title = "UBICACIÓN ACTUAL / ÚLTIMO GPS", subtitle = "ÚLTIMO PUNTO REGISTRADO DEL RECORRIDO") }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(trip?.routeName?.uppercase(Locale("es", "MX")) ?: "MAPA ASD") },
-                navigationIcon = { IconButton(onClick = onBack) { Text("←") } }
-            )
-        }
-    ) { pad ->
+    Scaffold(topBar = { TopAppBar(title = { Text(trip?.routeName?.uppercase(Locale("es", "MX")) ?: "MAPA ASD") }, navigationIcon = { IconButton(onClick = onBack) { Text("←") } }) }) { pad ->
         Box(Modifier.padding(pad)) {
-            UrbanMapScreen(
-                points = mapPoints,
-                eventMarkers = eventMarkers,
-                startPoint = startPoint,
-                endPoint = endPoint,
-                focusPoint = locatePoint,
-                focusRequestKey = locateRequestKey,
-                showPointMarkers = false,
-                emptyMessage = "ESTE VIAJE AÚN NO TIENE TRACKPOINTS CON GPS VÁLIDO."
-            )
+            UrbanMapScreen(points = mapPoints, eventMarkers = eventMarkers, startPoint = startPoint, endPoint = endPoint, focusPoint = locatePoint, focusRequestKey = locateRequestKey, showPointMarkers = false, emptyMessage = "ESTE VIAJE AÚN NO TIENE TRACKPOINTS CON GPS VÁLIDO.")
             PremiumGpsDashboard(metrics, Modifier.align(Alignment.TopStart).padding(12.dp))
             AsdMapLegend(Modifier.align(Alignment.TopEnd).padding(12.dp))
-            Button(
-                enabled = locatePoint != null,
-                onClick = { locateRequestKey++ },
-                modifier = Modifier.align(Alignment.TopCenter).padding(12.dp)
-            ) { Text("UBICARME") }
+            Button(enabled = locatePoint != null, onClick = { locateRequestKey++ }, modifier = Modifier.align(Alignment.TopCenter).padding(12.dp)) { Text("UBICARME") }
             AsdTimelineCard(timelineItems, Modifier.align(Alignment.BottomEnd).padding(12.dp))
-            Card(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-                Column(Modifier.padding(10.dp)) {
-                    Text("RESUMEN ASD", style = MaterialTheme.typography.titleSmall)
-                    Text("PUNTOS: ${metrics.pointCount}", style = MaterialTheme.typography.bodySmall)
-                    Text("DIBUJADOS: ${metrics.displayedPointCount}", style = MaterialTheme.typography.bodySmall)
-                    Text("DISTANCIA: ${metrics.distanceText}", style = MaterialTheme.typography.bodySmall)
-                    Text("DURACIÓN: ${metrics.durationText}", style = MaterialTheme.typography.bodySmall)
-                    Text("PRECISIÓN PROM: ${metrics.accuracyText}", style = MaterialTheme.typography.bodySmall)
-                    Text("EVENTOS: ${metrics.eventCount}", style = MaterialTheme.typography.bodySmall)
-                    Text("ASCENSOS: ${metrics.boardingCount}  DESCENSOS: ${metrics.alightingCount}", style = MaterialTheme.typography.bodySmall)
-                    Text("DEMORAS: ${metrics.delayCount}", style = MaterialTheme.typography.bodySmall)
-                    Text("PAX +${metrics.boardingPax} / -${metrics.alightingPax}", style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            Card(Modifier.align(Alignment.BottomStart).padding(12.dp)) { Column(Modifier.padding(10.dp)) { Text("RESUMEN ASD", style = MaterialTheme.typography.titleSmall); Text("PUNTOS: ${metrics.pointCount}", style = MaterialTheme.typography.bodySmall); Text("DIBUJADOS: ${metrics.displayedPointCount}", style = MaterialTheme.typography.bodySmall); Text("DISTANCIA: ${metrics.distanceText}", style = MaterialTheme.typography.bodySmall); Text("DURACIÓN: ${metrics.durationText}", style = MaterialTheme.typography.bodySmall); Text("PRECISIÓN PROM: ${metrics.accuracyText}", style = MaterialTheme.typography.bodySmall); Text("EVENTOS: ${metrics.eventCount}", style = MaterialTheme.typography.bodySmall); Text("ASCENSOS: ${metrics.boardingCount}  DESCENSOS: ${metrics.alightingCount}", style = MaterialTheme.typography.bodySmall); Text("DEMORAS: ${metrics.delayCount}", style = MaterialTheme.typography.bodySmall); Text("PAX +${metrics.boardingPax} / -${metrics.alightingPax}", style = MaterialTheme.typography.bodySmall) } }
         }
     }
 }
 
-@Composable
-private fun PremiumGpsDashboard(metrics: AsdMapMetrics, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
-        Column(Modifier.padding(10.dp)) {
-            Text(metrics.gpsStatusText, style = MaterialTheme.typography.titleSmall)
-            Text("${metrics.accuracyText} · ${metrics.modeText} · ${metrics.coverageText}", style = MaterialTheme.typography.bodySmall)
-            Text("Puntos: ${metrics.pointCount} · Kalman ${metrics.kalmanText}", style = MaterialTheme.typography.bodySmall)
-            Text("Still lock: ${metrics.stillLockText} · Smooth: ${metrics.smoothText}", style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
+@Composable private fun PremiumGpsDashboard(metrics: AsdMapMetrics, modifier: Modifier = Modifier) { Card(modifier = modifier) { Column(Modifier.padding(10.dp)) { Text(metrics.gpsStatusText, style = MaterialTheme.typography.titleSmall); Text("${metrics.accuracyText} · ${metrics.modeText} · ${metrics.coverageText}", style = MaterialTheme.typography.bodySmall); Text("Puntos: ${metrics.pointCount} · Kalman ${metrics.kalmanText}", style = MaterialTheme.typography.bodySmall); Text("Still lock: ${metrics.stillLockText} · Smooth: ${metrics.smoothText}", style = MaterialTheme.typography.bodySmall) } } }
 
-@Composable
-private fun AsdMapLegend(modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
-        Column(Modifier.padding(10.dp)) {
-            Text("LEYENDA", style = MaterialTheme.typography.titleSmall)
-            Text("🔵 RUTA SMOOTH", style = MaterialTheme.typography.bodySmall)
-            Text("🟢 INICIO RECORRIDO", style = MaterialTheme.typography.bodySmall)
-            Text("🔴 FIN / ÚLTIMO PUNTO", style = MaterialTheme.typography.bodySmall)
-            Text("🔵 EVENTO ASD", style = MaterialTheme.typography.bodySmall)
-            Text("🟠 DEMORA", style = MaterialTheme.typography.bodySmall)
-            Text("🟣 WP INICIO / CIERRE", style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
+@Composable private fun AsdMapLegend(modifier: Modifier = Modifier) { Card(modifier = modifier) { Column(Modifier.padding(10.dp)) { Text("LEYENDA", style = MaterialTheme.typography.titleSmall); Text("🔵 RUTA SMOOTH", style = MaterialTheme.typography.bodySmall); Text("🟢 INICIO RECORRIDO", style = MaterialTheme.typography.bodySmall); Text("🔴 FIN / ÚLTIMO PUNTO", style = MaterialTheme.typography.bodySmall); Text("🔵 EVENTO ASD", style = MaterialTheme.typography.bodySmall); Text("🟠 DEMORA", style = MaterialTheme.typography.bodySmall); Text("🟣 ASD + DEMORA", style = MaterialTheme.typography.bodySmall) } } }
 
-@Composable
-private fun AsdTimelineCard(items: List<String>, modifier: Modifier = Modifier) {
-    if (items.isEmpty()) return
-    Card(modifier = modifier) {
-        Column(Modifier.padding(10.dp)) {
-            Text("SECUENCIA", style = MaterialTheme.typography.titleSmall)
-            items.take(6).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-            if (items.size > 6) Text("+${items.size - 6} EVENTOS MÁS", style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
+@Composable private fun AsdTimelineCard(items: List<String>, modifier: Modifier = Modifier) { if (items.isEmpty()) return; Card(modifier = modifier) { Column(Modifier.padding(10.dp)) { Text("SECUENCIA", style = MaterialTheme.typography.titleSmall); items.take(6).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }; if (items.size > 6) Text("+${items.size - 6} EVENTOS MÁS", style = MaterialTheme.typography.bodySmall) } } }
 
-private fun buildAsdTimeline(startTime: Long?, events: List<StopEvent>, endTime: Long?): List<String> {
-    val items = mutableListOf<Pair<Long, String>>()
-    startTime?.let { items.add(it to "${formattedTime(it)} INICIO") }
-    events.forEach { items.add(it.timestamp to "${formattedTime(it.timestamp)} ${it.timelineLabel()}") }
-    endTime?.let { items.add(it to "${formattedTime(it)} FIN") }
-    return items.sortedBy { it.first }.map { it.second }
-}
-
-private fun StopEvent.timelineLabel(): String {
-    val place = stopName?.takeIf { it.isNotBlank() }?.let { " - $it" } ?: ""
-    return "${displayLabel()}$place"
-}
-
-private fun List<TrackPoint>.toSmoothedMapPoints(): List<UrbanMapPoint> {
-    if (isEmpty()) return emptyList()
-    if (size < 3) return map { it.toUrbanMapPoint() }
-    val raw = map { LatLng(it.lat, it.lon) }
-    val smooth = PolylineSmoother.movingAverage(raw, window = 3)
-    return smooth.mapIndexed { index, point ->
-        val source = this[index.coerceAtMost(lastIndex)]
-        source.toUrbanMapPoint().copy(
-            id = "smooth-${source.id}-$index",
-            lat = point.lat,
-            lon = point.lon,
-            title = "RUTA SMOOTH",
-            subtitle = "${source.provider} | ACC ${source.accM.roundToInt()}M | PUNTO ${index + 1}/${size}"
-        )
-    }
-}
-
-private fun TrackPoint.toUrbanMapPoint(): UrbanMapPoint = UrbanMapPoint(
-    id = "track-$id",
-    title = "TRACK GPS",
-    subtitle = "$provider | ACC ${accM}M",
-    lat = lat,
-    lon = lon,
-    accuracyM = accM,
-    status = provider,
-    module = "ASD_TRACK",
-    timestampMs = timeMs,
-    metadata = mapOf("tripId" to tripId.toString())
-)
-
-private fun StopEvent.toUrbanMapWaypointPoints(): List<UrbanMapPoint> {
-    val points = mutableListOf<UrbanMapPoint>()
-    val category = eventCategory()
-    if (isValidCoordinate(stopLat, stopLon)) {
-        points += UrbanMapPoint(
-            id = "event-$eventId-wp-inicio-$waypointStopId",
-            title = "WP $waypointStopId INICIO REGISTRO • ${displayLabel()}",
-            subtitle = waypointSubtitle(isClose = false),
-            lat = stopLat,
-            lon = stopLon,
-            accuracyM = stopAccM,
-            status = category.mapStatus,
-            module = "ASD_EVENT_START",
-            timestampMs = stopTime.takeIf { it > 0L } ?: timestamp,
-            metadata = mapOf("tripId" to tripId.toString(), "wp" to waypointStopId.toString(), "fase" to "INICIO")
-        )
-    }
-    if (isValidCoordinate(startLat, startLon) && startTime > 0L && waypointStartId != waypointStopId) {
-        points += UrbanMapPoint(
-            id = "event-$eventId-wp-cierre-$waypointStartId",
-            title = "WP $waypointStartId CIERRE REGISTRO • ${displayLabel()}",
-            subtitle = waypointSubtitle(isClose = true),
-            lat = startLat,
-            lon = startLon,
-            accuracyM = startAccM,
-            status = category.mapStatus,
-            module = "ASD_EVENT_CLOSE",
-            timestampMs = startTime,
-            metadata = mapOf("tripId" to tripId.toString(), "wp" to waypointStartId.toString(), "fase" to "CIERRE")
-        )
-    }
-    return points
-}
-
-private fun isValidCoordinate(lat: Double, lon: Double): Boolean {
-    if (!lat.isFinite() || !lon.isFinite()) return false
-    if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return false
-    if (lat == 0.0 && lon == 0.0) return false
-    return true
-}
-
-private fun StopEvent.waypointSubtitle(isClose: Boolean): String {
-    val paxUp = paxMenUp + paxWomenUp
-    val paxDown = paxMenDown + paxWomenDown
-    val time = if (isClose) startTime else stopTime.takeIf { it > 0L } ?: timestamp
-    val acc = if (isClose) startAccM else stopAccM
-    return buildList {
-        add(if (isClose) "CIERRE: ${formattedTime(time)}" else "INICIO: ${formattedTime(time)}")
-        if (paxUp > 0) add("SUBEN: $paxUp (H:$paxMenUp M:$paxWomenUp)")
-        if (paxDown > 0) add("BAJAN: $paxDown (H:$paxMenDown M:$paxWomenDown)")
-        if (!delayCodes.isNullOrBlank()) add("DEMORA: $delayCodes")
-        if (!otherDelayDesc.isNullOrBlank()) add(otherDelayDesc)
-        if (!notes.isNullOrBlank()) add("NOTAS: $notes")
-        add(locationStatus)
-        add("GPS ±${acc.roundToInt()}M")
-    }.joinToString(" | ")
-}
-
+private fun buildAsdTimeline(startTime: Long?, events: List<StopEvent>, endTime: Long?): List<String> { val items = mutableListOf<Pair<Long, String>>(); startTime?.let { items.add(it to "${formattedTime(it)} INICIO") }; events.forEach { items.add(it.timestamp to "${formattedTime(it.timestamp)} ${it.timelineLabel()}") }; endTime?.let { items.add(it to "${formattedTime(it)} FIN") }; return items.sortedBy { it.first }.map { it.second } }
+private fun StopEvent.timelineLabel(): String { val place = stopName?.takeIf { it.isNotBlank() }?.let { " - $it" } ?: ""; return "${displayLabel()}$place" }
+private fun List<TrackPoint>.toSmoothedMapPoints(): List<UrbanMapPoint> { if (isEmpty()) return emptyList(); if (size < 3) return map { it.toUrbanMapPoint() }; val raw = map { LatLng(it.lat, it.lon) }; val smooth = PolylineSmoother.movingAverage(raw, window = 3); return smooth.mapIndexed { index, point -> val source = this[index.coerceAtMost(lastIndex)]; source.toUrbanMapPoint().copy(id = "smooth-${source.id}-$index", lat = point.lat, lon = point.lon, title = "RUTA SMOOTH", subtitle = "${source.provider} | ACC ${source.accM.roundToInt()}M | PUNTO ${index + 1}/${size}") } }
+private fun TrackPoint.toUrbanMapPoint(): UrbanMapPoint = UrbanMapPoint(id = "track-$id", title = "TRACK GPS", subtitle = "$provider | ACC ${accM}M", lat = lat, lon = lon, accuracyM = accM, status = provider, module = "ASD_TRACK", timestampMs = timeMs, metadata = mapOf("tripId" to tripId.toString()))
+private fun StopEvent.toUrbanMapWaypointPoints(): List<UrbanMapPoint> { val points = mutableListOf<UrbanMapPoint>(); val category = eventCategory(); if (isValidCoordinate(stopLat, stopLon)) { points += UrbanMapPoint(id = "event-$eventId-wp-inicio-$waypointStopId", title = "WP $waypointStopId INICIO REGISTRO • ${displayLabel()}", subtitle = waypointSubtitle(isClose = false), lat = stopLat, lon = stopLon, accuracyM = stopAccM, status = category.mapStatus, module = "ASD_EVENT_START", timestampMs = stopTime.takeIf { it > 0L } ?: timestamp, metadata = mapOf("tripId" to tripId.toString(), "wp" to waypointStopId.toString(), "fase" to "INICIO")) }; if (isValidCoordinate(startLat, startLon) && startTime > 0L && waypointStartId != waypointStopId) { points += UrbanMapPoint(id = "event-$eventId-wp-cierre-$waypointStartId", title = "WP $waypointStartId CIERRE REGISTRO • ${displayLabel()}", subtitle = waypointSubtitle(isClose = true), lat = startLat, lon = startLon, accuracyM = startAccM, status = category.mapStatus, module = "ASD_EVENT_CLOSE", timestampMs = startTime, metadata = mapOf("tripId" to tripId.toString(), "wp" to waypointStartId.toString(), "fase" to "CIERRE")) }; return points }
+private fun isValidCoordinate(lat: Double, lon: Double): Boolean { if (!lat.isFinite() || !lon.isFinite()) return false; if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return false; if (lat == 0.0 && lon == 0.0) return false; return true }
+private fun StopEvent.waypointSubtitle(isClose: Boolean): String { val paxUp = paxMenUp + paxWomenUp; val paxDown = paxMenDown + paxWomenDown; val time = if (isClose) startTime else stopTime.takeIf { it > 0L } ?: timestamp; val acc = if (isClose) startAccM else stopAccM; return buildList { add(if (isClose) "CIERRE: ${formattedTime(time)}" else "INICIO: ${formattedTime(time)}"); if (paxUp > 0) add("SUBEN: $paxUp (H:$paxMenUp M:$paxWomenUp)"); if (paxDown > 0) add("BAJAN: $paxDown (H:$paxMenDown M:$paxWomenDown)"); if (!delayCodes.isNullOrBlank()) add("DEMORA: $delayCodes"); if (!otherDelayDesc.isNullOrBlank()) add(otherDelayDesc); if (!notes.isNullOrBlank()) add("NOTAS: $notes"); add(locationStatus); add("GPS ±${acc.roundToInt()}M") }.joinToString(" | ") }
 private fun formattedTime(timeMs: Long): String = SimpleDateFormat("HH:mm:ss", Locale("es", "MX")).format(Date(timeMs))
-
-private enum class AsdEventCategory(val mapStatus: String) {
-    BOARDING("ASCENSO"), ALIGHTING("DESCENSO"), DELAY("BANDERA"), COMBINED("BANDERA"), OTHER("OTHER")
-}
-
+private enum class AsdEventCategory(val mapStatus: String) { BOARDING("ASD"), ALIGHTING("ASD"), DELAY("DEMORA"), COMBINED("ASD_DEMORA"), OTHER("OTHER") }
 private fun StopEvent.hasBoarding(): Boolean = paxMenUp + paxWomenUp > 0
 private fun StopEvent.hasAlighting(): Boolean = paxMenDown + paxWomenDown > 0
-private fun StopEvent.hasDelay(): Boolean {
-    val type = stopType.trim().uppercase(Locale("es", "MX"))
-    return !delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")
-}
-
-private fun StopEvent.eventCategory(): AsdEventCategory {
-    val type = stopType.trim().uppercase(Locale("es", "MX"))
-    val hasPax = hasBoarding() || hasAlighting()
-    val hasDelay = hasDelay()
-    return when {
-        hasPax && hasDelay -> AsdEventCategory.COMBINED
-        type in setOf("ASCENSO", "SUBE", "BOARDING") || hasBoarding() -> AsdEventCategory.BOARDING
-        type in setOf("DESCENSO", "BAJA", "ALIGHTING") || hasAlighting() -> AsdEventCategory.ALIGHTING
-        hasDelay -> AsdEventCategory.DELAY
-        else -> AsdEventCategory.OTHER
-    }
-}
-
-private fun StopEvent.displayLabel(): String {
-    val hasUp = hasBoarding()
-    val hasDown = hasAlighting()
-    val hasDelay = hasDelay()
-    return when {
-        (hasUp || hasDown) && hasDelay -> "ASD + DEMORA"
-        hasUp && hasDown -> "ASD"
-        hasUp -> "ASCENSO"
-        hasDown -> "DESCENSO"
-        hasDelay -> "DEMORA"
-        else -> stopType.uppercase(Locale("es", "MX"))
-    }
-}
-
-private data class AsdMapMetrics(
-    val pointCount: Int,
-    val displayedPointCount: Int,
-    val eventCount: Int,
-    val boardingCount: Int,
-    val alightingCount: Int,
-    val delayCount: Int,
-    val boardingPax: Int,
-    val alightingPax: Int,
-    val distanceText: String,
-    val durationText: String,
-    val accuracyText: String,
-    val gpsStatusText: String,
-    val modeText: String,
-    val coverageText: String,
-    val kalmanText: String,
-    val stillLockText: String,
-    val smoothText: String
-) {
-    companion object {
-        fun from(points: List<TrackPoint>, events: List<StopEvent>, displayedPointCount: Int): AsdMapMetrics {
-            val distanceM = points.zipWithNext().sumOf { (a, b) -> haversineMeters(a.lat, a.lon, b.lat, b.lon) }
-            val durationMs = if (points.size >= 2) (points.last().timeMs - points.first().timeMs).coerceAtLeast(0L) else 0L
-            val avgAcc = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.averageOrNull()
-            val audit = GpsAuditSummary.from(points)
-            val last = points.lastOrNull()
-            val lastDiag = GpsAuditDiagnostics.parse(last?.provider)
-            val lastAcc = last?.accM ?: avgAcc ?: 9999.0
-            return AsdMapMetrics(
-                pointCount = points.size,
-                displayedPointCount = displayedPointCount,
-                eventCount = events.size,
-                boardingCount = events.count { it.hasBoarding() },
-                alightingCount = events.count { it.hasAlighting() },
-                delayCount = events.count { it.hasDelay() },
-                boardingPax = events.sumOf { it.paxMenUp + it.paxWomenUp },
-                alightingPax = events.sumOf { it.paxMenDown + it.paxWomenDown },
-                distanceText = distanceText(distanceM),
-                durationText = durationText(durationMs),
-                accuracyText = avgAcc?.let { "±${it.roundToInt()}M" } ?: "-",
-                gpsStatusText = gpsStatusText(lastAcc),
-                modeText = lastDiag.mode.ifBlank { "TRACK" },
-                coverageText = "Cobertura ${audit.coverageText}",
-                kalmanText = percentText(audit.kalmanPoints, audit.totalPoints),
-                stillLockText = percentText(audit.stillLockPoints, audit.totalPoints),
-                smoothText = percentText(audit.smoothedPoints, audit.totalPoints)
-            )
-        }
-        private fun gpsStatusText(accM: Double): String = when {
-            accM <= 8.0 -> "🟢 GPS EXCELENTE"
-            accM <= 15.0 -> "🟢 GPS BUENO"
-            accM <= 25.0 -> "🟡 GPS USABLE"
-            else -> "🔴 GPS DÉBIL"
-        }
-        private fun percentText(count: Int, total: Int): String = if (total <= 0) "-" else "${((count.toDouble() / total.toDouble()) * 100.0).roundToInt()}%"
-        private fun distanceText(distanceM: Double): String = when {
-            distanceM <= 0.0 -> "-"
-            distanceM < 1000.0 -> "${distanceM.roundToInt()}M"
-            else -> String.format(Locale("es", "MX"), "%.2fKM", distanceM / 1000.0)
-        }
-        private fun durationText(durationMs: Long): String {
-            if (durationMs <= 0L) return "-"
-            val totalSec = durationMs / 1000L
-            val h = totalSec / 3600L
-            val m = (totalSec % 3600L) / 60L
-            val s = totalSec % 60L
-            return if (h > 0L) "${h}H ${m}M" else "${m}M ${s}S"
-        }
-        private fun List<Double>.averageOrNull(): Double? = if (isEmpty()) null else average()
-        private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-            val r = 6_371_000.0
-            val dLat = Math.toRadians(lat2 - lat1)
-            val dLon = Math.toRadians(lon2 - lon1)
-            val a = sin(dLat / 2) * sin(dLat / 2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2) * sin(dLon / 2)
-            val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-            return r * c
-        }
-    }
-}
+private fun StopEvent.hasDelay(): Boolean { val type = stopType.trim().uppercase(Locale("es", "MX")); return !delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY") }
+private fun StopEvent.eventCategory(): AsdEventCategory { val type = stopType.trim().uppercase(Locale("es", "MX")); val hasPax = hasBoarding() || hasAlighting(); val hasDelay = hasDelay(); return when { hasPax && hasDelay -> AsdEventCategory.COMBINED; type in setOf("ASCENSO", "SUBE", "BOARDING") || hasBoarding() -> AsdEventCategory.BOARDING; type in setOf("DESCENSO", "BAJA", "ALIGHTING") || hasAlighting() -> AsdEventCategory.ALIGHTING; hasDelay -> AsdEventCategory.DELAY; else -> AsdEventCategory.OTHER } }
+private fun StopEvent.displayLabel(): String { val hasUp = hasBoarding(); val hasDown = hasAlighting(); val hasDelay = hasDelay(); return when { (hasUp || hasDown) && hasDelay -> "ASD + DEMORA"; hasUp && hasDown -> "ASD"; hasUp -> "ASCENSO"; hasDown -> "DESCENSO"; hasDelay -> "DEMORA"; else -> stopType.uppercase(Locale("es", "MX")) } }
+private data class AsdMapMetrics(val pointCount: Int, val displayedPointCount: Int, val eventCount: Int, val boardingCount: Int, val alightingCount: Int, val delayCount: Int, val boardingPax: Int, val alightingPax: Int, val distanceText: String, val durationText: String, val accuracyText: String, val gpsStatusText: String, val modeText: String, val coverageText: String, val kalmanText: String, val stillLockText: String, val smoothText: String) { companion object { fun from(points: List<TrackPoint>, events: List<StopEvent>, displayedPointCount: Int): AsdMapMetrics { val distanceM = points.zipWithNext().sumOf { (a, b) -> haversineMeters(a.lat, a.lon, b.lat, b.lon) }; val durationMs = if (points.size >= 2) (points.last().timeMs - points.first().timeMs).coerceAtLeast(0L) else 0L; val avgAcc = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.averageOrNull(); val audit = GpsAuditSummary.from(points); val last = points.lastOrNull(); val lastDiag = GpsAuditDiagnostics.parse(last?.provider); val lastAcc = last?.accM ?: avgAcc ?: 9999.0; return AsdMapMetrics(pointCount = points.size, displayedPointCount = displayedPointCount, eventCount = events.size, boardingCount = events.count { it.hasBoarding() }, alightingCount = events.count { it.hasAlighting() }, delayCount = events.count { it.hasDelay() }, boardingPax = events.sumOf { it.paxMenUp + it.paxWomenUp }, alightingPax = events.sumOf { it.paxMenDown + it.paxWomenDown }, distanceText = distanceText(distanceM), durationText = durationText(durationMs), accuracyText = avgAcc?.let { "±${it.roundToInt()}M" } ?: "-", gpsStatusText = gpsStatusText(lastAcc), modeText = lastDiag.mode.ifBlank { "TRACK" }, coverageText = "Cobertura ${audit.coverageText}", kalmanText = percentText(audit.kalmanPoints, audit.totalPoints), stillLockText = percentText(audit.stillLockPoints, audit.totalPoints), smoothText = percentText(audit.smoothedPoints, audit.totalPoints)) }
+private fun gpsStatusText(accM: Double): String = when { accM <= 8.0 -> "🟢 GPS EXCELENTE"; accM <= 15.0 -> "🟢 GPS BUENO"; accM <= 25.0 -> "🟡 GPS USABLE"; else -> "🔴 GPS DÉBIL" }
+private fun percentText(count: Int, total: Int): String = if (total <= 0) "-" else "${((count.toDouble() / total.toDouble()) * 100.0).roundToInt()}%"
+private fun distanceText(distanceM: Double): String = when { distanceM <= 0.0 -> "-"; distanceM < 1000.0 -> "${distanceM.roundToInt()}M"; else -> String.format(Locale("es", "MX"), "%.2fKM", distanceM / 1000.0) }
+private fun durationText(durationMs: Long): String { if (durationMs <= 0L) return "-"; val totalSec = durationMs / 1000L; val h = totalSec / 3600L; val m = (totalSec % 3600L) / 60L; val s = totalSec % 60L; return if (h > 0L) "${h}H ${m}M" else "${m}M ${s}S" }
+private fun List<Double>.averageOrNull(): Double? = if (isEmpty()) null else average()
+private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double { val r = 6_371_000.0; val dLat = Math.toRadians(lat2 - lat1); val dLon = Math.toRadians(lon2 - lon1); val a = sin(dLat / 2) * sin(dLat / 2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2) * sin(dLon / 2); val c = 2 * atan2(sqrt(a), sqrt(1 - a)); return r * c } } }
