@@ -12,6 +12,7 @@ import org.apache.poi.ss.usermodel.CellStyle
 import org.apache.poi.ss.usermodel.FillPatternType
 import org.apache.poi.ss.usermodel.HorizontalAlignment
 import org.apache.poi.ss.usermodel.IndexedColors
+import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
@@ -37,9 +38,11 @@ object AsdClientXlsxExporter {
     ) = withContext(Dispatchers.IO) {
         val wb = XSSFWorkbook()
         val styles = Styles(wb)
-        createResumenSheet(wb, styles, trip, events, trackPoints)
-        createEventosSheet(wb, styles, events)
-        createDemorasSheet(wb, styles, events)
+        val orderedEvents = events.sortedBy { it.timestamp }
+        val displayWaypoints = buildDisplayWaypoints(orderedEvents)
+        createResumenSheet(wb, styles, trip, orderedEvents, trackPoints)
+        createEventosSheet(wb, styles, orderedEvents, displayWaypoints)
+        createDemorasSheet(wb, styles, orderedEvents, displayWaypoints)
         createRecorridoSheet(wb, styles, trackPoints)
         val os = context.contentResolver.openOutputStream(uri)
         requireNotNull(os) { "No se pudo abrir OutputStream para: $uri" }
@@ -98,27 +101,31 @@ object AsdClientXlsxExporter {
         item("Precisión promedio", avgAccuracyText(trackPoints))
         item("Calidad GPS", gpsClientQuality(trackPoints))
         item("Observaciones", trip.notes.orDash())
-        sheet.setColumnWidth(0, 26 * 256)
-        sheet.setColumnWidth(1, 48 * 256)
-        sheet.setColumnWidth(2, 18 * 256)
-        sheet.setColumnWidth(3, 18 * 256)
+        applyColumnWidths(sheet, intArrayOf(28, 52, 18, 18))
     }
 
-    private fun createEventosSheet(wb: Workbook, styles: Styles, events: List<StopEvent>) {
+    private fun createEventosSheet(wb: Workbook, styles: Styles, events: List<StopEvent>, displayWaypoints: Map<Long, DisplayWaypoint>) {
         val sheet = wb.createSheet("Eventos ASD")
-        val headers = listOf("Fecha/hora", "Hora", "Tipo", "Parada", "H suben", "M suben", "H bajan", "M bajan", "Suben", "Bajan", "A bordo", "Demoras", "Observaciones", "GPS")
+        val headers = listOf(
+            "Fecha/hora", "Hora", "Tipo", "Parada", "WP parada", "WP arranque",
+            "H suben", "M suben", "H bajan", "M bajan", "Suben", "Bajan", "A bordo",
+            "Demoras", "Observaciones", "GPS parada", "GPS arranque"
+        )
         writeHeader(sheet, 0, headers, styles)
         var onboard = 0
-        events.sortedBy { it.timestamp }.forEachIndexed { idx, e ->
+        events.forEachIndexed { idx, e ->
             val up = e.paxMenUp + e.paxWomenUp
             val down = e.paxMenDown + e.paxWomenDown
             onboard = (onboard + up - down).coerceAtLeast(0)
+            val wp = displayWaypoints[e.eventId]
             val row = sheet.createRow(idx + 1)
             val values = listOf(
                 dtf.format(Date(e.timestamp)),
                 tf.format(Date(e.timestamp)),
-                e.stopType,
+                clientEventType(e),
                 e.stopName.orDash(),
+                wp?.stopId ?: "",
+                wp?.startId ?: "",
                 e.paxMenUp,
                 e.paxWomenUp,
                 e.paxMenDown,
@@ -128,24 +135,26 @@ object AsdClientXlsxExporter {
                 onboard,
                 e.delayCodes.orDash(),
                 e.notes.orDash(),
-                simpleGps(e.stopLat, e.stopLon, e.stopAccM)
+                simpleGps(e.stopLat, e.stopLon, e.stopAccM),
+                simpleGps(e.startLat, e.startLon, e.startAccM)
             )
             values.forEachIndexed { c, v -> row.createCell(c).setCellValue(v.toString()); row.getCell(c).cellStyle = styles.value }
         }
-        autosize(sheet, headers.size)
+        applyColumnWidths(sheet, intArrayOf(20, 12, 16, 24, 12, 13, 10, 10, 10, 10, 10, 10, 10, 16, 26, 30, 30))
     }
 
-    private fun createDemorasSheet(wb: Workbook, styles: Styles, events: List<StopEvent>) {
+    private fun createDemorasSheet(wb: Workbook, styles: Styles, events: List<StopEvent>, displayWaypoints: Map<Long, DisplayWaypoint>) {
         val sheet = wb.createSheet("Demoras")
-        val headers = listOf("Fecha/hora", "Código", "Descripción", "Parada", "Notas", "GPS")
+        val headers = listOf("Fecha/hora", "WP", "Código", "Descripción", "Parada", "Notas", "GPS")
         writeHeader(sheet, 0, headers, styles)
         var r = 1
-        events.sortedBy { it.timestamp }.filter { it.hasDelay() }.forEach { e ->
-            val codes = e.delayCodes?.split("/")?.filter { it.isNotBlank() } ?: listOf("DEMORA")
+        events.filter { it.hasDelay() }.forEach { e ->
+            val codes = e.delayCodes?.split("/")?.filter { it.isNotBlank() && it != "AD" } ?: listOf("DEMORA")
             codes.forEach { code ->
                 val row = sheet.createRow(r++)
                 val values = listOf(
                     dtf.format(Date(e.timestamp)),
+                    displayWaypoints[e.eventId]?.stopId?.toString() ?: "",
                     code,
                     if (code == "O") e.otherDelayDesc.orDash() else delayLabel(code),
                     e.stopName.orDash(),
@@ -155,7 +164,7 @@ object AsdClientXlsxExporter {
                 values.forEachIndexed { c, v -> row.createCell(c).setCellValue(v); row.getCell(c).cellStyle = styles.value }
             }
         }
-        autosize(sheet, headers.size)
+        applyColumnWidths(sheet, intArrayOf(20, 10, 12, 24, 24, 30, 30))
     }
 
     private fun createRecorridoSheet(wb: Workbook, styles: Styles, points: List<TrackPoint>) {
@@ -167,21 +176,17 @@ object AsdClientXlsxExporter {
             val values = listOf(dtf.format(Date(p.timeMs)), p.lat, p.lon, p.accM)
             values.forEachIndexed { c, v -> row.createCell(c).setCellValue(v.toString()); row.getCell(c).cellStyle = styles.value }
         }
-        autosize(sheet, headers.size)
+        applyColumnWidths(sheet, intArrayOf(20, 18, 18, 14))
     }
 
-    private fun writeHeader(sheet: org.apache.poi.ss.usermodel.Sheet, rowIndex: Int, headers: List<String>, styles: Styles) {
+    private fun writeHeader(sheet: Sheet, rowIndex: Int, headers: List<String>, styles: Styles) {
         val row = sheet.createRow(rowIndex)
         headers.forEachIndexed { c, h -> row.createCell(c).setCellValue(h); row.getCell(c).cellStyle = styles.header }
         sheet.createFreezePane(0, rowIndex + 1)
     }
 
-    private fun autosize(sheet: org.apache.poi.ss.usermodel.Sheet, cols: Int) {
-        for (i in 0 until cols) {
-            sheet.autoSizeColumn(i)
-            val width = sheet.getColumnWidth(i).coerceAtMost(42 * 256).coerceAtLeast(12 * 256)
-            sheet.setColumnWidth(i, width)
-        }
+    private fun applyColumnWidths(sheet: Sheet, widths: IntArray) {
+        widths.forEachIndexed { index, chars -> sheet.setColumnWidth(index, chars.coerceIn(8, 60) * 256) }
     }
 
     private class Styles(wb: Workbook) {
@@ -209,7 +214,46 @@ object AsdClientXlsxExporter {
         val value: CellStyle = wb.createCellStyle().apply { borderBottom = BorderStyle.HAIR }
     }
 
-    private fun StopEvent.hasDelay(): Boolean = !delayCodes.isNullOrBlank() || stopType.uppercase(Locale("es", "MX")) in setOf("DEMORA", "BANDERA", "DELAY")
+    private data class DisplayWaypoint(val stopId: Int, val startId: Int)
+
+    private fun buildDisplayWaypoints(events: List<StopEvent>): Map<Long, DisplayWaypoint> {
+        var next = 1
+        return events.associate { e ->
+            val boundary = e.isTripBoundaryFlag()
+            val stopId = next
+            val startId = if (boundary) stopId else stopId + 1
+            next += if (boundary) 1 else 2
+            e.eventId to DisplayWaypoint(stopId, startId)
+        }
+    }
+
+    private fun StopEvent.isTripBoundaryFlag(): Boolean {
+        if (!stopType.equals("BANDERA", true)) return false
+        val combined = listOfNotNull(stopName, delayCodes).joinToString("/").uppercase(Locale("es", "MX"))
+        return combined.contains("AD/INICIO") || combined.contains("AD/FINAL")
+    }
+
+    private fun StopEvent.hasDelay(): Boolean {
+        val type = stopType.uppercase(Locale("es", "MX"))
+        val codes = delayCodes.orEmpty().uppercase(Locale("es", "MX"))
+        return !delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY") || codes.contains("CONG")
+    }
+
+    private fun clientEventType(e: StopEvent): String {
+        if (e.isTripBoundaryFlag()) return e.stopName ?: e.delayCodes ?: "BANDERA"
+        val up = e.paxMenUp + e.paxWomenUp
+        val down = e.paxMenDown + e.paxWomenDown
+        val hasDelay = e.hasDelay()
+        return when {
+            (up > 0 || down > 0) && hasDelay -> "ASD + DEMORA"
+            up > 0 && down > 0 -> "ASD"
+            up > 0 -> "ASCENSO"
+            down > 0 -> "DESCENSO"
+            hasDelay -> "DEMORA"
+            else -> e.stopType
+        }
+    }
+
     private fun String?.orDash(): String = this?.takeIf { it.isNotBlank() } ?: "-"
     private fun simpleGps(lat: Double, lon: Double, acc: Double): String = if (lat != 0.0 || lon != 0.0) "${"%.6f".format(Locale.US, lat)}, ${"%.6f".format(Locale.US, lon)} ±${acc.roundToInt()}m" else "GPS pendiente"
     private fun avgAccuracyText(points: List<TrackPoint>): String = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.average().takeIf { !it.isNaN() }?.let { "±${it.roundToInt()}m" } ?: "-"
@@ -224,6 +268,7 @@ object AsdClientXlsxExporter {
     }
     private fun formatDistance(m: Double): String = if (m < 1000.0) "${m.roundToInt()} m" else "${"%.2f".format(Locale.US, m / 1000.0)} km"
     private fun delayLabel(code: String): String = when (code) {
+        "AD" -> "Ascenso / descenso"
         "C" -> "Congestión"
         "S" -> "Semaforización"
         "TM" -> "Tráfico mixto"
