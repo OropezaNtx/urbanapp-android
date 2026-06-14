@@ -3,22 +3,30 @@ package com.oropeza.urbanapp.asd.ui.viewmodel
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.location.LocationProvider
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class AsdNewTripVM : ViewModel() {
 
@@ -88,38 +96,52 @@ fun AsdNewTripScreen(
     val context = LocalContext.current
     val gps = remember { LocationProvider(context) }
 
-    // Campos principales
+    // 1. CATÁLOGO
     var planningRouteId by remember { mutableStateOf("") }
+
+    // 2. DATOS AUTOLLENADOS (Simulados)
     var routeName by remember { mutableStateOf("") }
     var company by remember { mutableStateOf("") }
-    var vehicleEco by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var direction by remember { mutableStateOf("IDA") }
-
-    // Campos operativos
-    var aforador by remember { mutableStateOf("") }
-    var supervisor by remember { mutableStateOf("") }
-    var deviceNumber by remember { mutableStateOf("") }
-    var observerSex by remember { mutableStateOf<String?>(null) } // "H" | "M"
-
-    // Encabezado opcional
-    var routeNumberTxt by remember { mutableStateOf("") }
-    var esFs by remember { mutableStateOf("") }
     var baseStart by remember { mutableStateOf("") }
     var baseEnd by remember { mutableStateOf("") }
-    var plateNumber by remember { mutableStateOf("") }
-    var vehicleType by remember { mutableStateOf("") }
+
+    // 3. OPERACIÓN
+    var routeNumberTxt by remember { mutableStateOf("") }
+    var direction by remember { mutableStateOf("IDA") }
+    var esFs by remember { mutableStateOf("ES") }
+    var continueWaypoint by remember { mutableStateOf(true) }
+
+    // 4. UNIDAD
+    var vehicleType by remember { mutableStateOf("COMBI") }
     var seatCapacityTxt by remember { mutableStateOf("") }
+    var vehicleEco by remember { mutableStateOf("") }
+    var plateNumber by remember { mutableStateOf("") }
+
+    // 5. PERSONAL
+    var aforador by remember { mutableStateOf("") }
+    var observerSex by remember { mutableStateOf<String?>(null) }
+    var supervisor by remember { mutableStateOf("") }
+    var deviceNumber by remember { mutableStateOf("") }
+
+    // 6. NOTAS
+    var notes by remember { mutableStateOf("") }
 
     // Estados UI
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var gpsMsg by remember { mutableStateOf<String?>(null) }
-
-    // ✅ Para no tener que presionar "Crear" 2 veces tras aceptar permisos
     var pendingCreate by remember { mutableStateOf(false) }
 
-    fun toIntOrNullSafe(s: String): Int? = s.trim().toIntOrNull()
+    val bgApp = Color(0xFF07110F)
+    val cardBg = Color(0xFF0D1716)
+    val borderCol = Color(0xFF223A36)
+    val greenAcc = Color(0xFF35D36B)
+
+    val vehicleTypes = listOf(
+        "COMBI", "VAN", "SPRINTER", "MICROBUS", "MIDIBUS", "BUS URBANO", 
+        "BUS FORANEO", "ARTICULADO", "TROLEBUS", "METROBUS", 
+        "TAXI COLECTIVO", "CAMIONETA", "OTRO"
+    )
 
     // Permisos
     val permLauncher = rememberLauncherForActivityResult(
@@ -134,7 +156,6 @@ fun AsdNewTripScreen(
             return@rememberLauncherForActivityResult
         }
 
-        // ✅ Si el usuario aceptó permisos y veníamos de intentar crear, reintenta automáticamente
         if (pendingCreate) {
             pendingCreate = false
             scope.launch { createTripFlow(vm, gps,
@@ -152,16 +173,10 @@ fun AsdNewTripScreen(
     fun requestPermsIfNeededAndCreateOrWait() {
         if (!gps.hasPermission()) {
             pendingCreate = true
-            permLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
+            permLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         } else {
             scope.launch {
-                createTripFlow(
-                    vm, gps,
+                createTripFlow(vm, gps,
                     planningRouteId, routeName, company, vehicleEco, direction, notes,
                     aforador, supervisor, deviceNumber, observerSex ?: "",
                     routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
@@ -175,14 +190,15 @@ fun AsdNewTripScreen(
     }
 
     Scaffold(
+        containerColor = bgApp,
         topBar = {
             TopAppBar(
-                title = { Text("Nuevo recorrido ASD") },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = bgApp, titleContentColor = Color.White),
+                title = { Text("NUEVO RECORRIDO ASD", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = {
-                    TextButton(onClick = {
-                        focusManager.clearFocus()
-                        onBack()
-                    }) { Text("Atrás") }
+                    TextButton(onClick = { focusManager.clearFocus(); onBack() }) { 
+                        Text("ATRÁS", color = Color.White) 
+                    }
                 }
             )
         }
@@ -194,162 +210,236 @@ fun AsdNewTripScreen(
                 .verticalScroll(scrollState)
                 .imePadding()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
-            OutlinedTextField(
-                value = planningRouteId,
-                onValueChange = { planningRouteId = it.trim() },
-                label = { Text("ID Planeación *") },
-                supportingText = { Text("Obligatorio. ID fijo asignado a la ruta desde planeación.") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = routeName,
-                onValueChange = { routeName = it },
-                label = { Text("Ruta / Derrotero *") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = company,
-                onValueChange = { company = it },
-                label = { Text("Empresa (opcional)") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = vehicleEco,
-                onValueChange = { vehicleEco = it },
-                label = { Text("No. Económico (opcional)") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Text("Sentido", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilterChip(
-                    selected = direction == "IDA",
-                    onClick = { direction = "IDA" },
-                    label = { Text("IDA") }
+            // 1. CATÁLOGO
+            NewTripSection("CATÁLOGO") {
+                OutlinedTextField(
+                    value = planningRouteId,
+                    onValueChange = { planningRouteId = it.uppercase() },
+                    label = { Text("ID CATÁLOGO / PLANEACIÓN") },
+                    supportingText = { Text("Obligatorio. ID fijo asignado a la ruta.") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = asdTextFieldColors()
                 )
-                FilterChip(
-                    selected = direction == "REGRESO",
-                    onClick = { direction = "REGRESO" },
-                    label = { Text("REGRESO") }
+                Text(
+                    "Ingresa el ID del catálogo. Próximamente autollenará ruta, empresa y bases.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.5f)
                 )
             }
 
-            HorizontalDivider()
-
-            Text("Campos operativos", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = aforador,
-                onValueChange = { aforador = it },
-                label = { Text("Aforador") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = supervisor,
-                onValueChange = { supervisor = it },
-                label = { Text("Supervisor") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = deviceNumber,
-                onValueChange = { deviceNumber = it },
-                label = { Text("No. Dispositivo") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Text("Sexo del observador *", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilterChip(
-                    selected = observerSex == "H",
-                    onClick = { observerSex = "H" },
-                    label = { Text("HOMBRE") },
-                    leadingIcon = if (observerSex == "H") {
-                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                    } else null
+            // 2. DATOS AUTOLLENADOS
+            NewTripSection("DATOS DE RUTA") {
+                OutlinedTextField(
+                    value = routeName,
+                    onValueChange = { routeName = it.uppercase() },
+                    label = { Text("RUTA / DERROTERO *") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = asdTextFieldColors()
                 )
-                FilterChip(
-                    selected = observerSex == "M",
-                    onClick = { observerSex = "M" },
-                    label = { Text("MUJER") },
-                    leadingIcon = if (observerSex == "M") {
-                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                    } else null
+                OutlinedTextField(
+                    value = company,
+                    onValueChange = { company = it.uppercase() },
+                    label = { Text("EMPRESA") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = asdTextFieldColors()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = baseStart,
+                        onValueChange = { baseStart = it.uppercase() },
+                        label = { Text("BASE INICIO") },
+                        modifier = Modifier.weight(1f),
+                        colors = asdTextFieldColors()
+                    )
+                    OutlinedTextField(
+                        value = baseEnd,
+                        onValueChange = { baseEnd = it.uppercase() },
+                        label = { Text("BASE FINAL") },
+                        modifier = Modifier.weight(1f),
+                        colors = asdTextFieldColors()
+                    )
+                }
+            }
+
+            // 3. OPERACIÓN
+            NewTripSection("OPERACIÓN") {
+                OutlinedTextField(
+                    value = routeNumberTxt,
+                    onValueChange = { routeNumberTxt = it.filter { ch -> ch.isDigit() }.take(6) },
+                    label = { Text("NO. RECORRIDO") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = asdTextFieldColors()
+                )
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("SENTIDO", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    FilterChip(
+                        selected = direction == "IDA",
+                        onClick = { direction = "IDA" },
+                        label = { Text("IDA") },
+                        colors = asdChipColors()
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(
+                        selected = direction == "REGRESO",
+                        onClick = { direction = "REGRESO" },
+                        label = { Text("REGRESO") },
+                        colors = asdChipColors()
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("ES / FS", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    FilterChip(
+                        selected = esFs == "ES",
+                        onClick = { esFs = "ES" },
+                        label = { Text("ES") },
+                        colors = asdChipColors()
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(
+                        selected = esFs == "FS",
+                        onClick = { esFs = "FS" },
+                        label = { Text("FS") },
+                        colors = asdChipColors()
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("CONTINUAR CONSECUTIVO WP", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        Text("Si se desactiva, inicia desde WP 1.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
+                    }
+                    Switch(
+                        checked = continueWaypoint,
+                        onCheckedChange = { continueWaypoint = it },
+                        colors = SwitchDefaults.colors(checkedThumbColor = greenAcc)
+                    )
+                }
+            }
+
+            // 4. UNIDAD
+            NewTripSection("UNIDAD") {
+                var expanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = vehicleType,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("TIPO DE VEHÍCULO") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        colors = asdTextFieldColors()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        vehicleTypes.forEach { type ->
+                            DropdownMenuItem(
+                                text = { Text(type) },
+                                onClick = {
+                                    vehicleType = type
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = seatCapacityTxt,
+                    onValueChange = { seatCapacityTxt = it.filter { ch -> ch.isDigit() }.take(4) },
+                    label = { Text("CAPACIDAD DE ASIENTOS") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = asdTextFieldColors()
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = vehicleEco,
+                        onValueChange = { vehicleEco = it.filter { ch -> ch.isDigit() }.take(6) },
+                        label = { Text("NO. ECONÓMICO") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        colors = asdTextFieldColors()
+                    )
+                    OutlinedTextField(
+                        value = plateNumber,
+                        onValueChange = { plateNumber = it.uppercase() },
+                        label = { Text("NO. PLACA") },
+                        modifier = Modifier.weight(1f),
+                        colors = asdTextFieldColors()
+                    )
+                }
+            }
+
+            // 5. PERSONAL
+            NewTripSection("PERSONAL") {
+                OutlinedTextField(
+                    value = aforador,
+                    onValueChange = { aforador = it.uppercase() },
+                    label = { Text("AFORADOR / OBSERVADOR") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = asdTextFieldColors()
+                )
+
+                Text("SEXO DEL OBSERVADOR *", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FilterChip(
+                        selected = observerSex == "H",
+                        onClick = { observerSex = "H" },
+                        label = { Text("HOMBRE") },
+                        colors = asdChipColors(),
+                        leadingIcon = if (observerSex == "H") { { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) } } else null
+                    )
+                    FilterChip(
+                        selected = observerSex == "M",
+                        onClick = { observerSex = "M" },
+                        label = { Text("MUJER") },
+                        colors = asdChipColors(),
+                        leadingIcon = if (observerSex == "M") { { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) } } else null
+                    )
+                }
+
+                OutlinedTextField(
+                    value = supervisor,
+                    onValueChange = { supervisor = it.uppercase() },
+                    label = { Text("SUPERVISOR") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = asdTextFieldColors()
+                )
+
+                OutlinedTextField(
+                    value = deviceNumber,
+                    onValueChange = { deviceNumber = it.uppercase() },
+                    label = { Text("ID DISPOSITIVO") },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = asdTextFieldColors()
                 )
             }
 
-            HorizontalDivider()
+            // 6. NOTAS
+            NewTripSection("NOTAS") {
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it.uppercase() },
+                    label = { Text("OBSERVACIONES DE CAMPO") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    colors = asdTextFieldColors()
+                )
+            }
 
-            Text("Encabezado (opcional, pero recomendado)", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = routeNumberTxt,
-                onValueChange = { routeNumberTxt = it.filter { ch -> ch.isDigit() }.take(6) },
-                label = { Text("No. Recorrido") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = esFs,
-                onValueChange = { esFs = it },
-                label = { Text("ES / FS") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = baseStart,
-                onValueChange = { baseStart = it },
-                label = { Text("Base de inicio") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = baseEnd,
-                onValueChange = { baseEnd = it },
-                label = { Text("Base final") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = plateNumber,
-                onValueChange = { plateNumber = it },
-                label = { Text("No. Placa") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = vehicleType,
-                onValueChange = { vehicleType = it },
-                label = { Text("Tipo de vehículo") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = seatCapacityTxt,
-                onValueChange = { seatCapacityTxt = it.filter { ch -> ch.isDigit() }.take(4) },
-                label = { Text("Capacidad de asientos") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            HorizontalDivider()
-
-            OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = { Text("Notas / Observaciones (opcional)") },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 2
-            )
-
-            gpsMsg?.let { Text(it) }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            gpsMsg?.let { Text(it, color = greenAcc, style = MaterialTheme.typography.bodySmall) }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
             Spacer(Modifier.height(8.dp))
 
@@ -360,40 +450,62 @@ fun AsdNewTripScreen(
                     error = null
                     gpsMsg = null
 
-                    val pid = planningRouteId.trim()
-                    if (pid.isBlank()) {
-                        error = "El ID de Planeación es obligatorio."
-                        return@Button
-                    }
-
-                    val rn = routeName.trim()
-                    if (rn.isBlank()) {
-                        error = "La ruta/derrotero es obligatorio."
-                        return@Button
-                    }
-
-                    if (observerSex == null) {
-                        error = "Selecciona el sexo del observador para iniciar el recorrido."
-                        return@Button
-                    }
+                    if (planningRouteId.isBlank()) { error = "El ID de Planeación es obligatorio."; return@Button }
+                    if (routeName.isBlank()) { error = "La ruta/derrotero es obligatoria."; return@Button }
+                    if (observerSex == null) { error = "Selecciona el sexo del observador."; return@Button }
 
                     requestPermsIfNeededAndCreateOrWait()
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
+                shape = RoundedCornerShape(14.dp)
             ) {
                 if (loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Text("Creando...")
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black)
                 } else {
-                    Text("Crear recorrido")
+                    Text("CREAR RECORRIDO", fontWeight = FontWeight.ExtraBold, color = Color.Black)
                 }
             }
 
-            Spacer(Modifier.height(30.dp))
+            Spacer(Modifier.height(40.dp))
         }
     }
 }
+
+@Composable
+private fun NewTripSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716)),
+        border = BorderStroke(1.dp, Color(0xFF223A36)),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFF35D36B))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun asdTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = Color(0xFF35D36B),
+    unfocusedBorderColor = Color(0xFF223A36),
+    focusedLabelColor = Color(0xFF35D36B),
+    unfocusedLabelColor = Color.White.copy(alpha = 0.4f),
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    cursorColor = Color(0xFF35D36B)
+)
+
+@Composable
+private fun asdChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = Color(0xFF35D36B).copy(alpha = 0.2f),
+    selectedLabelColor = Color(0xFF35D36B),
+    selectedLeadingIconColor = Color(0xFF35D36B),
+    labelColor = Color.White.copy(alpha = 0.6f),
+    containerColor = Color.Transparent
+)
 
 private suspend fun createTripFlow(
     vm: AsdNewTripVM,

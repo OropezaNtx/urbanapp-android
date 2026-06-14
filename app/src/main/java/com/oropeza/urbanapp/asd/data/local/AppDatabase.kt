@@ -13,9 +13,13 @@ import com.oropeza.urbanapp.dashboard.OperationalDashboardDao
         FovSession::class,
         FovRouteMaster::class,
         FovPoiCatalogItem::class,
-        FovObservation::class
+        FovObservation::class,
+
+        // ✅ Catálogo ASD
+        AsdRouteCatalogItem::class,
+        AsdFieldPersonCatalogItem::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,6 +36,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun fovRouteMasterDao(): FovRouteMasterDao
     abstract fun fovPoiCatalogDao(): FovPoiCatalogDao
     abstract fun fovObservationDao(): FovObservationDao
+
+    // ✅ Catálogo ASD
+    abstract fun asdRouteCatalogDao(): AsdRouteCatalogDao
+    abstract fun asdFieldPersonCatalogDao(): AsdFieldPersonCatalogDao
 
     // ✅ Dashboard operativo
     abstract fun operationalDashboardDao(): OperationalDashboardDao

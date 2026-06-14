@@ -255,3 +255,43 @@ data class FovOccupancyScheme(
     val type: String,
     val optionsJson: String
 )
+
+@Entity(
+    indices = [
+        Index(value = ["catalogId"], unique = true),
+        Index(value = ["routeName"]),
+        Index(value = ["company"]),
+        Index(value = ["active"])
+    ]
+)
+data class AsdRouteCatalogItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val catalogId: String,
+    val routeName: String,
+    val company: String? = null,
+    val derrotero: String? = null,
+    val cromatica: String? = null,
+    val baseStart: String? = null,
+    val baseEnd: String? = null,
+    val observacion: String? = null,
+    val active: Boolean = true,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    indices = [
+        Index(value = ["personId"], unique = true),
+        Index(value = ["name"]),
+        Index(value = ["role"]),
+        Index(value = ["active"])
+    ]
+)
+data class AsdFieldPersonCatalogItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val personId: String,
+    val name: String,
+    val role: String, // OBSERVADOR | SUPERVISOR | AMBOS
+    val defaultSex: String? = null, // H | M
+    val active: Boolean = true,
+    val updatedAt: Long = System.currentTimeMillis()
+)

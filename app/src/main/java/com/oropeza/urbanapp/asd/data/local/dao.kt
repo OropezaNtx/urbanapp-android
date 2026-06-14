@@ -272,3 +272,33 @@ interface FovSessionDao {
     @Query("UPDATE FovSession SET endedAt = :endedAt WHERE sessionId = :sessionId")
     suspend fun endSession(sessionId: Long, endedAt: Long): Int
 }
+
+@Dao
+interface AsdRouteCatalogDao {
+    @Query("SELECT * FROM AsdRouteCatalogItem WHERE active = 1 ORDER BY catalogId ASC")
+    fun getActiveRoutes(): Flow<List<AsdRouteCatalogItem>>
+
+    @Query("SELECT * FROM AsdRouteCatalogItem WHERE catalogId = :catalogId LIMIT 1")
+    suspend fun getByCatalogId(catalogId: String): AsdRouteCatalogItem?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(items: List<AsdRouteCatalogItem>)
+
+    @Query("DELETE FROM AsdRouteCatalogItem")
+    suspend fun clear()
+}
+
+@Dao
+interface AsdFieldPersonCatalogDao {
+    @Query("SELECT * FROM AsdFieldPersonCatalogItem WHERE active = 1 ORDER BY name ASC")
+    fun getActivePeople(): Flow<List<AsdFieldPersonCatalogItem>>
+
+    @Query("SELECT * FROM AsdFieldPersonCatalogItem WHERE active = 1 AND (role = :role OR role = 'AMBOS') ORDER BY name ASC")
+    fun getActiveByRole(role: String): Flow<List<AsdFieldPersonCatalogItem>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(items: List<AsdFieldPersonCatalogItem>)
+
+    @Query("DELETE FROM AsdFieldPersonCatalogItem")
+    suspend fun clear()
+}

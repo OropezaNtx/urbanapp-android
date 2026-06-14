@@ -193,6 +193,46 @@ object Migrations {
         }
     }
 
+    val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS AsdRouteCatalogItem (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    catalogId TEXT NOT NULL,
+                    routeName TEXT NOT NULL,
+                    company TEXT,
+                    derrotero TEXT,
+                    cromatica TEXT,
+                    baseStart TEXT,
+                    baseEnd TEXT,
+                    observacion TEXT,
+                    active INTEGER NOT NULL,
+                    updatedAt INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_AsdRouteCatalogItem_catalogId ON AsdRouteCatalogItem(catalogId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdRouteCatalogItem_routeName ON AsdRouteCatalogItem(routeName)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdRouteCatalogItem_company ON AsdRouteCatalogItem(company)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdRouteCatalogItem_active ON AsdRouteCatalogItem(active)")
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS AsdFieldPersonCatalogItem (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    personId TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    defaultSex TEXT,
+                    active INTEGER NOT NULL,
+                    updatedAt INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_AsdFieldPersonCatalogItem_personId ON AsdFieldPersonCatalogItem(personId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdFieldPersonCatalogItem_name ON AsdFieldPersonCatalogItem(name)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdFieldPersonCatalogItem_role ON AsdFieldPersonCatalogItem(role)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdFieldPersonCatalogItem_active ON AsdFieldPersonCatalogItem(active)")
+        }
+    }
+
     private fun addTripOperationalMetadataColumns(db: SupportSQLiteDatabase) {
         if (!tripColumnExists(db, "aforador")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN aforador TEXT")

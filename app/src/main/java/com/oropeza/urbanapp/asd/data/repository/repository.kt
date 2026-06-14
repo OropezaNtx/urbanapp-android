@@ -15,6 +15,9 @@ class AsdRepository(private val db: AppDatabase) {
     private val ccSessionDao = db.ccSessionDao()
     private val ccEventDao = db.ccEventDao()
 
+    private val asdRouteCatalogDao = db.asdRouteCatalogDao()
+    private val asdFieldPersonCatalogDao = db.asdFieldPersonCatalogDao()
+
     val tripsFlow: Flow<List<Trip>> = tripDao.getAll()
     fun tripFlow(id: Long): Flow<Trip?> = tripDao.getById(id)
     fun stopsFlow(tripId: Long): Flow<List<StopEvent>> = stopDao.getByTrip(tripId)
@@ -30,6 +33,7 @@ class AsdRepository(private val db: AppDatabase) {
     suspend fun insertTrackPoint(p: TrackPoint): Long = trackDao.insert(p)
 
     private fun cleanText(value: String?): String? = value?.trim()?.uppercase()?.ifBlank { null }
+    private fun normalizeSex(value: String?): String? = value?.trim()?.uppercase()?.take(1)
 
     suspend fun updateTripHeader(
         tripId: Long,
@@ -67,7 +71,7 @@ class AsdRepository(private val db: AppDatabase) {
             aforador = cleanText(aforador),
             supervisor = cleanText(supervisor),
             deviceNumber = cleanText(deviceNumber),
-            observerSex = cleanText(observerSex)
+            observerSex = normalizeSex(observerSex)
         )
         return tripDao.update(updated) > 0
     }
@@ -137,12 +141,13 @@ class AsdRepository(private val db: AppDatabase) {
                 aforador = cleanText(aforador),
                 supervisor = cleanText(supervisor),
                 deviceNumber = cleanText(deviceNumber),
-                observerSex = cleanText(observerSex)
+                observerSex = normalizeSex(observerSex)
             )
         )
 
-        val mUp = if (observerSex == "H") 1 else 0
-        val wUp = if (observerSex == "M") 1 else 0
+        val normSex = normalizeSex(observerSex)
+        val mUp = if (normSex == "H") 1 else 0
+        val wUp = if (normSex == "M") 1 else 0
 
         addStopDetailed(
             tripId = tripId,
@@ -280,6 +285,25 @@ class AsdRepository(private val db: AppDatabase) {
         val up = cleanMenUp + cleanWomenUp
         val down = cleanMenDown + cleanWomenDown
         val normalizedDelayCodes = normalizeDelayCodes(delayCodes, up, down)
+
+        val isAdFinal = normalizedDelayCodes?.contains("AD/FINAL") == true
+
+        if (!isAdFinal) {
+            val trip = tripDao.getByIdOnce(tripId)
+            val normSex = normalizeSex(trip?.observerSex)
+            val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
+
+            if (normSex == "H") {
+                if (cleanMenDown > (mOnBoard + cleanMenUp - 1).coerceAtLeast(0)) {
+                    throw IllegalStateException("No puedes bajar al observador durante el recorrido.")
+                }
+            } else if (normSex == "M") {
+                if (cleanWomenDown > (wOnBoard + cleanWomenUp - 1).coerceAtLeast(0)) {
+                    throw IllegalStateException("No puedes bajar a la observadora durante el recorrido.")
+                }
+            }
+        }
+
         if (stopType.equals("DESCENSO", ignoreCase = true)) {
             val onboard = computeOnBoard(tripId)
             if (down > onboard) throw IllegalStateException("No puedes bajar $down si solo van $onboard a bordo.")
@@ -403,4 +427,9 @@ class AsdRepository(private val db: AppDatabase) {
     suspend fun getDelaysOnce(tripId: Long) = delayDao.getByTripOnce(tripId)
     suspend fun getTrackPointsOnce(tripId: Long) = trackDao.getByTripOnce(tripId)
     suspend fun endCcSession(sessionId: Long) { ccSessionDao.endSession(sessionId, System.currentTimeMillis()) }
+
+    fun activeAsdRoutesFlow() = asdRouteCatalogDao.getActiveRoutes()
+    suspend fun getAsdRouteByCatalogId(catalogId: String) = asdRouteCatalogDao.getByCatalogId(catalogId.trim().uppercase())
+    fun activeAsdPeopleFlow() = asdFieldPersonCatalogDao.getActivePeople()
+    fun activeAsdPeopleByRoleFlow(role: String) = asdFieldPersonCatalogDao.getActiveByRole(role.trim().uppercase())
 }

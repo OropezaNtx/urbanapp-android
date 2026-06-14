@@ -512,10 +512,10 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
 
     if (showCloseTripConfirm) {
         val totalOnBoard = summary.onBoard
-        val confirmText = if (totalOnBoard > 0) {
-            "¿REALMENTE QUIERES CERRAR ESTE VIAJE? QUEDAN $totalOnBoard PASAJEROS A BORDO QUE SERÁN BAJADOS AUTOMÁTICAMENTE EN AD/FINAL."
-        } else {
-            "¿REALMENTE QUIERES CERRAR ESTE VIAJE? NO HAY PASAJEROS A BORDO PARA BAJAR. ESTA ACCIÓN MARCARÁ AD/FINAL."
+        val confirmText = when {
+            totalOnBoard > 0 -> "¿REALMENTE QUIERES CERRAR ESTE VIAJE? QUEDAN $totalOnBoard PASAJEROS A BORDO QUE SERÁN BAJADOS AUTOMÁTICAMENTE EN AD/FINAL."
+            totalOnBoard == 0 -> "Advertencia: el recorrido está en 0 pasajeros, pero el observador debería seguir a bordo. ¿Cerrar de todos modos?"
+            else -> "¿REALMENTE QUIERES CERRAR ESTE VIAJE? ESTA ACCIÓN MARCARÁ AD/FINAL."
         }
         AlertDialog(
             onDismissRequest = { showCloseTripConfirm = false },
@@ -588,8 +588,8 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         val activeElapsedSec = if (isDelayActive) ((tickMs - activeDelayStartMs).coerceAtLeast(0L) / 1000L) else 0L
         val captureOnBoard = (summary.onBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0)
 
-        val capacityApplies = t.vehicleType?.uppercase(Locale.ROOT) in listOf("COMBI", "VAN", "SPRINTER")
-        val exceedsCapacity = capacityApplies && t.seatCapacity?.let { it > 0 && captureOnBoard > it } ?: false
+        val capacityApplies = t.vehicleType?.uppercase()?.trim() in listOf("COMBI", "VAN", "SPRINTER")
+        val exceedsCapacity = capacityApplies && t.seatCapacity != null && captureOnBoard > t.seatCapacity
 
         val protectedMen = if (t.observerSex == "H") 1 else 0
         val protectedWomen = if (t.observerSex == "M") 1 else 0
