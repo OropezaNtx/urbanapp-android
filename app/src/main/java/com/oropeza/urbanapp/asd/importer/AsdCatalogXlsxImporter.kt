@@ -3,6 +3,7 @@ package com.oropeza.urbanapp.asd.importer
 import android.content.Context
 import android.net.Uri
 import com.oropeza.urbanapp.asd.AsdGraph
+import com.oropeza.urbanapp.asd.data.local.AsdCatalogSyncState
 import com.oropeza.urbanapp.asd.data.local.AsdFieldPersonCatalogItem
 import com.oropeza.urbanapp.asd.data.local.AsdRouteCatalogItem
 import kotlinx.coroutines.Dispatchers
@@ -131,9 +132,36 @@ object AsdCatalogXlsxImporter {
             workbook.close()
             inputStream.close()
 
-            ImportResult(routesCount, peopleCount, warnings)
+            val result = ImportResult(routesCount, peopleCount, warnings)
+            
+            // Actualizar estado de sincronización
+            AsdGraph.repo.updateCatalogSyncState(
+                AsdCatalogSyncState(
+                    source = "XLSX",
+                    lastSyncAt = System.currentTimeMillis(),
+                    routesCount = routesCount,
+                    peopleCount = peopleCount,
+                    status = if (routesCount > 0) "READY" else "ERROR",
+                    message = if (routesCount > 0) {
+                        "Importación exitosa: $routesCount rutas, $peopleCount personas." + (if (warnings.isNotEmpty()) " Con ${warnings.size} advertencias." else "")
+                    } else {
+                        "Error en importación: no se encontraron rutas."
+                    }
+                )
+            )
+
+            result
         } catch (e: Exception) {
-            ImportResult(0, 0, listOf("Error crítico: ${e.message}"))
+            val errResult = ImportResult(0, 0, listOf("Error crítico: ${e.message}"))
+            AsdGraph.repo.updateCatalogSyncState(
+                AsdCatalogSyncState(
+                    source = "XLSX",
+                    lastSyncAt = System.currentTimeMillis(),
+                    status = "ERROR",
+                    message = "Error crítico: ${e.message}"
+                )
+            )
+            errResult
         }
     }
 

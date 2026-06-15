@@ -302,3 +302,15 @@ interface AsdFieldPersonCatalogDao {
     @Query("DELETE FROM AsdFieldPersonCatalogItem")
     suspend fun clear()
 }
+
+@Dao
+interface AsdCatalogSyncStateDao {
+    @Query("SELECT * FROM AsdCatalogSyncState WHERE id = :id LIMIT 1")
+    fun getStateFlow(id: String = "ASD_CATALOG"): Flow<AsdCatalogSyncState?>
+
+    @Query("SELECT * FROM AsdCatalogSyncState WHERE id = :id LIMIT 1")
+    suspend fun getStateOnce(id: String = "ASD_CATALOG"): AsdCatalogSyncState?
+
+    @Upsert
+    suspend fun upsert(state: AsdCatalogSyncState)
+}

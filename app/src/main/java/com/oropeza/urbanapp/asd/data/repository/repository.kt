@@ -17,6 +17,7 @@ class AsdRepository(private val db: AppDatabase) {
 
     private val asdRouteCatalogDao = db.asdRouteCatalogDao()
     private val asdFieldPersonCatalogDao = db.asdFieldPersonCatalogDao()
+    private val asdCatalogSyncStateDao = db.asdCatalogSyncStateDao()
 
     val tripsFlow: Flow<List<Trip>> = tripDao.getAll()
     fun tripFlow(id: Long): Flow<Trip?> = tripDao.getById(id)
@@ -442,4 +443,8 @@ class AsdRepository(private val db: AppDatabase) {
         asdFieldPersonCatalogDao.clear()
         asdFieldPersonCatalogDao.upsertAll(items)
     }
+
+    fun catalogSyncStateFlow() = asdCatalogSyncStateDao.getStateFlow()
+    suspend fun getCatalogSyncStateOnce() = asdCatalogSyncStateDao.getStateOnce()
+    suspend fun updateCatalogSyncState(state: AsdCatalogSyncState) = asdCatalogSyncStateDao.upsert(state)
 }

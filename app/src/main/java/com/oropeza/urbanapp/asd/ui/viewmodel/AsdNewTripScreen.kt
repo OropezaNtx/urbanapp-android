@@ -26,8 +26,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.importer.AsdCatalogXlsxImporter
+import com.oropeza.urbanapp.asd.sync.AsdCatalogFirestoreSync
 import com.oropeza.urbanapp.asd.location.LocationProvider
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 class AsdNewTripVM : ViewModel() {
@@ -97,6 +100,7 @@ fun AsdNewTripScreen(
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
     val gps = remember { LocationProvider(context) }
+    val syncState by AsdGraph.repo.catalogSyncStateFlow().collectAsState(initial = null)
 
     // 1. CATÁLOGO
     var planningRouteId by remember { mutableStateOf("") }
@@ -135,6 +139,7 @@ fun AsdNewTripScreen(
     var gpsMsg by remember { mutableStateOf<String?>(null) }
     var importMsg by remember { mutableStateOf<String?>(null) }
     var pendingCreate by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val bgApp = Color(0xFF07110F)
     val cardBg = Color(0xFF0D1716)
@@ -229,6 +234,7 @@ fun AsdNewTripScreen(
 
     Scaffold(
         containerColor = bgApp,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = bgApp, titleContentColor = Color.White),
@@ -252,6 +258,35 @@ fun AsdNewTripScreen(
         ) {
             // 1. CATÁLOGO
             NewTripSection("CATÁLOGO") {
+                syncState?.let { state ->
+                    val statusColor = when(state.status) {
+                        "READY" -> greenAcc
+                        "ERROR" -> Color.Red
+                        else -> Color.Gray
+                    }
+                    val statusText = when(state.status) {
+                        "READY" -> "Catálogo listo ✅"
+                        "ERROR" -> "Error en catálogo ❌"
+                        else -> "Sin catálogo local ⚠️"
+                    }
+                    
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(statusText, style = MaterialTheme.typography.labelLarge, color = statusColor, fontWeight = FontWeight.Bold)
+                        if (state.lastSyncAt != null) {
+                            val syncFmt = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
+                            Text("Última actualización: ${syncFmt.format(Date(state.lastSyncAt))}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
+                        }
+                        if (state.status == "READY") {
+                            Text("Fuente: ${state.source} · Rutas: ${state.routesCount} · Personal: ${state.peopleCount}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
+                        }
+                        if (!state.message.isNullOrBlank()) {
+                            Text(state.message, style = MaterialTheme.typography.bodySmall, color = statusColor.copy(alpha = 0.7f))
+                        }
+                    }
+                    
+                    HorizontalDivider(color = borderCol.copy(alpha = 0.5f))
+                }
+
                 OutlinedTextField(
                     value = planningRouteId,
                     onValueChange = { planningRouteId = it.uppercase() },
@@ -260,23 +295,39 @@ fun AsdNewTripScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = asdTextFieldColors()
                 )
-                Text(
-                    "Ingresa el ID del catálogo. Próximamente autollenará ruta, empresa y bases.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.5f)
-                )
-                
-                Button(
-                    onClick = { catalogLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("IMPORTAR CATÁLOGO (XLSX)", color = Color.White)
-                }
 
-                importMsg?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = greenAcc)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = !loading,
+                        onClick = { 
+                            scope.launch {
+                                loading = true
+                                val result = AsdCatalogFirestoreSync.syncFromFirestore()
+                                loading = false
+                                result.onSuccess {
+                                    snackbarHostState.showSnackbar("Catálogo web sincronizado: ${it.routesCount} rutas, ${it.peopleCount} personas.")
+                                }.onFailure {
+                                    snackbarHostState.showSnackbar("Error: ${it.message}")
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = greenAcc.copy(alpha = 0.1f)),
+                        border = BorderStroke(1.dp, greenAcc.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("SINCRONIZAR WEB", color = greenAcc, style = MaterialTheme.typography.labelSmall)
+                    }
+
+                    OutlinedButton(
+                        onClick = { catalogLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
+                        modifier = Modifier.weight(1f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text("IMPORTAR XLSX", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
+                    }
                 }
 
                 catalogStatus?.let {

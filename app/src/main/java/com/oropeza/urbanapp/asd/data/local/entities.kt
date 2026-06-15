@@ -296,3 +296,15 @@ data class AsdFieldPersonCatalogItem(
     val active: Boolean = true,
     val updatedAt: Long = System.currentTimeMillis()
 )
+
+@Entity
+data class AsdCatalogSyncState(
+    @PrimaryKey val id: String = "ASD_CATALOG",
+    val version: String? = null,
+    val lastSyncAt: Long? = null,
+    val source: String? = null, // XLSX, FIRESTORE, SEED
+    val routesCount: Int = 0,
+    val peopleCount: Int = 0,
+    val status: String = "EMPTY", // EMPTY, READY, ERROR
+    val message: String? = null
+)

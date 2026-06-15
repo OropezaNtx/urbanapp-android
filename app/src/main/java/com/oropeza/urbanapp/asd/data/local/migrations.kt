@@ -246,6 +246,23 @@ object Migrations {
         }
     }
 
+    val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS AsdCatalogSyncState (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    version TEXT,
+                    lastSyncAt INTEGER,
+                    source TEXT,
+                    routesCount INTEGER NOT NULL,
+                    peopleCount INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    message TEXT
+                )
+            """.trimIndent())
+        }
+    }
+
     private fun addTripOperationalMetadataColumns(db: SupportSQLiteDatabase) {
         if (!tripColumnExists(db, "aforador")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN aforador TEXT")

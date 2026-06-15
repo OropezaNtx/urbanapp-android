@@ -17,9 +17,10 @@ import com.oropeza.urbanapp.dashboard.OperationalDashboardDao
 
         // ✅ Catálogo ASD
         AsdRouteCatalogItem::class,
-        AsdFieldPersonCatalogItem::class
+        AsdFieldPersonCatalogItem::class,
+        AsdCatalogSyncState::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -40,6 +41,7 @@ abstract class AppDatabase : RoomDatabase() {
     // ✅ Catálogo ASD
     abstract fun asdRouteCatalogDao(): AsdRouteCatalogDao
     abstract fun asdFieldPersonCatalogDao(): AsdFieldPersonCatalogDao
+    abstract fun asdCatalogSyncStateDao(): AsdCatalogSyncStateDao
 
     // ✅ Dashboard operativo
     abstract fun operationalDashboardDao(): OperationalDashboardDao
