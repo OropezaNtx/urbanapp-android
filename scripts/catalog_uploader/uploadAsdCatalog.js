@@ -1,4 +1,5 @@
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const XLSX = require('xlsx');
 const fs = require('fs');
 const readline = require('readline');
@@ -8,6 +9,8 @@ const SERVICE_ACCOUNT = './serviceAccountKey.json';
 const CATALOG_VERSION = 'V1.0';
 
 async function run() {
+    console.log("🚀 Iniciando uploader de catálogo ASD...");
+
     if (!fs.existsSync(SERVICE_ACCOUNT)) {
         console.error("❌ ERROR: No se encontró serviceAccountKey.json");
         process.exit(1);
@@ -18,12 +21,15 @@ async function run() {
         process.exit(1);
     }
 
-    admin.initializeApp({
-        credential: admin.credential.cert(require(SERVICE_ACCOUNT))
+    const serviceAccount = require(fs.realpathSync(SERVICE_ACCOUNT));
+
+    initializeApp({
+        credential: cert(serviceAccount)
     });
 
-    const db = admin.firestore();
+    const db = getFirestore();
     const workbook = XLSX.readFile(EXCEL_FILE);
+    const now = Date.now();
 
     // 1. PROCESAR RUTAS
     const routeSheet = workbook.Sheets['CATALOGO_RUTAS'];
@@ -32,8 +38,8 @@ async function run() {
         process.exit(1);
     }
 
-    // Obtener datos y normalizar cabeceras
-    const rawRoutes = XLSX.utils.sheet_to_json(routeSheet);
+    // Usar raw: false para intentar conservar formato de texto (ceros a la izquierda)
+    const rawRoutes = XLSX.utils.sheet_to_json(routeSheet, { raw: false });
     const routesToUpload = [];
     const routeWarnings = [];
 
@@ -44,12 +50,12 @@ async function run() {
             normalizedRow[k.trim().toUpperCase()] = row[k];
         });
 
-        const id = normalizedRow['ID']?.toString().trim().toUpperCase();
+        const id = normalizedRow['ID']?.toString().trim();
         const ruta = normalizedRow['RUTA']?.toString().trim().toUpperCase();
         const sentido = normalizedRow['SENTIDO']?.toString().trim().toUpperCase();
 
         if (!id || !ruta || !sentido) {
-            routeWarnings.push(`Fila ${i + 2} en RUTAS: ID, RUTA o SENTIDO faltantes o mal nombrados.`);
+            routeWarnings.push(`Fila ${i + 2} en RUTAS: ID, RUTA o SENTIDO faltantes.`);
             return;
         }
 
@@ -66,7 +72,8 @@ async function run() {
                 baseStart: normalizedRow['BASE_INICIO']?.toString().trim().toUpperCase() || null,
                 baseEnd: normalizedRow['BASE_FINAL']?.toString().trim().toUpperCase() || null,
                 observacion: normalizedRow['OBSERVACION']?.toString().trim().toUpperCase() || null,
-                active: parseActive(normalizedRow['ACTIVO'])
+                active: parseActive(normalizedRow['ACTIVO']),
+                updatedAt: now
             }
         });
     });
@@ -76,17 +83,17 @@ async function run() {
     const peopleToUpload = [];
     const peopleWarnings = [];
     if (peopleSheet) {
-        const rawPeople = XLSX.utils.sheet_to_json(peopleSheet);
+        const rawPeople = XLSX.utils.sheet_to_json(peopleSheet, { raw: false });
         rawPeople.forEach((row, i) => {
             const normalizedRow = {};
             Object.keys(row).forEach(k => {
                 normalizedRow[k.trim().toUpperCase()] = row[k];
             });
 
-            const personId = normalizedRow['PERSON_ID']?.toString().trim().toUpperCase();
+            const personId = normalizedRow['PERSON_ID']?.toString().trim();
             const name = normalizedRow['NOMBRE']?.toString().trim().toUpperCase();
             if (!personId || !name) {
-                peopleWarnings.push(`Fila ${i + 2} en GENTE: PERSON_ID o NOMBRE faltantes o mal nombrados.`);
+                peopleWarnings.push(`Fila ${i + 2} en GENTE: PERSON_ID o NOMBRE faltantes.`);
                 return;
             }
             peopleToUpload.push({
@@ -96,7 +103,8 @@ async function run() {
                     name: name,
                     role: normalizedRow['ROL']?.toString().trim().toUpperCase() || "AMBOS",
                     defaultSex: normalizeSex(normalizedRow['SEXO_DEFAULT']),
-                    active: parseActive(normalizedRow['ACTIVO'])
+                    active: parseActive(normalizedRow['ACTIVO']),
+                    updatedAt: now
                 }
             });
         });
@@ -106,18 +114,18 @@ async function run() {
     console.log("\n========================================");
     console.log("   RESUMEN DE CARGA CATÁLOGO ASD");
     console.log("========================================");
-    console.log(`Versión destino:  ${CATALOG_VERSION}`);
+    console.log(`Archivo:          ${EXCEL_FILE}`);
+    console.log(`Versión:          ${CATALOG_VERSION}`);
     console.log(`Rutas válidas:    ${routesToUpload.length}`);
     console.log(`Personal válido:  ${peopleToUpload.length}`);
     console.log(`Advertencias:     ${routeWarnings.length + peopleWarnings.length}`);
     console.log("========================================\n");
 
     if (routeWarnings.length > 0 || peopleWarnings.length > 0) {
-        console.log("⚠️  ADVERTENCIAS DETECTADAS (estas filas se omitirán):");
-        [...routeWarnings, ...peopleWarnings].slice(0, 15).forEach(w => console.log(` - ${w}`));
-        if (routeWarnings.length + peopleWarnings.length > 15) console.log(" ... y más.");
+        console.log("⚠️  ADVERTENCIAS (estas filas se omitirán):");
+        [...routeWarnings, ...peopleWarnings].slice(0, 10).forEach(w => console.log(` - ${w}`));
+        if (routeWarnings.length + peopleWarnings.length > 10) console.log(" ... y más.");
         console.log("----------------------------------------\n");
-        console.log("TIP: Asegúrate de que las columnas se llamen exactamente: ID, RUTA, SENTIDO, etc.\n");
     }
 
     if (routesToUpload.length === 0) {
@@ -132,13 +140,13 @@ async function run() {
 
     rl.question('¿Confirmas la subida a Firestore? Escribe "SI" para continuar: ', async (answer) => {
         if (answer.trim().toUpperCase() !== 'SI') {
-            console.log("❌ Carga cancelada por el usuario.");
+            console.log("❌ Carga cancelada.");
             rl.close();
             process.exit(0);
         }
 
         try {
-            console.log("\n🚀 Iniciando subida...");
+            console.log("\n🚀 Iniciando subida a Firestore...");
             const masterDocRef = db.collection('asd_catalog_versions').doc('current');
             const batchSize = 400;
 
@@ -168,10 +176,10 @@ async function run() {
             await masterDocRef.set({
                 version: CATALOG_VERSION,
                 active: true,
-                updatedAt: Date.now()
+                updatedAt: now
             });
 
-            console.log(`\n🎉 ÉXITO: Catálogo ${CATALOG_VERSION} actualizado en Firestore.`);
+            console.log(`\n🎉 ÉXITO: Catálogo ${CATALOG_VERSION} actualizado.`);
         } catch (err) {
             console.error("\n❌ ERROR DURANTE LA SUBIDA:", err);
         } finally {
@@ -182,16 +190,17 @@ async function run() {
 }
 
 function parseActive(val) {
-    if (val === undefined || val === null || val === "") return true;
+    if (val === undefined || val === null || val === "") return false;
     const v = val.toString().toUpperCase().trim();
-    return ["SI", "SÍ", "TRUE", "1", "Y", "YES"].includes(v);
+    const trueValues = ["SI", "SÍ", "TRUE", "1", "ACTIVO", "Y"];
+    return trueValues.includes(v);
 }
 
 function normalizeSex(val) {
     if (!val) return null;
     const v = val.toString().toUpperCase().trim();
-    if (v === "HOMBRE" || v === "H") return "H";
-    if (v === "MUJER" || v === "M") return "M";
+    if (v === "HOMBRE" || v === "H") return "Hombre";
+    if (v === "MUJER" || v === "M") return "Mujer";
     return null;
 }
 
