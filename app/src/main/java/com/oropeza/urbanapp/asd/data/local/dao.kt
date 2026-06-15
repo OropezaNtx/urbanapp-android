@@ -24,6 +24,9 @@ interface TripDao {
     @Query("UPDATE Trip SET nextWaypointId = :value WHERE tripId = :tripId")
     suspend fun updateNextWaypoint(tripId: Long, value: Int): Int
 
+    @Query("SELECT nextWaypointId FROM Trip ORDER BY tripId DESC LIMIT 1")
+    suspend fun getLastTripNextWaypoint(): Int?
+
     @Transaction
     suspend fun reserveWaypointPair(tripId: Long): WaypointPair {
         val base = getNextWaypoint(tripId)

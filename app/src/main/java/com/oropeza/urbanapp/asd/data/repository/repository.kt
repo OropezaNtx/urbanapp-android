@@ -119,9 +119,12 @@ class AsdRepository(private val db: AppDatabase) {
         aforador: String? = null,
         supervisor: String? = null,
         deviceNumber: String? = null,
-        observerSex: String? = null
+        observerSex: String? = null,
+        continueWaypoints: Boolean = false
     ): Long {
         val start = System.currentTimeMillis()
+        val initialWp = if (continueWaypoints) (tripDao.getLastTripNextWaypoint() ?: 1) else 1
+
         val tripId = tripDao.insert(
             Trip(
                 planningRouteId = planningRouteId.trim().uppercase(),
@@ -131,7 +134,7 @@ class AsdRepository(private val db: AppDatabase) {
                 direction = direction.trim().uppercase(),
                 startTime = start,
                 notes = cleanText(notes),
-                nextWaypointId = 1,
+                nextWaypointId = initialWp,
                 routeNumber = routeNumber,
                 esFs = cleanText(esFs),
                 baseStart = cleanText(baseStart),

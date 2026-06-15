@@ -8,18 +8,23 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -30,6 +35,7 @@ import com.oropeza.urbanapp.asd.sync.AsdCatalogFirestoreSync
 import com.oropeza.urbanapp.asd.location.LocationProvider
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -58,7 +64,8 @@ class AsdNewTripVM : ViewModel() {
         aforador: String? = null,
         supervisor: String? = null,
         deviceNumber: String? = null,
-        observerSex: String? = null
+        observerSex: String? = null,
+        continueWaypoints: Boolean = false
     ): Long {
         return AsdGraph.repo.createTripWithStartFix(
             planningRouteId = planningRouteId,
@@ -83,7 +90,8 @@ class AsdNewTripVM : ViewModel() {
             aforador = aforador,
             supervisor = supervisor,
             deviceNumber = deviceNumber,
-            observerSex = observerSex
+            observerSex = observerSex,
+            continueWaypoints = continueWaypoints
         )
     }
 }
@@ -116,7 +124,15 @@ fun AsdNewTripScreen(
     var routeNumberTxt by remember { mutableStateOf("") }
     var direction by remember { mutableStateOf("IDA") }
     var esFs by remember { mutableStateOf("ES") }
-    var continueWaypoint by remember { mutableStateOf(true) }
+    var startWpAtOne by remember { mutableStateOf(true) }
+    var customRouteNumber by remember { mutableStateOf(false) }
+
+    // Determinar ES/FS inicial
+    LaunchedEffect(Unit) {
+        val calendar = Calendar.getInstance()
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        esFs = if (dayOfWeek in Calendar.MONDAY..Calendar.FRIDAY) "ES" else "FS"
+    }
 
     // 4. UNIDAD
     var vehicleType by remember { mutableStateOf("COMBI") }
@@ -208,6 +224,7 @@ fun AsdNewTripScreen(
                 planningRouteId, routeName, company, vehicleEco, direction, notes,
                 aforador, supervisor, deviceNumber, observerSex ?: "",
                 routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
+                !startWpAtOne,
                 onCreated = onCreated,
                 setLoading = { loading = it },
                 setGpsMsg = { gpsMsg = it },
@@ -226,6 +243,7 @@ fun AsdNewTripScreen(
                     planningRouteId, routeName, company, vehicleEco, direction, notes,
                     aforador, supervisor, deviceNumber, observerSex ?: "",
                     routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
+                    !startWpAtOne,
                     onCreated = onCreated,
                     setLoading = { loading = it },
                     setGpsMsg = { gpsMsg = it },
@@ -279,62 +297,94 @@ fun AsdNewTripScreen(
                             val syncFmt = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
                             Text("Última actualización: ${syncFmt.format(Date(state.lastSyncAt))}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
                         }
-                        if (state.status == "READY") {
-                            Text("Fuente: ${state.source} · Rutas: ${state.routesCount} · Personal: ${state.peopleCount}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
-                        }
-                        if (!state.message.isNullOrBlank()) {
-                            Text(state.message, style = MaterialTheme.typography.bodySmall, color = statusColor.copy(alpha = 0.7f))
-                        }
+                        Text("Rutas: ${state.routesCount} · Observadores: ${observers.size} · Supervisores: ${supervisors.size}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
                     }
                     
                     HorizontalDivider(color = borderCol.copy(alpha = 0.5f))
+                }
+
+                if (syncState == null || syncState?.status != "READY") {
+                    Text(
+                        "No hay catálogo local disponible. Conecta el dispositivo a internet y sincroniza al menos una vez antes de iniciar operación.",
+                        color = Color.Yellow,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                 }
 
                 OutlinedTextField(
                     value = planningRouteId,
                     onValueChange = { planningRouteId = it.uppercase() },
                     label = { Text("ID CATÁLOGO / PLANEACIÓN") },
-                    supportingText = { Text("Obligatorio. ID fijo asignado a la ruta.") },
+                    supportingText = { Text("ID único de planeación.") },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = asdTextFieldColors()
+                    colors = asdTextFieldColors(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = !loading,
-                        onClick = { 
-                            scope.launch {
-                                loading = true
-                                val result = AsdCatalogFirestoreSync.syncFromFirestore()
-                                loading = false
-                                result.onSuccess {
-                                    snackbarHostState.showSnackbar("Catálogo web sincronizado: ${it.routesCount} rutas, ${it.peopleCount} personas.")
-                                }.onFailure {
-                                    snackbarHostState.showSnackbar("Error: ${it.message}")
-                                }
+                Button(
+                    enabled = !loading,
+                    onClick = { 
+                        scope.launch {
+                            loading = true
+                            val result = AsdCatalogFirestoreSync.syncFromFirestore()
+                            loading = false
+                            result.onSuccess {
+                                snackbarHostState.showSnackbar("Catálogo web sincronizado: ${it.routesCount} rutas, ${it.peopleCount} personas.")
+                            }.onFailure {
+                                snackbarHostState.showSnackbar("Error: ${it.message}")
                             }
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = greenAcc.copy(alpha = 0.1f)),
-                        border = BorderStroke(1.dp, greenAcc.copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("SINCRONIZAR WEB", color = greenAcc, style = MaterialTheme.typography.labelSmall)
-                    }
-
-                    OutlinedButton(
-                        onClick = { catalogLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
-                        modifier = Modifier.weight(1f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Text("IMPORTAR XLSX", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
-                    }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = greenAcc.copy(alpha = 0.1f)),
+                    border = BorderStroke(1.dp, greenAcc.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("SINCRONIZAR WEB", color = greenAcc, style = MaterialTheme.typography.labelSmall)
                 }
 
                 catalogStatus?.let {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = if (it.contains("encontrado ✅")) greenAcc else Color.Yellow)
+                }
+
+                var advancedExpanded by remember { mutableStateOf(false) }
+                Column {
+                    TextButton(
+                        onClick = { advancedExpanded = !advancedExpanded },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text(
+                            if (advancedExpanded) "OCULTAR OPCIONES AVANZADAS" else "MOSTRAR OPCIONES AVANZADAS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.3f)
+                        )
+                        Icon(
+                            imageVector = if (advancedExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.3f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    if (advancedExpanded) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { catalogLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
+                                modifier = Modifier.fillMaxWidth(),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("IMPORTAR CATÁLOGO LOCAL (XLSX)", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
+                            }
+                            Text(
+                                "Nota: Usar solo como respaldo cuando no sea posible sincronizar desde el servidor.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.3f),
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -358,14 +408,58 @@ fun AsdNewTripScreen(
 
             // 3. OPERACIÓN
             NewTripSection("OPERACIÓN") {
-                OutlinedTextField(
-                    value = routeNumberTxt,
-                    onValueChange = { routeNumberTxt = it.filter { ch -> ch.isDigit() }.take(6) },
-                    label = { Text("NO. RECORRIDO") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = asdTextFieldColors()
-                )
+                Text("NO. RECORRIDO", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                
+                if (!customRouteNumber) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            (1..5).forEach { n ->
+                                val selected = routeNumberTxt == n.toString()
+                                OutlinedButton(
+                                    onClick = { routeNumberTxt = n.toString() },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (selected) greenAcc.copy(alpha = 0.2f) else Color.Transparent,
+                                        contentColor = if (selected) greenAcc else Color.White.copy(alpha = 0.6f)
+                                    ),
+                                    border = BorderStroke(1.dp, if (selected) greenAcc else borderCol),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) { Text(n.toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            (6..10).forEach { n ->
+                                val selected = routeNumberTxt == n.toString()
+                                OutlinedButton(
+                                    onClick = { routeNumberTxt = n.toString() },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (selected) greenAcc.copy(alpha = 0.2f) else Color.Transparent,
+                                        contentColor = if (selected) greenAcc else Color.White.copy(alpha = 0.6f)
+                                    ),
+                                    border = BorderStroke(1.dp, if (selected) greenAcc else borderCol),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) { Text(n.toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
+                            }
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = routeNumberTxt,
+                        onValueChange = { routeNumberTxt = it.filter { ch -> ch.isDigit() }.take(6) },
+                        label = { Text("INGRESA NÚMERO") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = asdTextFieldColors()
+                    )
+                }
+
+                TextButton(onClick = { customRouteNumber = !customRouteNumber }, modifier = Modifier.align(Alignment.End)) {
+                    Text(if (customRouteNumber) "Volver a rápidos" else "Ingresar personalizado", color = greenAcc, style = MaterialTheme.typography.labelSmall)
+                }
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("SENTIDO", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = Color.White)
@@ -403,12 +497,12 @@ fun AsdNewTripScreen(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("CONTINUAR CONSECUTIVO WP", style = MaterialTheme.typography.labelLarge, color = Color.White)
-                        Text("Si se desactiva, inicia desde WP 1.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
+                        Text("INICIAR WAYPOINT DESDE 1", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        Text("Si se desactiva, continúa consecutivo global.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
                     }
                     Switch(
-                        checked = continueWaypoint,
-                        onCheckedChange = { continueWaypoint = it },
+                        checked = startWpAtOne,
+                        onCheckedChange = { startWpAtOne = it },
                         colors = SwitchDefaults.colors(checkedThumbColor = greenAcc)
                     )
                 }
@@ -450,7 +544,8 @@ fun AsdNewTripScreen(
                     value = seatCapacityTxt,
                     onValueChange = { seatCapacityTxt = it.filter { ch -> ch.isDigit() }.take(4) },
                     label = { Text("CAPACIDAD DE ASIENTOS") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                     modifier = Modifier.fillMaxWidth(),
                     colors = asdTextFieldColors()
                 )
@@ -460,7 +555,8 @@ fun AsdNewTripScreen(
                         value = vehicleEco,
                         onValueChange = { vehicleEco = it.filter { ch -> ch.isDigit() }.take(6) },
                         label = { Text("NO. ECONÓMICO") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Right) }),
                         modifier = Modifier.weight(1f),
                         colors = asdTextFieldColors()
                     )
@@ -468,6 +564,8 @@ fun AsdNewTripScreen(
                         value = plateNumber,
                         onValueChange = { plateNumber = it.uppercase() },
                         label = { Text("NO. PLACA") },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                         modifier = Modifier.weight(1f),
                         colors = asdTextFieldColors()
                     )
@@ -485,10 +583,13 @@ fun AsdNewTripScreen(
                     OutlinedTextField(
                         value = aforador,
                         onValueChange = { aforador = it.uppercase() },
+                        readOnly = observers.isNotEmpty(),
                         label = { Text("AFORADOR / OBSERVADOR *") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = obsExpanded) },
                         modifier = Modifier.menuAnchor().fillMaxWidth(),
-                        colors = asdTextFieldColors()
+                        colors = asdTextFieldColors(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
                     )
                     if (observers.isNotEmpty()) {
                         ExposedDropdownMenu(
@@ -536,10 +637,13 @@ fun AsdNewTripScreen(
                     OutlinedTextField(
                         value = supervisor,
                         onValueChange = { supervisor = it.uppercase() },
+                        readOnly = supervisors.isNotEmpty(),
                         label = { Text("SUPERVISOR") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supExpanded) },
                         modifier = Modifier.menuAnchor().fillMaxWidth(),
-                        colors = asdTextFieldColors()
+                        colors = asdTextFieldColors(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
                     )
                     if (supervisors.isNotEmpty()) {
                         ExposedDropdownMenu(
@@ -564,7 +668,9 @@ fun AsdNewTripScreen(
                     onValueChange = { deviceNumber = it.uppercase() },
                     label = { Text("ID DISPOSITIVO") },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = asdTextFieldColors()
+                    colors = asdTextFieldColors(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
                 )
             }
 
@@ -576,7 +682,9 @@ fun AsdNewTripScreen(
                     label = { Text("OBSERVACIONES DE CAMPO") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
-                    colors = asdTextFieldColors()
+                    colors = asdTextFieldColors(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                 )
             }
 
@@ -689,6 +797,7 @@ private suspend fun createTripFlow(
     plateNumber: String,
     vehicleType: String,
     seatCapacityTxt: String,
+    continueWaypoints: Boolean,
     onCreated: (Long) -> Unit,
     setLoading: (Boolean) -> Unit,
     setGpsMsg: (String?) -> Unit,
@@ -735,7 +844,8 @@ private suspend fun createTripFlow(
                 aforador = aforador.ifBlank { null },
                 supervisor = supervisor.ifBlank { null },
                 deviceNumber = deviceNumber.ifBlank { null },
-                observerSex = observerSex
+                observerSex = observerSex,
+                continueWaypoints = continueWaypoints
             )
 
             setLoading(false)
@@ -779,7 +889,8 @@ private suspend fun createTripFlow(
                 aforador = aforador.ifBlank { null },
                 supervisor = supervisor.ifBlank { null },
                 deviceNumber = deviceNumber.ifBlank { null },
-                observerSex = observerSex
+                observerSex = observerSex,
+                continueWaypoints = continueWaypoints
             )
 
             setLoading(false)
@@ -818,7 +929,8 @@ private suspend fun createTripFlow(
             aforador = aforador.ifBlank { null },
             supervisor = supervisor.ifBlank { null },
             deviceNumber = deviceNumber.ifBlank { null },
-            observerSex = observerSex
+            observerSex = observerSex,
+            continueWaypoints = continueWaypoints
         )
 
         setLoading(false)

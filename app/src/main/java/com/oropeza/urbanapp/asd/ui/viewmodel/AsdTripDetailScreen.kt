@@ -34,6 +34,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
@@ -222,8 +223,28 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val stops by vm.stopsFlow(tripId).collectAsState(initial = emptyList())
     val lastPoint by vm.trackLastPointFlow(tripId).collectAsState(initial = null)
     val pointCount by vm.trackCountFlow(tripId).collectAsState(initial = 0)
-    val summary = remember(stops, pointCount) { AsdDemoSummary.from(stops, pointCount) }
+    
+    // Optimización: Calcular estadísticas de paradas solo cuando cambian las paradas
+    val stopsSummary by remember(stops) { 
+        derivedStateOf { AsdDemoSummary.from(stops, 0) } 
+    }
+    // Combinar con pointCount de forma eficiente
+    val summary = remember(stopsSummary, pointCount) {
+        stopsSummary.copy(trackPoints = pointCount)
+    }
+
     val trackPoints by vm.trackPointsFlow(tripId).collectAsState(initial = emptyList())
+    var qualitySummary by remember { mutableStateOf("-") }
+    var openingMap by remember { mutableStateOf(false) }
+
+    LaunchedEffect(trackPoints.size) {
+        if (trackPoints.isNotEmpty()) {
+            qualitySummary = withContext(Dispatchers.Default) {
+                buildGpsQualitySummary(trackPoints)
+            }
+        }
+    }
+
     val fmt = remember { SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale("es", "MX")) }
     val fileFmt = remember { SimpleDateFormat("yyyyMMdd_HHmm", Locale("es", "MX")) }
 
@@ -512,17 +533,42 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
 
     if (showCloseTripConfirm) {
         val totalOnBoard = summary.onBoard
-        val confirmText = when {
-            totalOnBoard > 0 -> "¿REALMENTE QUIERES CERRAR ESTE VIAJE? QUEDAN $totalOnBoard PASAJEROS A BORDO QUE SERÁN BAJADOS AUTOMÁTICAMENTE EN AD/FINAL."
-            totalOnBoard == 0 -> "Advertencia: el recorrido está en 0 pasajeros, pero el observador debería seguir a bordo. ¿Cerrar de todos modos?"
-            else -> "¿REALMENTE QUIERES CERRAR ESTE VIAJE? ESTA ACCIÓN MARCARÁ AD/FINAL."
-        }
+        var confirmTextTyped by remember { mutableStateOf("") }
+        val isConfirmed = confirmTextTyped.trim().uppercase() == "FINALIZAR"
+        
         AlertDialog(
             onDismissRequest = { showCloseTripConfirm = false },
-            title = { Text("CONFIRMAR CIERRE") },
-            text = { Text(confirmText) },
-            confirmButton = { Button(onClick = { triggerHaptic(); closeTripNow() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("SÍ, CERRAR VIAJE") } },
-            dismissButton = { OutlinedButton(onClick = { triggerHaptic(); showCloseTripConfirm = false }) { Text("NO, REGRESAR") } }
+            title = { Text("CONFIRMAR CIERRE CRÍTICO") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val warningText = when {
+                        totalOnBoard > 0 -> "QUEDAN $totalOnBoard PASAJEROS A BORDO QUE SERÁN BAJADOS AUTOMÁTICAMENTE EN AD/FINAL."
+                        else -> "ESTA ACCIÓN CERRARÁ DEFINITIVAMENTE EL RECORRIDO Y GENERARÁ EL EVENTO AD/FINAL."
+                    }
+                    Text(warningText)
+                    Text("No podrá modificarse desde la captura operativa.", fontWeight = FontWeight.Bold, color = Color.Red)
+                    Text("Para continuar, escribe la palabra FINALIZAR:", style = MaterialTheme.typography.labelSmall)
+                    OutlinedTextField(
+                        value = confirmTextTyped,
+                        onValueChange = { confirmTextTyped = it.uppercase() },
+                        placeholder = { Text("FINALIZAR") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (isConfirmed) greenAcc else Color.Red,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.3f)
+                        )
+                    )
+                }
+            },
+            confirmButton = { 
+                Button(
+                    enabled = isConfirmed,
+                    onClick = { triggerHaptic(); closeTripNow() }, 
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                ) { Text("CERRAR VIAJE") } 
+            },
+            dismissButton = { OutlinedButton(onClick = { triggerHaptic(); showCloseTripConfirm = false }) { Text("CANCELAR") } }
         )
     }
 
@@ -565,14 +611,36 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = bgApp, titleContentColor = Color.White, navigationIconContentColor = Color.White),
                 title = { 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text((trip?.routeName ?: "ASD").uppercase(Locale("es", "MX")), fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { triggerHaptic(); onOpenMap(tripId) }) {
-                            Text("🗺 VER MAPA", color = greenAcc, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = (trip?.routeName ?: "ASD").uppercase(Locale("es", "MX")), 
+                            fontWeight = FontWeight.ExtraBold, 
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = { 
+                                if (!openingMap) {
+                                    openingMap = true
+                                    triggerHaptic()
+                                    onOpenMap(tripId) 
+                                }
+                            },
+                            modifier = Modifier.padding(start = 4.dp)
+                        ) {
+                            Text("🗺 VER MAPA", color = greenAcc, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 },
-                navigationIcon = { TextButton(onClick = { triggerHaptic(); onBack() }) { Text("ATRÁS", color = Color.White) } }
+                navigationIcon = { 
+                    TextButton(onClick = { triggerHaptic(); onBack() }) { 
+                        Text("ATRÁS", color = Color.White, fontWeight = FontWeight.Bold) 
+                    } 
+                }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -622,7 +690,12 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                     { ensureActiveDelayFromInput(); notes = upper(it) },
                     { clearActiveDelay(); resetCaptureForm(); snackbarText = "Registro cancelado" },
                     { saveInlineEvent(summary) },
-                    { onOpenMap(tripId) },
+                    { 
+                        if (!openingMap) {
+                            openingMap = true
+                            onOpenMap(tripId)
+                        }
+                    },
                     { requestCloseTrip() },
                     t.observerSex
                 )
@@ -676,7 +749,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             }
 
             // 4. GPS / TRACKING
-            item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount, trackPoints) }
+            item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount, qualitySummary) }
 
             // 5. RESUMEN OPERATIVO
             item { DemoSummaryCard(summary) }
@@ -1324,7 +1397,7 @@ private fun DelayTile(
     }
 }
 @Composable
-private fun UpperNextTextField(value: String, onValueChange: (String) -> Unit, label: String, singleLine: Boolean) {
+private fun UpperNextTextField(value: String, onValueChange: (String) -> Unit, label: String, singleLine: Boolean = true) {
     val focusManager = LocalFocusManager.current
     OutlinedTextField(
         value = value,
@@ -1345,6 +1418,7 @@ private fun UpperNextTextField(value: String, onValueChange: (String) -> Unit, l
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditTripHeaderDialog(
     trip: Trip,
@@ -1353,6 +1427,7 @@ private fun EditTripHeaderDialog(
 ) {
     val focusManager = LocalFocusManager.current
     fun upper(v: String) = v.uppercase(Locale("es", "MX"))
+    var planningRouteId by rememberSaveable(trip.tripId) { mutableStateOf(trip.planningRouteId) }
     var routeName by rememberSaveable(trip.tripId) { mutableStateOf(trip.routeName.uppercase(Locale("es", "MX"))) }
     var company by rememberSaveable(trip.tripId) { mutableStateOf(trip.company?.uppercase(Locale("es", "MX")) ?: "") }
     var vehicleEco by rememberSaveable(trip.tripId) { mutableStateOf(trip.vehicleEco?.uppercase(Locale("es", "MX")) ?: "") }
@@ -1370,11 +1445,14 @@ private fun EditTripHeaderDialog(
     var observerSex by rememberSaveable(trip.tripId) { mutableStateOf(trip.observerSex ?: "") }
     var headerNotes by rememberSaveable(trip.tripId) { mutableStateOf(trip.notes?.uppercase(Locale("es", "MX")) ?: "") }
 
+    val observers by AsdGraph.repo.activeAsdPeopleByRoleFlow("OBSERVADOR").collectAsState(initial = emptyList())
+    val supervisors by AsdGraph.repo.activeAsdPeopleByRoleFlow("SUPERVISOR").collectAsState(initial = emptyList())
+
     @Composable
     fun NextField(label: String, value: String, change: (String) -> Unit, number: Boolean = false) {
         OutlinedTextField(
             value = value,
-            onValueChange = { change(if (number) it.filter { ch -> ch.isDigit() }.take(4) else upper(it)) },
+            onValueChange = { change(if (number) it.filter { ch -> ch.isDigit() }.take(6) else upper(it)) },
             label = { Text(label) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
@@ -1387,43 +1465,126 @@ private fun EditTripHeaderDialog(
         onDismissRequest = onDismiss,
         title = { Text("EDITAR ENCABEZADO") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                NextField(label = "RUTA / DERROTERO", value = routeName, change = { routeName = it })
-                NextField(label = "EMPRESA", value = company, change = { company = it })
-                NextField(label = "AFORADOR", value = aforador, change = { aforador = it })
-                NextField(label = "SUPERVISOR", value = supervisor, change = { supervisor = it })
-                NextField(label = "NO. DISPOSITIVO", value = deviceNumber, change = { deviceNumber = it })
+            Column {
+                Text(
+                    "Esta sección permite corregir únicamente la información visible del encabezado del reporte. Los eventos capturados, ubicación GPS, tiempos y registros operativos no se modifican. Uso recomendado solo para supervisión o corrección administrativa.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Yellow.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                
+                Box(modifier = Modifier.heightIn(max = 400.dp)) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        item { NextField(label = "ID CATÁLOGO / PLANEACIÓN", value = planningRouteId, change = { planningRouteId = it }) }
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.weight(1f)) { NextField(label = "SENTIDO", value = direction, change = { direction = it }) }
+                                Box(Modifier.weight(1f)) { NextField(label = "ES / FS", value = esFs, change = { esFs = it }) }
+                            }
+                        }
+                        item { NextField(label = "RUTA / DERROTERO", value = routeName, change = { routeName = it }) }
+                        item { NextField(label = "EMPRESA", value = company, change = { company = it }) }
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.weight(1f)) { NextField(label = "BASE INICIO", value = baseStart, change = { baseStart = it }) }
+                                Box(Modifier.weight(1f)) { NextField(label = "BASE FINAL", value = baseEnd, change = { baseEnd = it }) }
+                            }
+                        }
+                        
+                        item {
+                            Text("PERSONAL", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF35D36B))
+                        }
+                        item {
+                            var obsExpanded by remember { mutableStateOf(false) }
+                            ExposedDropdownMenuBox(expanded = obsExpanded, onExpandedChange = { obsExpanded = it }) {
+                                OutlinedTextField(
+                                    value = aforador,
+                                    onValueChange = { aforador = it },
+                                    readOnly = observers.isNotEmpty(),
+                                    label = { Text("OBSERVADOR") },
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = obsExpanded) },
+                                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                                )
+                                if (observers.isNotEmpty()) {
+                                    ExposedDropdownMenu(expanded = obsExpanded, onDismissRequest = { obsExpanded = false }) {
+                                        observers.forEach { person ->
+                                            DropdownMenuItem(
+                                                text = { Text(person.name) },
+                                                onClick = {
+                                                    aforador = person.name
+                                                    person.defaultSex?.let { observerSex = it }
+                                                    obsExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        item {
+                            Text("SEXO DEL OBSERVADOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(
+                                    selected = observerSex == "H",
+                                    onClick = { observerSex = "H" },
+                                    label = { Text("HOMBRE") },
+                                    leadingIcon = if (observerSex == "H") { { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) } } else null
+                                )
+                                FilterChip(
+                                    selected = observerSex == "M",
+                                    onClick = { observerSex = "M" },
+                                    label = { Text("MUJER") },
+                                    leadingIcon = if (observerSex == "M") { { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) } } else null
+                                )
+                            }
+                        }
+                        item {
+                            var supExpanded by remember { mutableStateOf(false) }
+                            ExposedDropdownMenuBox(expanded = supExpanded, onExpandedChange = { supExpanded = it }) {
+                                OutlinedTextField(
+                                    value = supervisor,
+                                    onValueChange = { supervisor = it },
+                                    readOnly = supervisors.isNotEmpty(),
+                                    label = { Text("SUPERVISOR") },
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supExpanded) },
+                                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                                )
+                                if (supervisors.isNotEmpty()) {
+                                    ExposedDropdownMenu(expanded = supExpanded, onDismissRequest = { supExpanded = false }) {
+                                        supervisors.forEach { person ->
+                                            DropdownMenuItem(
+                                                text = { Text(person.name) },
+                                                onClick = {
+                                                    supervisor = person.name
+                                                    supExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        item { NextField(label = "NO. DISPOSITIVO", value = deviceNumber, change = { deviceNumber = it }) }
 
-                Text("SEXO DEL OBSERVADOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = observerSex == "H",
-                        onClick = { observerSex = "H" },
-                        label = { Text("HOMBRE") },
-                        leadingIcon = if (observerSex == "H") {
-                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                        } else null
-                    )
-                    FilterChip(
-                        selected = observerSex == "M",
-                        onClick = { observerSex = "M" },
-                        label = { Text("MUJER") },
-                        leadingIcon = if (observerSex == "M") {
-                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                        } else null
-                    )
+                        item {
+                            Text("UNIDAD Y OPERACIÓN", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF35D36B))
+                        }
+                        item { NextField(label = "TIPO VEHÍCULO", value = vehicleType, change = { vehicleType = it }) }
+                        item { NextField(label = "CAPACIDAD", value = seatCapacity, change = { seatCapacity = it }, number = true) }
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.weight(1f)) { NextField(label = "ECO", value = vehicleEco, change = { vehicleEco = it }) }
+                                Box(Modifier.weight(1f)) { NextField(label = "PLACA", value = plateNumber, change = { plateNumber = it }) }
+                            }
+                        }
+                        item { NextField(label = "NO. RECORRIDO", value = routeNumber, change = { routeNumber = it }, number = true) }
+                        item { NextField(label = "OBSERVACIONES", value = headerNotes, change = { headerNotes = it }) }
+                    }
                 }
-
-                NextField(label = "ECO", value = vehicleEco, change = { vehicleEco = it })
-                NextField(label = "SENTIDO", value = direction, change = { direction = it })
-                NextField(label = "NO. RECORRIDO", value = routeNumber, change = { routeNumber = it }, number = true)
-                NextField(label = "ES / FS", value = esFs, change = { esFs = it })
-                NextField(label = "BASE INICIO", value = baseStart, change = { baseStart = it })
-                NextField(label = "BASE FINAL", value = baseEnd, change = { baseEnd = it })
-                NextField(label = "PLACA", value = plateNumber, change = { plateNumber = it })
-                NextField(label = "TIPO VEHÍCULO", value = vehicleType, change = { vehicleType = it })
-                NextField(label = "CAPACIDAD / ASIENTOS", value = seatCapacity, change = { seatCapacity = it }, number = true)
-                NextField(label = "OBSERVACIONES", value = headerNotes, change = { headerNotes = it })
             }
         },
         confirmButton = {
@@ -1529,19 +1690,6 @@ private fun TripHeaderCard(
                 Text("SUPERVISOR: ${supervisor ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
                 Text("DISPOSITIVO: ${deviceNumber ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
             }
-            
-            Surface(
-                color = Color(0xFF101C1A),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
-                border = BorderStroke(1.dp, Color(0xFF1E3834))
-            ) {
-                Text(
-                    "CATÁLOGO: NO VINCULADO",
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.5f)
-                )
-            }
         }
     }
 }
@@ -1600,12 +1748,8 @@ private fun TrackingStatusCard(
     lastAgeMs: Long,
     lastPoint: TrackPoint?,
     pointCount: Int,
-    trackPoints: List<TrackPoint>
+    qualitySummary: String
 ) {
-    val diag = remember(lastPoint?.provider) {
-        com.oropeza.urbanapp.asd.location.GpsProviderDiagnostics.parse(lastPoint?.provider)
-    }
-    
     val ageSec = if (lastAgeMs == Long.MAX_VALUE) null else (lastAgeMs / 1000)
     val ageText = ageSec?.let { "${it}s" } ?: "-"
 
@@ -1618,10 +1762,6 @@ private fun TrackingStatusCard(
         lastPoint.accM <= 25.0 -> Triple("🟢 GPS BUENO", Color(0xFF35D36B).copy(alpha = 0.8f), 75)
         lastPoint.accM <= 45.0 -> Triple("🟡 GPS USABLE", Color(0xFFFF9800), 55)
         else -> Triple("🔴 GPS DÉBIL", Color(0xFFFF4B4B), 25)
-    }
-
-    val qualitySummary = remember(trackPoints) {
-        buildGpsQualitySummary(trackPoints)
     }
 
     Card(
@@ -1675,24 +1815,12 @@ private fun TrackingStatusCard(
                     StatusRow("Edad", ageText)
                     StatusRow("Puntos", pointCount.toString())
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    StatusRow("Modo", diag.mode.ifBlank { "-" })
-                    StatusRow("Filtro", diag.filter.ifBlank { "-" })
-                    StatusRow("Estado", diag.state.ifBlank { "-" })
-                }
             }
 
             HorizontalDivider(color = Color(0xFF223A36))
             
             Text("CALIDAD RECORRIDO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.4f))
             Text(qualitySummary, style = MaterialTheme.typography.bodySmall, color = Color.White)
-            
-            @OptIn(ExperimentalLayoutApi::class)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                GpsChip("KALMAN ON")
-                GpsChip("OFFLINE READY")
-                if ((lastPoint?.accM ?: 100.0) <= 10.0) GpsChip("HDOP OK")
-            }
         }
     }
 }
