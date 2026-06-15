@@ -130,6 +130,9 @@ fun AsdNewTripScreen(
     var supervisor by remember { mutableStateOf("") }
     var deviceNumber by remember { mutableStateOf("") }
 
+    val observers by AsdGraph.repo.activeAsdPeopleByRoleFlow("OBSERVADOR").collectAsState(initial = emptyList())
+    val supervisors by AsdGraph.repo.activeAsdPeopleByRoleFlow("SUPERVISOR").collectAsState(initial = emptyList())
+
     // 6. NOTAS
     var notes by remember { mutableStateOf("") }
 
@@ -489,13 +492,38 @@ fun AsdNewTripScreen(
 
             // 5. PERSONAL
             NewTripSection("PERSONAL") {
-                OutlinedTextField(
-                    value = aforador,
-                    onValueChange = { aforador = it.uppercase() },
-                    label = { Text("AFORADOR / OBSERVADOR") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = asdTextFieldColors()
-                )
+                // Dropdown Aforador / Observador
+                var obsExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = obsExpanded,
+                    onExpandedChange = { obsExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = aforador,
+                        onValueChange = { aforador = it.uppercase() },
+                        label = { Text("AFORADOR / OBSERVADOR *") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = obsExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        colors = asdTextFieldColors()
+                    )
+                    if (observers.isNotEmpty()) {
+                        ExposedDropdownMenu(
+                            expanded = obsExpanded,
+                            onDismissRequest = { obsExpanded = false }
+                        ) {
+                            observers.forEach { person ->
+                                DropdownMenuItem(
+                                    text = { Text(person.name) },
+                                    onClick = {
+                                        aforador = person.name
+                                        person.defaultSex?.let { observerSex = it }
+                                        obsExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
 
                 Text("SEXO DEL OBSERVADOR *", style = MaterialTheme.typography.labelLarge, color = Color.White)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -515,13 +543,37 @@ fun AsdNewTripScreen(
                     )
                 }
 
-                OutlinedTextField(
-                    value = supervisor,
-                    onValueChange = { supervisor = it.uppercase() },
-                    label = { Text("SUPERVISOR") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = asdTextFieldColors()
-                )
+                // Dropdown Supervisor
+                var supExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = supExpanded,
+                    onExpandedChange = { supExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = supervisor,
+                        onValueChange = { supervisor = it.uppercase() },
+                        label = { Text("SUPERVISOR") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        colors = asdTextFieldColors()
+                    )
+                    if (supervisors.isNotEmpty()) {
+                        ExposedDropdownMenu(
+                            expanded = supExpanded,
+                            onDismissRequest = { supExpanded = false }
+                        ) {
+                            supervisors.forEach { person ->
+                                DropdownMenuItem(
+                                    text = { Text(person.name) },
+                                    onClick = {
+                                        supervisor = person.name
+                                        supExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
 
                 OutlinedTextField(
                     value = deviceNumber,
@@ -558,6 +610,7 @@ fun AsdNewTripScreen(
 
                     if (planningRouteId.isBlank()) { error = "El ID de Planeación es obligatorio."; return@Button }
                     if (routeName.isBlank()) { error = "La ruta/derrotero es obligatoria."; return@Button }
+                    if (aforador.isBlank()) { error = "El nombre del observador es obligatorio."; return@Button }
                     if (observerSex == null) { error = "Selecciona el sexo del observador."; return@Button }
 
                     requestPermsIfNeededAndCreateOrWait()
