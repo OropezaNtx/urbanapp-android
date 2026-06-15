@@ -126,6 +126,11 @@ fun AsdNewTripScreen(
     var esFs by remember { mutableStateOf("ES") }
     var startWpAtOne by remember { mutableStateOf(true) }
     var customRouteNumber by remember { mutableStateOf(false) }
+    
+    var debugLastWp by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(Unit) {
+        debugLastWp = AsdGraph.repo.getLastTripNextWaypoint()
+    }
 
     // Determinar ES/FS inicial
     LaunchedEffect(Unit) {
@@ -497,14 +502,22 @@ fun AsdNewTripScreen(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("INICIAR WAYPOINT DESDE 1", style = MaterialTheme.typography.labelLarge, color = Color.White)
-                        Text("Si se desactiva, continúa consecutivo global.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
+                        Text(if (startWpAtOne) "REINICIAR WP EN 1" else "CONTINUAR WP ANTERIOR", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        Text(
+                            if (startWpAtOne) "El primer WP será 1." else "Continuará desde el último WP (${debugLastWp ?: 1}).",
+                            style = MaterialTheme.typography.bodySmall, 
+                            color = Color.White.copy(alpha = 0.5f)
+                        )
                     }
                     Switch(
                         checked = startWpAtOne,
                         onCheckedChange = { startWpAtOne = it },
                         colors = SwitchDefaults.colors(checkedThumbColor = greenAcc)
                     )
+                }
+
+                if (com.oropeza.urbanapp.BuildConfig.DEBUG) {
+                    Text("DEBUG: WP inicial estimado = ${if (startWpAtOne) 1 else (debugLastWp ?: 1)}", color = Color.Cyan, style = MaterialTheme.typography.labelSmall)
                 }
             }
 

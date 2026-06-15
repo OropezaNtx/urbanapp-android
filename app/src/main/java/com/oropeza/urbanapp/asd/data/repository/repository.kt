@@ -437,6 +437,8 @@ class AsdRepository(private val db: AppDatabase) {
     fun activeAsdPeopleFlow() = asdFieldPersonCatalogDao.getActivePeople()
     fun activeAsdPeopleByRoleFlow(role: String) = asdFieldPersonCatalogDao.getActiveByRole(role.trim().uppercase())
 
+    suspend fun getLastTripNextWaypoint() = tripDao.getLastTripNextWaypoint()
+
     suspend fun replaceAsdRouteCatalog(items: List<AsdRouteCatalogItem>) {
         asdRouteCatalogDao.clear()
         asdRouteCatalogDao.upsertAll(items)
