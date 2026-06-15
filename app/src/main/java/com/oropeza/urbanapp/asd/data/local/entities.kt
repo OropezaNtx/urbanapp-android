@@ -258,7 +258,7 @@ data class FovOccupancyScheme(
 
 @Entity(
     indices = [
-        Index(value = ["catalogId"], unique = true),
+        Index(value = ["catalogId", "direction"], unique = true),
         Index(value = ["routeName"]),
         Index(value = ["company"]),
         Index(value = ["active"])
@@ -267,6 +267,7 @@ data class FovOccupancyScheme(
 data class AsdRouteCatalogItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val catalogId: String,
+    val direction: String, // IDA | REGRESO
     val routeName: String,
     val company: String? = null,
     val derrotero: String? = null,

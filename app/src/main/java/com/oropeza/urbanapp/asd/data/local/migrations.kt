@@ -233,6 +233,19 @@ object Migrations {
         }
     }
 
+    val MIGRATION_14_15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Eliminar índice único viejo
+            db.execSQL("DROP INDEX IF EXISTS index_AsdRouteCatalogItem_catalogId")
+            
+            // Agregar columna direction (DEFAULT 'IDA')
+            db.execSQL("ALTER TABLE AsdRouteCatalogItem ADD COLUMN direction TEXT NOT NULL DEFAULT 'IDA'")
+            
+            // Crear nuevo índice único compuesto
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_AsdRouteCatalogItem_catalogId_direction ON AsdRouteCatalogItem(catalogId, direction)")
+        }
+    }
+
     private fun addTripOperationalMetadataColumns(db: SupportSQLiteDatabase) {
         if (!tripColumnExists(db, "aforador")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN aforador TEXT")

@@ -278,8 +278,8 @@ interface AsdRouteCatalogDao {
     @Query("SELECT * FROM AsdRouteCatalogItem WHERE active = 1 ORDER BY catalogId ASC")
     fun getActiveRoutes(): Flow<List<AsdRouteCatalogItem>>
 
-    @Query("SELECT * FROM AsdRouteCatalogItem WHERE catalogId = :catalogId LIMIT 1")
-    suspend fun getByCatalogId(catalogId: String): AsdRouteCatalogItem?
+    @Query("SELECT * FROM AsdRouteCatalogItem WHERE catalogId = :catalogId AND direction = :direction LIMIT 1")
+    suspend fun getByCatalogIdAndDirection(catalogId: String, direction: String): AsdRouteCatalogItem?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(items: List<AsdRouteCatalogItem>)

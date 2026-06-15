@@ -429,7 +429,17 @@ class AsdRepository(private val db: AppDatabase) {
     suspend fun endCcSession(sessionId: Long) { ccSessionDao.endSession(sessionId, System.currentTimeMillis()) }
 
     fun activeAsdRoutesFlow() = asdRouteCatalogDao.getActiveRoutes()
-    suspend fun getAsdRouteByCatalogId(catalogId: String) = asdRouteCatalogDao.getByCatalogId(catalogId.trim().uppercase())
+    suspend fun getAsdRouteByCatalogIdAndDirection(catalogId: String, direction: String) = asdRouteCatalogDao.getByCatalogIdAndDirection(catalogId.trim().uppercase(), direction.trim().uppercase())
     fun activeAsdPeopleFlow() = asdFieldPersonCatalogDao.getActivePeople()
     fun activeAsdPeopleByRoleFlow(role: String) = asdFieldPersonCatalogDao.getActiveByRole(role.trim().uppercase())
+
+    suspend fun replaceAsdRouteCatalog(items: List<AsdRouteCatalogItem>) {
+        asdRouteCatalogDao.clear()
+        asdRouteCatalogDao.upsertAll(items)
+    }
+
+    suspend fun replaceAsdPeopleCatalog(items: List<AsdFieldPersonCatalogItem>) {
+        asdFieldPersonCatalogDao.clear()
+        asdFieldPersonCatalogDao.upsertAll(items)
+    }
 }

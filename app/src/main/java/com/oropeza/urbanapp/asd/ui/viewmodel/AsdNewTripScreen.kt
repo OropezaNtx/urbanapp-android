@@ -1,6 +1,7 @@
 package com.oropeza.urbanapp.asd.ui.viewmodel
 
 import android.Manifest
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
+import com.oropeza.urbanapp.asd.importer.AsdCatalogXlsxImporter
 import com.oropeza.urbanapp.asd.location.LocationProvider
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -98,6 +100,7 @@ fun AsdNewTripScreen(
 
     // 1. CATÁLOGO
     var planningRouteId by remember { mutableStateOf("") }
+    var catalogStatus by remember { mutableStateOf<String?>(null) }
 
     // 2. DATOS AUTOLLENADOS (Simulados)
     var routeName by remember { mutableStateOf("") }
@@ -130,6 +133,7 @@ fun AsdNewTripScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var gpsMsg by remember { mutableStateOf<String?>(null) }
+    var importMsg by remember { mutableStateOf<String?>(null) }
     var pendingCreate by remember { mutableStateOf(false) }
 
     val bgApp = Color(0xFF07110F)
@@ -142,6 +146,40 @@ fun AsdNewTripScreen(
         "BUS FORANEO", "ARTICULADO", "TROLEBUS", "METROBUS", 
         "TAXI COLECTIVO", "CAMIONETA", "OTRO"
     )
+
+    // Lógica de búsqueda en catálogo
+    LaunchedEffect(planningRouteId, direction) {
+        if (planningRouteId.length >= 3) {
+            val route = AsdGraph.repo.getAsdRouteByCatalogIdAndDirection(planningRouteId, direction)
+            if (route != null) {
+                routeName = if (route.derrotero.isNullOrBlank()) route.routeName else "${route.routeName} (${route.derrotero})"
+                company = route.company ?: ""
+                baseStart = route.baseStart ?: ""
+                baseEnd = route.baseEnd ?: ""
+                catalogStatus = "Catálogo encontrado ✅"
+            } else {
+                catalogStatus = "ID/Sentido no encontrado en catálogo ⚠️"
+            }
+        } else {
+            catalogStatus = null
+        }
+    }
+
+    val catalogLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            scope.launch {
+                loading = true
+                val result = AsdCatalogXlsxImporter.importFromUri(context, it)
+                loading = false
+                importMsg = "Catálogo importado: ${result.routesImported} rutas, ${result.peopleImported} personas."
+                if (result.warnings.isNotEmpty()) {
+                    importMsg += " Con ${result.warnings.size} advertencias."
+                }
+            }
+        }
+    }
 
     // Permisos
     val permLauncher = rememberLauncherForActivityResult(
@@ -227,6 +265,23 @@ fun AsdNewTripScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.5f)
                 )
+                
+                Button(
+                    onClick = { catalogLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("IMPORTAR CATÁLOGO (XLSX)", color = Color.White)
+                }
+
+                importMsg?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = greenAcc)
+                }
+
+                catalogStatus?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = if (it.contains("encontrado ✅")) greenAcc else Color.Yellow)
+                }
             }
 
             // 2. DATOS AUTOLLENADOS
