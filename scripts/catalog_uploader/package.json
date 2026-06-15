@@ -1,0 +1,17 @@
+{
+  "name": "catalog_uploader",
+  "version": "1.0.0",
+  "description": "",
+  "main": "uploadAsdCatalog.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "firebase-admin": "^14.0.0",
+    "xlsx": "^0.18.5"
+  }
+}
