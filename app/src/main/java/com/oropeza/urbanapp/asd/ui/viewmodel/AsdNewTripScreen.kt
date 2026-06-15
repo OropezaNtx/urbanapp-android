@@ -340,35 +340,19 @@ fun AsdNewTripScreen(
 
             // 2. DATOS AUTOLLENADOS
             NewTripSection("DATOS DE RUTA") {
-                OutlinedTextField(
-                    value = routeName,
-                    onValueChange = { routeName = it.uppercase() },
-                    label = { Text("RUTA / DERROTERO *") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = asdTextFieldColors()
-                )
-                OutlinedTextField(
-                    value = company,
-                    onValueChange = { company = it.uppercase() },
-                    label = { Text("EMPRESA") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = asdTextFieldColors()
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = baseStart,
-                        onValueChange = { baseStart = it.uppercase() },
-                        label = { Text("BASE INICIO") },
-                        modifier = Modifier.weight(1f),
-                        colors = asdTextFieldColors()
+                if (routeName.isBlank()) {
+                    Text(
+                        "Ingresa ID y sentido para cargar datos de ruta.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(vertical = 8.dp)
                     )
-                    OutlinedTextField(
-                        value = baseEnd,
-                        onValueChange = { baseEnd = it.uppercase() },
-                        label = { Text("BASE FINAL") },
-                        modifier = Modifier.weight(1f),
-                        colors = asdTextFieldColors()
-                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        RouteDataItem("RUTA / DERROTERO", routeName)
+                        RouteDataItem("EMPRESA", company.ifBlank { "NO ESPECIFICADA" })
+                        RouteDataItem("BASES", "$baseStart  →  $baseEnd")
+                    }
                 }
             }
 
@@ -628,6 +612,25 @@ fun AsdNewTripScreen(
 
             Spacer(Modifier.height(40.dp))
         }
+    }
+}
+
+@Composable
+private fun RouteDataItem(label: String, value: String) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFF35D36B),
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = value.ifBlank { "—" },
+            style = MaterialTheme.typography.bodyLarge,
+            color = Color.White,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
