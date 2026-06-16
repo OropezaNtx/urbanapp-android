@@ -17,8 +17,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class TrackingService : Service() {
+
     private val NOTIF_ID = 1001
     private val CHANNEL_ID = "tracking_channel"
 
@@ -29,25 +34,44 @@ class TrackingService : Service() {
         private const val TAG = "TrackingService"
     }
 
-    private val gpsConfig = GpsEngine.Config()
+    private val requiredAccM = 25.0
+    private val usableAccM = 45.0
+    private val kalmanUseAccM = 45.0
+    private val goodFixNeeded = 1
+
+    private val maxSpeedMs = 45.0
+    private val jumpM = 45.0
+    private val jumpAccM = 25.0
+
+    private val minSaveDistanceM = 0.0
+    private val maxSaveIntervalMs = 2_000L
+
+    private enum class Mode { ACQUIRE, TRACK, STILL }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
     private var currentTripId: Long? = null
+
     private lateinit var gps: LocationProvider
     private lateinit var headingProvider: HeadingProvider
+
     private var goodFixStreak = 0
     private var recordingArmed = false
+
     private var lastAcceptedElapsedNanos: Long? = null
     private var lastAcceptedTimeMs: Long? = null
     private var lastAcceptedLat: Double? = null
     private var lastAcceptedLon: Double? = null
+
     private var lastSavedTimeMs: Long? = null
     private var lastSavedLat: Double? = null
     private var lastSavedLon: Double? = null
+
     private var stillCounter = 0
     private val kalmanTrack = KalmanLatLonFilter()
+
     private var updatesJob: Job? = null
-    private var currentMode: GpsEngine.Mode? = null
+    private var currentMode: Mode? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -55,36 +79,32 @@ class TrackingService : Service() {
         headingProvider = HeadingProvider(this)
         headingProvider.start()
         createNotificationChannel()
-        startForeground(NOTIF_ID, buildNotification("Tracking ASD active"))
+        startForeground(NOTIF_ID, buildNotification("Tracking ASD activo"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        if (intent == null) return START_STICKY
+
+        when (intent.action) {
             ACTION_START -> {
                 val tripId = intent.getLongExtra(EXTRA_TRIP_ID, -1L)
                 if (tripId > 0) {
                     if (job != null && currentTripId != tripId) stopTracking()
                     startTracking(tripId)
+                } else {
+                    Log.w(TAG, "ACTION_START sin tripId válido")
                 }
             }
             ACTION_STOP -> stopTracking()
         }
+
         return START_STICKY
     }
 
     private fun startTracking(tripId: Long) {
         if (job != null && currentTripId == tripId) return
-        currentTripId = tripId
-        resetState()
-        job = scope.launch {
-            if (!gps.hasPermission()) return@launch
-            switchMode(GpsEngine.Mode.ACQUIRE)
-            while (true) delay(1000L)
-        }
-        job?.invokeOnCompletion { job = null; currentTripId = null }
-    }
 
-    private fun resetState() {
+        currentTripId = tripId
         recordingArmed = false
         goodFixStreak = 0
         stillCounter = 0
@@ -98,6 +118,21 @@ class TrackingService : Service() {
         kalmanTrack.reset()
         currentMode = null
         updatesJob = null
+
+        job = scope.launch {
+            if (!gps.hasPermission()) {
+                Log.w(TAG, "Sin permisos de ubicación. No se inicia tracking.")
+                return@launch
+            }
+            switchMode(Mode.ACQUIRE)
+            while (true) delay(1000L)
+        }
+
+        job?.invokeOnCompletion {
+            job = null
+            currentTripId = null
+            Log.i(TAG, "Tracking job finished")
+        }
     }
 
     private fun stopTracking() {
@@ -106,7 +141,17 @@ class TrackingService : Service() {
         job?.cancel()
         job = null
         currentTripId = null
-        resetState()
+        kalmanTrack.reset()
+        recordingArmed = false
+        goodFixStreak = 0
+        stillCounter = 0
+        lastAcceptedElapsedNanos = null
+        lastAcceptedTimeMs = null
+        lastAcceptedLat = null
+        lastAcceptedLon = null
+        lastSavedTimeMs = null
+        lastSavedLat = null
+        lastSavedLon = null
         try { headingProvider.stop() } catch (_: Exception) {}
         stopSelf()
     }
@@ -119,23 +164,41 @@ class TrackingService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun switchMode(mode: GpsEngine.Mode) {
+    private fun switchMode(mode: Mode) {
         if (currentMode == mode && updatesJob != null) return
         currentMode = mode
+
         updatesJob?.cancel()
         updatesJob = scope.launch {
             val tripId = currentTripId ?: return@launch
             val params = when (mode) {
-                GpsEngine.Mode.ACQUIRE -> Params(700L, 350L, 0f, 0L, true)
-                GpsEngine.Mode.TRACK -> Params(2000L, 1000L, 0f, 0L, true)
-                GpsEngine.Mode.STILL -> Params(2000L, 1000L, 0f, 0L, true)
+                Mode.ACQUIRE -> Params(1000L, 500L, 0f, 0L, true)
+                Mode.TRACK -> Params(2000L, 1000L, 0f, 0L, true)
+                Mode.STILL -> Params(2000L, 1000L, 0f, 0L, true)
             }
-            gps.locationUpdates(params.intervalMs, params.minUpdateMs, params.minDistanceM, params.maxWaitTimeMs, params.highAccuracy)
-                .catch { e -> Log.e(TAG, "locationUpdates error", e) }
+
+            gps.locationUpdates(
+                intervalMs = params.intervalMs,
+                minUpdateMs = params.minUpdateMs,
+                minDistanceM = params.minDistanceM,
+                maxWaitTimeMs = params.maxWaitTimeMs,
+                highAccuracy = params.highAccuracy
+            )
+                .catch { e -> Log.e(TAG, "Error en locationUpdates()", e) }
                 .collect { loc ->
-                    handleLocation(tripId, loc.latitude, loc.longitude, loc.accuracy.toDouble(), loc.time, loc.elapsedRealtimeNanos, loc.provider)
+                    handleLocation(
+                        tripId = tripId,
+                        lat = loc.latitude,
+                        lon = loc.longitude,
+                        accM = loc.accuracy.toDouble(),
+                        timeFromLoc = loc.time,
+                        elapsedNanos = loc.elapsedRealtimeNanos,
+                        provider = loc.provider
+                    )
                 }
         }
+
+        Log.i(TAG, "Switched mode -> $mode")
     }
 
     private data class Params(
@@ -146,82 +209,127 @@ class TrackingService : Service() {
         val highAccuracy: Boolean
     )
 
-    private fun handleLocation(tripId: Long, lat: Double, lon: Double, accM: Double, timeFromLoc: Long, elapsedNanos: Long, provider: String?) {
+    private fun handleLocation(
+        tripId: Long,
+        lat: Double,
+        lon: Double,
+        accM: Double,
+        timeFromLoc: Long,
+        elapsedNanos: Long,
+        provider: String?
+    ) {
         val timeMs = if (timeFromLoc > 0L) timeFromLoc else System.currentTimeMillis()
+
         val lastEN = lastAcceptedElapsedNanos
         if (lastEN != null && elapsedNanos > 0L && elapsedNanos == lastEN) return
-        val mode = currentMode ?: GpsEngine.Mode.ACQUIRE
-        val result = GpsEngine.evaluate(
-            GpsEngine.Input(
-                lat, lon, accM, provider, timeMs, elapsedNanos,
-                lastAcceptedLat, lastAcceptedLon, lastAcceptedTimeMs, lastAcceptedElapsedNanos,
-                lastSavedTimeMs, lastSavedLat, lastSavedLon,
-                recordingArmed, goodFixStreak, stillCounter, mode
-            ),
-            gpsConfig
-        )
-        goodFixStreak = result.nextGoodFixStreak
-        stillCounter = result.nextStillCounter
-        when (result.decision) {
-            GpsEngine.Decision.HOLD -> { updateNotification("GPS preparing ${result.quality.label} ${accM.toInt()}m"); return }
-            GpsEngine.Decision.REJECT -> { updateNotification("GPS rejected ${result.reason}"); return }
-            else -> Unit
+
+        if (accM <= requiredAccM) goodFixStreak++ else goodFixStreak = 0
+
+        if (!recordingArmed) {
+            if (goodFixStreak >= goodFixNeeded) {
+                recordingArmed = true
+                kalmanTrack.reset()
+                lastAcceptedElapsedNanos = null
+                lastAcceptedTimeMs = null
+                lastAcceptedLat = null
+                lastAcceptedLon = null
+                lastSavedTimeMs = null
+                lastSavedLat = null
+                lastSavedLon = null
+                stillCounter = 0
+                Log.i(TAG, "Recording ARMED rápido (acc <= $requiredAccM)")
+                switchMode(Mode.TRACK)
+            } else if (accM > usableAccM) {
+                if (currentMode != Mode.ACQUIRE) switchMode(Mode.ACQUIRE)
+                return
+            }
         }
-        if (result.shouldArm) {
-            recordingArmed = true
-            kalmanTrack.reset()
-            lastAcceptedElapsedNanos = null
-            lastAcceptedTimeMs = null
-            lastAcceptedLat = null
-            lastAcceptedLon = null
-            lastSavedTimeMs = null
-            lastSavedLat = null
-            lastSavedLon = null
+
+        if (accM > 80.0) return
+
+        val lastT = lastAcceptedTimeMs
+        val lastLat = lastAcceptedLat
+        val lastLon = lastAcceptedLon
+        val isFirst = (lastT == null || lastLat == null || lastLon == null)
+
+        if (!isFirst) {
+            val dtSec = if (elapsedNanos > 0L && lastAcceptedElapsedNanos != null) {
+                ((elapsedNanos - lastAcceptedElapsedNanos!!).coerceAtLeast(1L)).toDouble() / 1_000_000_000.0
+            } else {
+                ((timeMs - lastT!!).coerceAtLeast(1L)).toDouble() / 1000.0
+            }
+
+            val distM = haversineMeters(lastLat!!, lastLon!!, lat, lon)
+            val speedMs = distM / dtSec
+
+            if (speedMs > maxSpeedMs) return
+            if (distM > jumpM && accM > jumpAccM) return
+
+            if (distM < 1.2 && accM <= usableAccM) stillCounter++ else stillCounter = 0
+            if (stillCounter >= 8 && currentMode != Mode.STILL) switchMode(Mode.STILL)
+            if (stillCounter == 0 && currentMode == Mode.STILL) switchMode(Mode.TRACK)
         }
-        if (currentMode != result.nextMode) switchMode(result.nextMode)
-        val isStationary = result.nextMode == GpsEngine.Mode.STILL || stillCounter >= 3
-        val candidate = if (result.shouldUseKalman) kalmanTrack.update(lat, lon, accM, timeMs, isStationary) else lat to lon
-        val savedLat = lastSavedLat
-        val savedLon = lastSavedLon
-        val filtered = when {
-            result.nextMode == GpsEngine.Mode.STILL && savedLat != null && savedLon != null -> savedLat to savedLon
-            savedLat != null && savedLon != null && result.decision == GpsEngine.Decision.SMOOTH -> GpsEngine.clampStep(savedLat, savedLon, candidate.first, candidate.second, result.maxStepM)
-            else -> candidate
+
+        val useKalman = accM <= kalmanUseAccM
+        val isStationary = (currentMode == Mode.STILL) || (stillCounter >= 3)
+        val (latF, lonF) = if (useKalman) {
+            kalmanTrack.update(lat = lat, lon = lon, accM = accM, timeMs = timeMs, isStationary = isStationary)
+        } else {
+            lat to lon
         }
+
         lastAcceptedElapsedNanos = if (elapsedNanos > 0L) elapsedNanos else lastAcceptedElapsedNanos
         lastAcceptedTimeMs = timeMs
-        lastAcceptedLat = filtered.first
-        lastAcceptedLon = filtered.second
-        if (result.shouldSave) savePoint(tripId, timeMs, filtered.first, filtered.second, accM, provider, result)
-    }
+        lastAcceptedLat = latF
+        lastAcceptedLon = lonF
 
-    private fun savePoint(tripId: Long, timeMs: Long, lat: Double, lon: Double, accM: Double, provider: String?, result: GpsEngine.Output) {
-        val modeTag = currentMode?.name ?: "NA"
-        val decisionTag = result.reason
-        val p = TrackPoint(
-            tripId = tripId,
-            timeMs = timeMs,
-            lat = lat,
-            lon = lon,
-            accM = accM,
-            provider = ((provider ?: "fused") + if (result.shouldUseKalman) "+kalman" else "+raw") + "+$modeTag+ARMED+${result.quality.quality.name}+$decisionTag"
-        )
-        lastSavedTimeMs = timeMs
-        lastSavedLat = lat
-        lastSavedLon = lon
-        updateNotification("GPS ${result.quality.label} ${accM.toInt()}m $modeTag ${decisionTag.lowercase()}")
-        scope.launch {
-            try {
-                AsdGraph.db.trackDao().insert(p)
-                AsdGraph.repo.completePendingGpsEvents(tripId, p)
-            } catch (e: Exception) {
-                Log.e(TAG, "TrackPoint insert error", e)
+        val canSave = accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, timeMs)
+        if (canSave) {
+            val modeTag = currentMode?.name ?: "NA"
+            val qualityTag = if (recordingArmed) "ARMED" else "QUICK"
+            val p = TrackPoint(
+                tripId = tripId,
+                timeMs = timeMs,
+                lat = latF,
+                lon = lonF,
+                accM = accM,
+                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag"
+            )
+            lastSavedTimeMs = timeMs
+            lastSavedLat = latF
+            lastSavedLon = lonF
+            scope.launch {
+                try {
+                    AsdGraph.db.trackDao().insert(p)
+                    val completed = AsdGraph.repo.completePendingGpsEvents(tripId, p)
+                    if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error insertando TrackPoint o completando GPS pendiente", e)
+                }
             }
         }
     }
 
-    private fun updateNotification(text: String) {
-        getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification(text))
+    private fun shouldSaveTrackPoint(lat: Double, lon: Double, timeMs: Long): Boolean {
+        val savedTime = lastSavedTimeMs
+        val savedLat = lastSavedLat
+        val savedLon = lastSavedLon
+        if (savedTime == null || savedLat == null || savedLon == null) return true
+
+        val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
+        val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
+        return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
+    }
+
+    private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6_371_000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = sin(dLat / 2) * sin(dLat / 2) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLon / 2) * sin(dLon / 2)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return r * c
     }
 
     private fun buildNotification(text: String): android.app.Notification {
@@ -237,8 +345,13 @@ class TrackingService : Service() {
 
     private fun createNotificationChannel() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Tracking",
+                NotificationManager.IMPORTANCE_LOW
+            )
             val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Tracking", NotificationManager.IMPORTANCE_LOW))
+            nm.createNotificationChannel(channel)
         }
     }
 }
