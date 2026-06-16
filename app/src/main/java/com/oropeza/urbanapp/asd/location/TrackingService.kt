@@ -155,7 +155,8 @@ class TrackingService : Service() {
             GpsEngine.Input(
                 lat, lon, accM, provider, timeMs, elapsedNanos,
                 lastAcceptedLat, lastAcceptedLon, lastAcceptedTimeMs, lastAcceptedElapsedNanos,
-                lastSavedTimeMs, recordingArmed, goodFixStreak, stillCounter, mode
+                lastSavedTimeMs, lastSavedLat, lastSavedLon,
+                recordingArmed, goodFixStreak, stillCounter, mode
             ),
             gpsConfig
         )
@@ -196,7 +197,7 @@ class TrackingService : Service() {
 
     private fun savePoint(tripId: Long, timeMs: Long, lat: Double, lon: Double, accM: Double, provider: String?, result: GpsEngine.Output) {
         val modeTag = currentMode?.name ?: "NA"
-        val decisionTag = if (modeTag == "STILL") "STILL_LOCK" else result.decision.name
+        val decisionTag = result.reason
         val p = TrackPoint(
             tripId = tripId,
             timeMs = timeMs,

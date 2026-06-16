@@ -12,6 +12,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.Trip
+import com.oropeza.urbanapp.BuildConfig
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import java.text.SimpleDateFormat
@@ -53,20 +54,30 @@ fun AsdTripListScreen(
             FloatingActionButton(onClick = onNewTrip) { Text("+") }
         }
     ) { pad ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(pad)
-                .fillMaxSize()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(trips) { trip ->
-                TripCard(
-                    trip = trip,
-                    onClick = { onOpenTrip(trip.tripId) },
-                    onOpenMap = { onOpenMap(trip.tripId) }
-                )
+        Column(modifier = Modifier.padding(pad).fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(trips) { trip ->
+                    TripCard(
+                        trip = trip,
+                        onClick = { onOpenTrip(trip.tripId) },
+                        onOpenMap = { onOpenMap(trip.tripId) }
+                    )
+                }
             }
+            
+            Text(
+                text = "v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .padding(8.dp)
+                    .align(androidx.compose.ui.Alignment.CenterHorizontally)
+            )
         }
     }
 }

@@ -3,8 +3,13 @@ package com.oropeza.urbanapp.navigation
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.oropeza.urbanapp.BuildConfig
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,6 +45,25 @@ fun HomeScreen(
 
             OutlinedButton(onClick = onOpenFov, modifier = Modifier.fillMaxWidth()) {
                 Text("FOV (Frecuencia Observable)")
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Acerca de UrbanApp", style = MaterialTheme.typography.titleMedium)
+                    Text("Módulo ASD / FOV / CC", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Versión: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+                    Text("Build: ${BuildConfig.VERSION_CODE}", style = MaterialTheme.typography.bodyMedium)
+                    
+                    val dateFmt = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                    val buildDate = dateFmt.format(Date(BuildConfig.BUILD_TIME))
+                    Text("Fecha compilación: $buildDate", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
