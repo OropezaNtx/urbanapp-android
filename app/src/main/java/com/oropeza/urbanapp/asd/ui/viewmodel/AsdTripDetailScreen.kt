@@ -46,6 +46,7 @@ import com.oropeza.urbanapp.asd.export.AsdClientXlsxExporter
 import com.oropeza.urbanapp.asd.export.GpsAuditCsvExporter
 import com.oropeza.urbanapp.asd.export.GpxExporter
 import com.oropeza.urbanapp.asd.export.KmlExporter
+import com.oropeza.urbanapp.asd.export.AsdGarminGpxExporter
 import com.oropeza.urbanapp.asd.location.LatLng
 import com.oropeza.urbanapp.asd.location.LocationFix
 import com.oropeza.urbanapp.asd.location.LocationProvider
@@ -154,6 +155,19 @@ class AsdTripDetailVM : ViewModel() {
         return true
     }
 
+    suspend fun exportGarminTrack(context: Context, tripId: Long, uri: Uri): Boolean {
+        val trip = AsdGraph.repo.getTripOnce(tripId) ?: return false
+        val points = AsdGraph.repo.getTrackPointsOnce(tripId)
+        AsdGarminGpxExporter.exportGarminTrack(context, uri, trip, points)
+        return true
+    }
+
+    suspend fun exportGarminWaypoints(context: Context, tripId: Long, uri: Uri): Boolean {
+        val stops = AsdGraph.repo.getStopsOnce(tripId)
+        AsdGarminGpxExporter.exportGarminWaypoints(context, uri, stops)
+        return true
+    }
+
     suspend fun addStopDetailed(
         tripId: Long,
         stopType: String,
@@ -187,12 +201,14 @@ class AsdTripDetailVM : ViewModel() {
         eventTimestampMs = stopTimeMs,
         stopLat = stopFix.lat,
         stopLon = stopFix.lon,
+        stopAltM = stopFix.altM,
         stopAccM = stopFix.accM,
         stopProvider = stopFix.provider,
         stopFixTime = stopFix.fixTime,
         locationStatus = stopFix.status,
         startLat = startFix.lat,
         startLon = startFix.lon,
+        startAltM = startFix.altM,
         startAccM = startFix.accM,
         startProvider = startFix.provider,
         startFixTime = startFix.fixTime
@@ -202,6 +218,7 @@ class AsdTripDetailVM : ViewModel() {
         tripId = tripId,
         stopLat = fix.lat,
         stopLon = fix.lon,
+        stopAltM = fix.altM,
         stopAccM = fix.accM,
         stopProvider = fix.provider,
         stopFixTime = fix.fixTime,
@@ -260,6 +277,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     var activeDelayStartMs by rememberSaveable { mutableStateOf(0L) }
     var activeDelayLat by rememberSaveable { mutableStateOf(0.0) }
     var activeDelayLon by rememberSaveable { mutableStateOf(0.0) }
+    var activeDelayAltM by rememberSaveable { mutableStateOf(0.0) }
     var activeDelayAccM by rememberSaveable { mutableStateOf(0.0) }
     var activeDelayProvider by rememberSaveable { mutableStateOf("") }
     var activeDelayFixTime by rememberSaveable { mutableStateOf(0L) }
@@ -329,6 +347,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         activeDelayStartMs = 0L
         activeDelayLat = 0.0
         activeDelayLon = 0.0
+        activeDelayAltM = 0.0
         activeDelayAccM = 0.0
         activeDelayProvider = ""
         activeDelayFixTime = 0L
@@ -337,10 +356,14 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
 
     fun currentFix(now: Long): LocationFix {
         val p = lastPoint
-        return if (p != null && p.lat != 0.0 && p.lon != 0.0) {
-            LocationFix(p.lat, p.lon, p.accM, p.provider, p.timeMs, if (p.accM <= 20.0) "FIX_USABLE" else "GPS_LAST")
+        val isRecent = p != null && (now - p.timeMs) <= 10_000L
+        val isAccurate = p != null && p.accM <= 25.0
+        val isValid = p != null && p.lat != 0.0 && p.lon != 0.0
+
+        return if (p != null && isValid && isRecent && isAccurate) {
+            LocationFix(p.lat, p.lon, p.accM, p.altM, p.provider, p.timeMs, "FIX_USABLE")
         } else {
-            LocationFix(0.0, 0.0, 0.0, "pending", now, "GPS_PENDING")
+            LocationFix(0.0, 0.0, 0.0, 0.0, "pending", now, "GPS_PENDING")
         }
     }
 
@@ -348,6 +371,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         activeDelayLat,
         activeDelayLon,
         activeDelayAccM,
+        activeDelayAltM,
         activeDelayProvider.ifBlank { "pending" },
         activeDelayFixTime,
         activeDelayStatus
@@ -361,6 +385,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         activeDelayStartMs = now
         activeDelayLat = fix.lat
         activeDelayLon = fix.lon
+        activeDelayAltM = fix.altM
         activeDelayAccM = fix.accM
         activeDelayProvider = fix.provider
         activeDelayFixTime = fix.fixTime
@@ -472,6 +497,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
                     LocationFix(
                         lat = recentPoint.lat,
                         lon = recentPoint.lon,
+                        altM = recentPoint.altM,
                         accM = recentPoint.accM,
                         provider = recentPoint.provider,
                         fixTime = recentPoint.timeMs,
@@ -529,6 +555,12 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     }
     val exportKmlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { uri: Uri? ->
         uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportTripKml(context, tripId, it)) "KML exportado ✅" else "No se pudo exportar KML." }.getOrElse { e -> e.message ?: "Error exportando KML." } } }
+    }
+    val exportGarminTrackLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri: Uri? ->
+        uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportGarminTrack(context, tripId, it)) "Track Garmin exportado ✅" else "No se pudo exportar track Garmin." }.getOrElse { e -> e.message ?: "Error exportando track Garmin." } } }
+    }
+    val exportGarminWaypointsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { uri: Uri? ->
+        uri?.let { scope.launch { snackbarText = runCatching { if (vm.exportGarminWaypoints(context, tripId, it)) "Waypoints Garmin exportados ✅" else "No se pudo exportar waypoints Garmin." }.getOrElse { e -> e.message ?: "Error exportando waypoints Garmin." } } }
     }
 
     if (showCloseTripConfirm) {
@@ -847,12 +879,14 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
             // 7. EXPORTACIONES (Al final)
             item {
                 ExportActionsCard(
-                    { exportClientXlsxLauncher.launch("ASD_cliente_${t.tripId}_${fileFmt.format(Date())}.xlsx") },
-                    { exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") },
-                    { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") },
-                    { exportGpsAuditLauncher.launch("ASD_auditoria_gps_${t.tripId}.csv") },
-                    { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") },
-                    { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") }
+                    onExportClientXlsx = { exportClientXlsxLauncher.launch("ASD_cliente_${t.tripId}_${fileFmt.format(Date())}.xlsx") },
+                    onExportCsv = { exportCsvLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.csv") },
+                    onExportTrack = { exportTrackLauncher.launch("ASD_track_trip_${t.tripId}.csv") },
+                    onExportGpsAudit = { exportGpsAuditLauncher.launch("ASD_auditoria_gps_${t.tripId}.csv") },
+                    onExportGpx = { exportGpxLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.gpx") },
+                    onExportKml = { exportKmlLauncher.launch("ASD_${t.tripId}_${fileFmt.format(Date())}.kml") },
+                    onExportGarminTrack = { exportGarminTrackLauncher.launch("TRACK_${t.direction.uppercase()}_${t.tripId}.gpx") },
+                    onExportGarminWaypoints = { exportGarminWaypointsLauncher.launch("WPT_${t.tripId}_${fileFmt.format(Date())}.gpx") }
                 )
             }
         }
@@ -1162,12 +1196,16 @@ private fun InlineAsdCaptureCard(
                         UpperNextTextField(notes, onNotesChange, "OBSERVACIONES", singleLine = false)
                     }
                     
+                    val now = System.currentTimeMillis()
                     val gpsStatus = lastPoint?.let {
+                        val ageSec = (now - it.timeMs) / 1000
+                        val isRecent = ageSec <= 10
+                        val isAccurate = it.accM <= 25.0
+
                         when {
-                            it.accM <= 10 -> "🟢 EXCELENTE ±${it.accM.toInt()}m"
-                            it.accM <= 25 -> "🟢 BUENO ±${it.accM.toInt()}m"
-                            it.accM <= 45 -> "🟡 USABLE ±${it.accM.toInt()}m"
-                            else -> "🔴 DÉBIL ±${it.accM.toInt()}m"
+                            isRecent && isAccurate -> "🟢 GPS BUENO ±${it.accM.toInt()}m"
+                            isRecent -> "🟡 GPS DÉBIL ±${it.accM.toInt()}m"
+                            else -> "🔴 SIN ACTUALIZACIÓN / ÚLTIMO FIX HACE ${ageSec}s"
                         }
                     } ?: "🔴 PENDIENTE"
 
@@ -1906,7 +1944,9 @@ private fun ExportActionsCard(
     onExportTrack: () -> Unit,
     onExportGpsAudit: () -> Unit,
     onExportGpx: () -> Unit,
-    onExportKml: () -> Unit
+    onExportKml: () -> Unit,
+    onExportGarminTrack: () -> Unit,
+    onExportGarminWaypoints: () -> Unit
 ){
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
@@ -1930,7 +1970,26 @@ private fun ExportActionsCard(
             
             ExportGroup("GEO") {
                 OutlinedButton(onClick = onExportKml, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFF223A36))) { Text("KML", color = Color.White) }
-                OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFF223A36))) { Text("GPX", color = Color.White) }
+                OutlinedButton(onClick = onExportGpx, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFF223A36))) { Text("GPX AUDITORÍA (URBAN)", color = Color.White) }
+            }
+
+            ExportGroup("GARMIN (eTrex 20x)") {
+                OutlinedButton(
+                    onClick = onExportGarminTrack,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFF223A36))
+                ) {
+                    Text("GPX TRACK (GARMIN)", color = Color.White)
+                }
+                OutlinedButton(
+                    onClick = onExportGarminWaypoints,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFF223A36))
+                ) {
+                    Text("GPX WAYPOINTS (GARMIN)", color = Color.White)
+                }
             }
             
             ExportGroup("LEGADO") {

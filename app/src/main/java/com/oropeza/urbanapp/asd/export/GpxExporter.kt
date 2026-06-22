@@ -111,11 +111,13 @@ object GpxExporter {
                         }
 
                         append("\nAcc: ±${"%.1f".format(Locale.US, s.stopAccM)} m")
+                        if (s.stopAltM > 0.0) append("\nAlt: ${"%.1f".format(Locale.US, s.stopAltM)} m")
                         if (s.stopProvider.isNotBlank()) append("\nProv: ${s.stopProvider}")
                         if (s.locationStatus.isNotBlank()) append("\nStatus: ${s.locationStatus}")
                     }
 
                     out.appendLine("""<wpt lat="${s.stopLat}" lon="${s.stopLon}">""")
+                    if (s.stopAltM > 0.0) out.appendLine("<ele>${s.stopAltM}</ele>")
                     out.appendLine("<name>${esc(name)}</name>")
                     out.appendLine("<time>${esc(fmtIso(s.stopTime))}</time>")
                     out.appendLine("<sym>Flag</sym>")
@@ -129,11 +131,13 @@ object GpxExporter {
                     val desc = buildString {
                         append("Tipo: $type")
                         append("\nAcc: ±${"%.1f".format(Locale.US, s.startAccM)} m")
+                        if (s.startAltM > 0.0) append("\nAlt: ${"%.1f".format(Locale.US, s.startAltM)} m")
                         if (s.startProvider.isNotBlank()) append("\nProv: ${s.startProvider}")
                         if (s.locationStatus.isNotBlank()) append("\nStatus: ${s.locationStatus}")
                     }
 
                     out.appendLine("""<wpt lat="${s.startLat}" lon="${s.startLon}">""")
+                    if (s.startAltM > 0.0) out.appendLine("<ele>${s.startAltM}</ele>")
                     out.appendLine("<name>${esc(name)}</name>")
                     out.appendLine("<time>${esc(fmtIso(s.startTime))}</time>")
                     out.appendLine("<sym>Flag</sym>")
@@ -166,6 +170,7 @@ object GpxExporter {
                     val p = orderedPts[i]
                     val s = smooth[i]
                     out.appendLine("""<trkpt lat="${s.lat}" lon="${s.lon}">""")
+                    if (p.altM > 0.0) out.appendLine("<ele>${p.altM}</ele>")
                     out.appendLine("<time>${esc(fmtIso(p.timeMs))}</time>")
                     out.appendLine("</trkpt>")
                 }

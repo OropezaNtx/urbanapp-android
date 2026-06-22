@@ -64,8 +64,10 @@ data class StopEvent(
 
     val stopLat: Double = 0.0,
     val stopLon: Double = 0.0,
+    val stopAltM: Double = 0.0,
     val startLat: Double = 0.0,
     val startLon: Double = 0.0,
+    val startAltM: Double = 0.0,
 
     val stopAccM: Double = 0.0,
     val stopProvider: String = "",

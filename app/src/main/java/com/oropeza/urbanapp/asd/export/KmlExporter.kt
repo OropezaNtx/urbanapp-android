@@ -75,9 +75,13 @@ object KmlExporter {
             out.appendLine("<name>${esc(tripName)}</name>")
             out.appendLine("<styleUrl>#routeStyle</styleUrl>")
             out.appendLine("<LineString>")
+            out.appendLine("<altitudeMode>relativeToGround</altitudeMode>")
             out.appendLine("<tessellate>1</tessellate>")
             out.appendLine("<coordinates>")
-            smooth.forEach { p -> out.appendLine("${p.lon},${p.lat},0") }
+            smooth.forEachIndexed { i, p -> 
+                val orig = orderedPts[i]
+                out.appendLine("${p.lon},${p.lat},${if (orig.altM > 0.0) orig.altM else 0.0}") 
+            }
             out.appendLine("</coordinates>")
             out.appendLine("</LineString>")
             out.appendLine("</Placemark>")
@@ -120,7 +124,10 @@ object KmlExporter {
         out.appendLine("<styleUrl>#startStyle</styleUrl>")
         out.appendLine("<TimeStamp><when>${esc(fmtIso(stop.stopTime.takeIf { it > 0L } ?: stop.timestamp))}</when></TimeStamp>")
         out.appendLine("<description>${esc(stop.description(isClose = false))}</description>")
-        out.appendLine("<Point><coordinates>${stop.stopLon},${stop.stopLat},0</coordinates></Point>")
+        out.appendLine("<Point>")
+        if (stop.stopAltM > 0.0) out.appendLine("<altitudeMode>relativeToGround</altitudeMode>")
+        out.appendLine("<coordinates>${stop.stopLon},${stop.stopLat},${if (stop.stopAltM > 0.0) stop.stopAltM else 0.0}</coordinates>")
+        out.appendLine("</Point>")
         out.appendLine("</Placemark>")
     }
 
@@ -134,7 +141,10 @@ object KmlExporter {
         out.appendLine("<styleUrl>#closeStyle</styleUrl>")
         out.appendLine("<TimeStamp><when>${esc(fmtIso(stop.startTime))}</when></TimeStamp>")
         out.appendLine("<description>${esc(stop.description(isClose = true))}</description>")
-        out.appendLine("<Point><coordinates>${stop.startLon},${stop.startLat},0</coordinates></Point>")
+        out.appendLine("<Point>")
+        if (stop.startAltM > 0.0) out.appendLine("<altitudeMode>relativeToGround</altitudeMode>")
+        out.appendLine("<coordinates>${stop.startLon},${stop.startLat},${if (stop.startAltM > 0.0) stop.startAltM else 0.0}</coordinates>")
+        out.appendLine("</Point>")
         out.appendLine("</Placemark>")
     }
 

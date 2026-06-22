@@ -16,6 +16,7 @@ data class TrackPoint(
     val timeMs: Long,          // ✅ este es el que usará el DAO
     val lat: Double,
     val lon: Double,
+    val altM: Double = 0.0,    // ✅ Altitud en metros
     val accM: Double,
     val provider: String
 )

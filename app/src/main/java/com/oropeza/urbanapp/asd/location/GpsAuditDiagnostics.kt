@@ -24,7 +24,12 @@ data class GpsAuditDiagnostics(
             val filter = parts.firstOrNull { it.equals("kalman", true) || it.equals("raw", true) }.orEmpty().ifBlank { "unknown" }
             val mode = parts.firstOrNull { it in setOf("ACQUIRE", "TRACK", "STILL") }.orEmpty().ifBlank { "UNKNOWN" }
             val armState = parts.firstOrNull { it in setOf("ARMED", "QUICK") }.orEmpty().ifBlank { "UNKNOWN" }
-            val quality = parts.firstOrNull { it in setOf("EXCELLENT", "GOOD", "USABLE", "POOR", "INVALID") }.orEmpty().ifBlank { "UNKNOWN" }
+            val quality = parts.firstOrNull { it in setOf("EXCELLENT", "GOOD", "USABLE", "POOR", "INVALID", "NO_FIX") }
+                ?: parts.firstOrNull { it == "EXCELENTE" }?.let { "EXCELLENT" }
+                ?: parts.firstOrNull { it == "BUENO" }?.let { "GOOD" }
+                ?: parts.firstOrNull { it == "USABLE" }?.let { "USABLE" }
+                ?: parts.firstOrNull { it == "POBRE" }?.let { "POOR" }
+                ?: "UNKNOWN"
             val decision = parts.firstOrNull { it in setOf("ACCEPT", "SMOOTH", "HOLD", "REJECT", "STILL_LOCK") }.orEmpty().ifBlank { "UNKNOWN" }
             return GpsAuditDiagnostics(
                 provider = provider,

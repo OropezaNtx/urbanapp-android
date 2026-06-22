@@ -83,15 +83,20 @@ class AsdRepository(private val db: AppDatabase) {
         val pending = stopDao.getPendingGpsEvents(tripId, limit = 10)
         var updated = 0
         pending.forEach { event ->
-            updated += stopDao.updateEventGpsFix(
-                eventId = event.eventId,
-                lat = point.lat,
-                lon = point.lon,
-                accM = point.accM,
-                provider = point.provider,
-                fixTime = point.timeMs,
-                status = "GPS_BACKFILLED"
-            )
+            // ✅ Backfill inteligente: solo si la diferencia de tiempo es <= 30 segundos
+            val diffMs = kotlin.math.abs(point.timeMs - event.timestamp)
+            if (diffMs <= 30_000L) {
+                updated += stopDao.updateEventGpsFix(
+                    eventId = event.eventId,
+                    lat = point.lat,
+                    lon = point.lon,
+                    altM = point.altM,
+                    accM = point.accM,
+                    provider = point.provider,
+                    fixTime = point.timeMs,
+                    status = "GPS_BACKFILLED"
+                )
+            }
         }
         return updated
     }
@@ -100,6 +105,7 @@ class AsdRepository(private val db: AppDatabase) {
         planningRouteId: String,
         stopLat: Double,
         stopLon: Double,
+        stopAltM: Double = 0.0,
         stopAccM: Double,
         stopProvider: String,
         stopFixTime: Long,
@@ -167,12 +173,14 @@ class AsdRepository(private val db: AppDatabase) {
             eventTimestampMs = start,
             stopLat = stopLat,
             stopLon = stopLon,
+            stopAltM = stopAltM,
             stopAccM = stopAccM,
             stopProvider = stopProvider,
             stopFixTime = stopFixTime,
             locationStatus = locationStatus,
             startLat = stopLat,
             startLon = stopLon,
+            startAltM = stopAltM,
             startAccM = stopAccM,
             startProvider = stopProvider,
             startFixTime = stopFixTime
@@ -180,7 +188,7 @@ class AsdRepository(private val db: AppDatabase) {
         return tripId
     }
 
-    suspend fun endTripWithFix(tripId: Long, stopLat: Double, stopLon: Double, stopAccM: Double, stopProvider: String, stopFixTime: Long, locationStatus: String): Boolean {
+    suspend fun endTripWithFix(tripId: Long, stopLat: Double, stopLon: Double, stopAltM: Double = 0.0, stopAccM: Double, stopProvider: String, stopFixTime: Long, locationStatus: String): Boolean {
         val trip = tripDao.getByIdOnce(tripId) ?: return false
         val activeDelay = delayDao.getActiveDelay(tripId)
         if (activeDelay != null) return false
@@ -205,12 +213,14 @@ class AsdRepository(private val db: AppDatabase) {
             eventTimestampMs = endMs,
             stopLat = stopLat,
             stopLon = stopLon,
+            stopAltM = stopAltM,
             stopAccM = stopAccM,
             stopProvider = stopProvider,
             stopFixTime = stopFixTime,
             locationStatus = locationStatus,
             startLat = stopLat,
             startLon = stopLon,
+            startAltM = stopAltM,
             startAccM = stopAccM,
             startProvider = stopProvider,
             startFixTime = stopFixTime
@@ -271,12 +281,14 @@ class AsdRepository(private val db: AppDatabase) {
         eventTimestampMs: Long? = null,
         stopLat: Double = 0.0,
         stopLon: Double = 0.0,
+        stopAltM: Double = 0.0,
         stopAccM: Double = 0.0,
         stopProvider: String = "",
         stopFixTime: Long = 0L,
         locationStatus: String = "NO_FIX",
         startLat: Double = 0.0,
         startLon: Double = 0.0,
+        startAltM: Double = 0.0,
         startAccM: Double = 0.0,
         startProvider: String = "",
         startFixTime: Long = 0L
@@ -336,8 +348,10 @@ class AsdRepository(private val db: AppDatabase) {
             startTime = startTimeMs,
             stopLat = stopLat,
             stopLon = stopLon,
+            stopAltM = stopAltM,
             startLat = startLat,
             startLon = startLon,
+            startAltM = startAltM,
             stopAccM = stopAccM,
             stopProvider = stopProvider,
             stopFixTime = stopFixTime,
@@ -363,7 +377,7 @@ class AsdRepository(private val db: AppDatabase) {
         return if (latOk && lonOk) lat to lon else 0.0 to 0.0
     }
 
-    suspend fun startDelay(tripId: Long, delayType: String, notes: String?, startLat: Double, startLon: Double, startAccM: Double = 0.0, startProvider: String = "", startFixTime: Long = 0L, locationStatus: String = "NO_FIX"): Boolean {
+    suspend fun startDelay(tripId: Long, delayType: String, notes: String?, startLat: Double, startLon: Double, startAltM: Double = 0.0, startAccM: Double = 0.0, startProvider: String = "", startFixTime: Long = 0L, locationStatus: String = "NO_FIX"): Boolean {
         val active = stopDao.getActiveBandera(tripId)
         if (active != null) return false
         val (lat, lon) = normalizeCoord(startLat, startLon)
@@ -381,12 +395,14 @@ class AsdRepository(private val db: AppDatabase) {
             stopTime = now,
             stopLat = lat,
             stopLon = lon,
+            stopAltM = startAltM,
             stopAccM = startAccM,
             stopProvider = startProvider,
             stopFixTime = if (startFixTime > 0L) startFixTime else now,
             startTime = 0L,
             startLat = 0.0,
             startLon = 0.0,
+            startAltM = 0.0,
             startAccM = 0.0,
             startProvider = "",
             startFixTime = 0L,
@@ -401,7 +417,7 @@ class AsdRepository(private val db: AppDatabase) {
         return true
     }
 
-    suspend fun stopDelay(tripId: Long, endLat: Double, endLon: Double, endAccM: Double = 0.0, endProvider: String = "", endFixTime: Long = 0L, locationStatus: String = "NO_FIX"): Boolean {
+    suspend fun stopDelay(tripId: Long, endLat: Double, endLon: Double, endAltM: Double = 0.0, endAccM: Double = 0.0, endProvider: String = "", endFixTime: Long = 0L, locationStatus: String = "NO_FIX"): Boolean {
         val active = stopDao.getActiveBandera(tripId) ?: return false
         val (lat, lon) = normalizeCoord(endLat, endLon)
         val now = System.currentTimeMillis()
@@ -409,6 +425,7 @@ class AsdRepository(private val db: AppDatabase) {
             startTime = now,
             startLat = lat,
             startLon = lon,
+            startAltM = endAltM,
             startAccM = endAccM,
             startProvider = endProvider,
             startFixTime = if (endFixTime > 0L) endFixTime else now,

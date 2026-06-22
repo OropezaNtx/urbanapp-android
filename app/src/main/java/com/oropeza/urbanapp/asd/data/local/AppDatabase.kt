@@ -20,7 +20,7 @@ import com.oropeza.urbanapp.dashboard.OperationalDashboardDao
         AsdFieldPersonCatalogItem::class,
         AsdCatalogSyncState::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

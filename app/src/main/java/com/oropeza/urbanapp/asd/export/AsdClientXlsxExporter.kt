@@ -119,6 +119,14 @@ object AsdClientXlsxExporter {
             onboard = (onboard + up - down).coerceAtLeast(0)
             val wp = displayWaypoints[e.eventId]
             val row = sheet.createRow(idx + 1)
+            
+            val obsText = if (e.locationStatus == "GPS_PENDING") {
+                val baseObs = e.notes.orEmpty()
+                if (baseObs.contains("SIN GPS")) baseObs else "$baseObs [SIN GPS DISPONIBLE EN EL MOMENTO DEL REGISTRO]".trim()
+            } else {
+                e.notes.orDash()
+            }
+
             val values = listOf(
                 dtf.format(Date(e.timestamp)),
                 tf.format(Date(e.timestamp)),
@@ -134,9 +142,9 @@ object AsdClientXlsxExporter {
                 down,
                 onboard,
                 e.delayCodes.orDash(),
-                e.notes.orDash(),
-                simpleGps(e.stopLat, e.stopLon, e.stopAccM),
-                simpleGps(e.startLat, e.startLon, e.startAccM)
+                obsText,
+                simpleGps(e.stopLat, e.stopLon, e.stopAccM, e.locationStatus),
+                simpleGps(e.startLat, e.startLon, e.startAccM, e.locationStatus)
             )
             values.forEachIndexed { c, v -> row.createCell(c).setCellValue(v.toString()); row.getCell(c).cellStyle = styles.value }
         }
@@ -255,7 +263,10 @@ object AsdClientXlsxExporter {
     }
 
     private fun String?.orDash(): String = this?.takeIf { it.isNotBlank() } ?: "-"
-    private fun simpleGps(lat: Double, lon: Double, acc: Double): String = if (lat != 0.0 || lon != 0.0) "${"%.6f".format(Locale.US, lat)}, ${"%.6f".format(Locale.US, lon)} ±${acc.roundToInt()}m" else "GPS pendiente"
+    private fun simpleGps(lat: Double, lon: Double, acc: Double, status: String = ""): String {
+        if (status == "GPS_PENDING" || (lat == 0.0 && lon == 0.0)) return "GPS PENDIENTE"
+        return "${"%.6f".format(Locale.US, lat)}, ${"%.6f".format(Locale.US, lon)} ±${acc.roundToInt()}m"
+    }
     private fun avgAccuracyText(points: List<TrackPoint>): String = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.average().takeIf { !it.isNaN() }?.let { "±${it.roundToInt()}m" } ?: "-"
     private fun gpsClientQuality(points: List<TrackPoint>): String {
         val avg = points.map { it.accM }.filter { it > 0.0 && it < 9999.0 }.average().takeIf { !it.isNaN() } ?: return "-"

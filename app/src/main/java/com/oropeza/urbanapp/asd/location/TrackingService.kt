@@ -37,13 +37,13 @@ class TrackingService : Service() {
     private val requiredAccM = 25.0
     private val usableAccM = 45.0
     private val kalmanUseAccM = 45.0
-    private val goodFixNeeded = 1
+    private val goodFixNeeded = 3
 
     private val maxSpeedMs = 45.0
     private val jumpM = 45.0
     private val jumpAccM = 25.0
 
-    private val minSaveDistanceM = 0.0
+    private val minSaveDistanceM = 8.0
     private val maxSaveIntervalMs = 2_000L
 
     private enum class Mode { ACQUIRE, TRACK, STILL }
@@ -186,15 +186,16 @@ class TrackingService : Service() {
             )
                 .catch { e -> Log.e(TAG, "Error en locationUpdates()", e) }
                 .collect { loc ->
-                    handleLocation(
-                        tripId = tripId,
-                        lat = loc.latitude,
-                        lon = loc.longitude,
-                        accM = loc.accuracy.toDouble(),
-                        timeFromLoc = loc.time,
-                        elapsedNanos = loc.elapsedRealtimeNanos,
-                        provider = loc.provider
-                    )
+                        handleLocation(
+                            tripId = tripId,
+                            lat = loc.latitude,
+                            lon = loc.longitude,
+                            accM = loc.accuracy.toDouble(),
+                            altM = if (loc.hasAltitude()) loc.altitude else 0.0,
+                            timeFromLoc = loc.time,
+                            elapsedNanos = loc.elapsedRealtimeNanos,
+                            provider = loc.provider
+                        )
                 }
         }
 
@@ -214,6 +215,7 @@ class TrackingService : Service() {
         lat: Double,
         lon: Double,
         accM: Double,
+        altM: Double,
         timeFromLoc: Long,
         elapsedNanos: Long,
         provider: String?
@@ -265,7 +267,13 @@ class TrackingService : Service() {
             if (speedMs > maxSpeedMs) return
             if (distM > jumpM && accM > jumpAccM) return
 
-            if (distM < 1.2 && accM <= usableAccM) stillCounter++ else stillCounter = 0
+            val stillRadius = kotlin.math.max(12.0, accM * 1.5)
+            if (distM < stillRadius && speedMs < 1.2) {
+                stillCounter++
+            } else if (distM > kotlin.math.max(20.0, accM * 2.0) || speedMs > 2.5) {
+                stillCounter = 0
+            }
+
             if (stillCounter >= 8 && currentMode != Mode.STILL) switchMode(Mode.STILL)
             if (stillCounter == 0 && currentMode == Mode.STILL) switchMode(Mode.TRACK)
         }
@@ -283,17 +291,19 @@ class TrackingService : Service() {
         lastAcceptedLat = latF
         lastAcceptedLon = lonF
 
-        val canSave = accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, timeMs)
+        val canSave = accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, accM, timeMs)
         if (canSave) {
             val modeTag = currentMode?.name ?: "NA"
             val qualityTag = if (recordingArmed) "ARMED" else "QUICK"
+            val eval = GpsQualityEvaluator.evaluate(latF, lonF, accM, provider)
             val p = TrackPoint(
                 tripId = tripId,
                 timeMs = timeMs,
                 lat = latF,
                 lon = lonF,
+                altM = altM,
                 accM = accM,
-                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag"
+                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag+${eval.quality.name}"
             )
             lastSavedTimeMs = timeMs
             lastSavedLat = latF
@@ -310,7 +320,7 @@ class TrackingService : Service() {
         }
     }
 
-    private fun shouldSaveTrackPoint(lat: Double, lon: Double, timeMs: Long): Boolean {
+    private fun shouldSaveTrackPoint(lat: Double, lon: Double, accM: Double, timeMs: Long): Boolean {
         val savedTime = lastSavedTimeMs
         val savedLat = lastSavedLat
         val savedLon = lastSavedLon
@@ -318,7 +328,17 @@ class TrackingService : Service() {
 
         val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
         val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
-        return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
+
+        val jitterRadius = kotlin.math.max(12.0, accM * 1.5)
+        if (distanceM < jitterRadius) return false
+
+        if (distanceM >= minSaveDistanceM) return true
+
+        return if (elapsedMs >= maxSaveIntervalMs) {
+            currentMode != Mode.STILL
+        } else {
+            false
+        }
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

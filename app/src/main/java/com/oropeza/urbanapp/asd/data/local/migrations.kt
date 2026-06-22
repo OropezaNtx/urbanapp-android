@@ -263,6 +263,15 @@ object Migrations {
         }
     }
 
+    val MIGRATION_16_17 = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // ✅ Agregar columnas de altitud con DEFAULT 0.0
+            db.execSQL("ALTER TABLE TrackPoint ADD COLUMN altM REAL NOT NULL DEFAULT 0.0")
+            db.execSQL("ALTER TABLE StopEvent ADD COLUMN stopAltM REAL NOT NULL DEFAULT 0.0")
+            db.execSQL("ALTER TABLE StopEvent ADD COLUMN startAltM REAL NOT NULL DEFAULT 0.0")
+        }
+    }
+
     private fun addTripOperationalMetadataColumns(db: SupportSQLiteDatabase) {
         if (!tripColumnExists(db, "aforador")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN aforador TEXT")
