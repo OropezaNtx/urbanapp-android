@@ -3,9 +3,12 @@ package com.oropeza.urbanapp.navigation
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.oropeza.urbanapp.BuildConfig
@@ -28,6 +31,9 @@ fun HomeScreen(
     val orgId = remember { UrbanPlatformSettings.getOrganizationId(context) }
     val projId = remember { UrbanPlatformSettings.getProjectId(context) }
     val env = remember { UrbanPlatformSettings.getEnvironment(context) }
+    
+    val pendingSyncCount by AsdGraph.repo.syncQueuePendingCountFlow().collectAsState(initial = 0)
+    val lastSyncTime by AsdGraph.repo.lastSyncTimeFlow().collectAsState(initial = null)
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("UrbanApp") }) }
@@ -78,6 +84,13 @@ fun HomeScreen(
                     Text("Device ID: ${identity.installationId.take(8).uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                     Text("Org: $orgId · Proj: $projId", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                     Text("Env: ${env.uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                    
+                    if (pendingSyncCount > 0) {
+                        Text("Pendientes nube: $pendingSyncCount", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                    } else if (lastSyncTime != null) {
+                        val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+                        Text("Sincronizado: ${timeFmt.format(Date(lastSyncTime!!))}", style = MaterialTheme.typography.labelSmall, color = Color(0xFF35D36B))
+                    }
                 }
             }
         }

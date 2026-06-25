@@ -13,6 +13,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.sync.AsdCatalogFirestoreSync
+import com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler
 import com.oropeza.urbanapp.BuildConfig
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -45,9 +46,9 @@ fun AsdTripListScreen(
 
     LaunchedEffect(Unit) {
         AsdCatalogFirestoreSync.checkVersionAndSyncIfNeeded()
-        // ✅ Phase 5: Initial platform sync
-        AsdGraph.syncQueue.enqueueInstallationRegister(context)
-        AsdGraph.syncQueue.enqueueHeartbeatNow(context)
+        // ✅ Phase 6: Cloud Activation
+        UrbanCloudSyncScheduler.enqueueAndSyncInstallation(context)
+        UrbanCloudSyncScheduler.enqueueAndSyncHeartbeat(context)
     }
 
     Scaffold(

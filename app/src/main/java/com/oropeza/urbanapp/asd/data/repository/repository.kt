@@ -532,6 +532,8 @@ class AsdRepository(private val db: AppDatabase) {
                     status = "PENDING"
                 )
             )
+            // ✅ Phase 6: Trigger cloud sync activation
+            com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler.syncNow(AsdGraph.appContext)
         } catch (e: Exception) {
             android.util.Log.e("AsdRepository", "Sync enqueue failed for $type", e)
         }

@@ -1,6 +1,7 @@
 package com.oropeza.urbanapp.asd.data.repository
 
 import com.google.gson.Gson
+import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.AsdSyncQueueDao
 import com.oropeza.urbanapp.asd.data.local.AsdSyncQueueItem
 import com.oropeza.urbanapp.asd.data.local.StopEvent
@@ -106,8 +107,8 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
             )
             dao.insert(item)
             
-            // Trigger engine if online (future phase)
-            // AsdCloudSyncWorker.enqueue(context) // context needed if we trigger here
+            // ✅ Phase 6: Trigger cloud sync activation
+            com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler.syncNow(AsdGraph.appContext)
         } catch (e: Exception) {
             android.util.Log.e("AsdSyncQueueRepo", "Failed to enqueue sync for $type $localId", e)
         }
