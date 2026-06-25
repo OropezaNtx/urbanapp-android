@@ -4,15 +4,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.sync.AsdCatalogFirestoreSync
+import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
 import com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler
 import com.oropeza.urbanapp.BuildConfig
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,6 +25,7 @@ import java.util.*
 import androidx.compose.material3.ExperimentalMaterial3Api
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 
 class AsdTripListVM : ViewModel() {
@@ -30,6 +34,9 @@ class AsdTripListVM : ViewModel() {
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList()
     )
+
+    val pendingSyncCount = AsdGraph.repo.syncQueuePendingCountFlow()
+    val failedSyncCount = AsdGraph.repo.syncQueueFailedCountFlow()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,7 +49,12 @@ fun AsdTripListScreen(
 ) {
     val vm: AsdTripListVM = viewModel()
     val trips by vm.trips.collectAsState()
+    val pendingCount by vm.pendingSyncCount.collectAsState(initial = 0)
+    val failedCount by vm.failedSyncCount.collectAsState(initial = 0)
     val context = androidx.compose.ui.platform.LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val identity = remember { UrbanIdentityProvider.getIdentity(context) }
 
     LaunchedEffect(Unit) {
         runCatching {
@@ -56,6 +68,7 @@ fun AsdTripListScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("ASD - Viajes") },
@@ -69,6 +82,18 @@ fun AsdTripListScreen(
         }
     ) { pad ->
         Column(modifier = Modifier.padding(pad).fillMaxSize()) {
+            CloudSyncStatusCard(
+                installationId = identity.installationId,
+                pendingCount = pendingCount,
+                failedCount = failedCount,
+                onSyncNow = {
+                    scope.launch {
+                        UrbanCloudSyncScheduler.enqueueAndSyncHeartbeat(context)
+                        snackbarHostState.showSnackbar("Sincronización solicitada")
+                    }
+                }
+            )
+
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
@@ -92,6 +117,63 @@ fun AsdTripListScreen(
                     .padding(8.dp)
                     .align(androidx.compose.ui.Alignment.CenterHorizontally)
             )
+        }
+    }
+}
+
+@Composable
+private fun CloudSyncStatusCard(
+    installationId: String,
+    pendingCount: Int,
+    failedCount: Int,
+    onSyncNow: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Text("Estado nube", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    "ID: ${installationId.take(8).uppercase()}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column {
+                    Text("Pendientes", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                    Text(pendingCount.toString(), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.ExtraBold)
+                }
+                Column {
+                    Text("Fallidos", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                    Text(
+                        failedCount.toString(),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (failedCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Button(
+                    onClick = onSyncNow,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    modifier = Modifier.height(32.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Sincronizar ahora", style = MaterialTheme.typography.labelSmall)
+                }
+            }
         }
     }
 }
