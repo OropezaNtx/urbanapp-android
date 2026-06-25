@@ -536,4 +536,15 @@ class AsdRepository(private val db: AppDatabase) {
         )
         return engine.processNextBatch()
     }
+
+    /**
+     * Manual trigger for Phase 3 validation using real FirestoreCloudSyncTarget.
+     */
+    suspend fun triggerManualCloudSync(): Int {
+        val engine = com.oropeza.urbanapp.asd.sync.cloud.CloudSyncEngine(
+            this,
+            AsdGraph.getCloudSyncTarget()
+        )
+        return engine.processNextBatch()
+    }
 }
