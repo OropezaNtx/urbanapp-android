@@ -524,4 +524,16 @@ class AsdRepository(private val db: AppDatabase) {
     suspend fun getPendingSyncItems(limit: Int) = syncQueueDao.getPending(limit)
     suspend fun markSyncItemSynced(id: Long) = syncQueueDao.markSynced(id)
     suspend fun updateSyncItem(item: AsdSyncQueueItem) = syncQueueDao.update(item)
+
+    /**
+     * Manual trigger for Phase 2 validation using NoopCloudSyncTarget.
+     * Voids the queue by marking all as SYNCED.
+     */
+    suspend fun triggerManualNoopSync(): Int {
+        val engine = com.oropeza.urbanapp.asd.sync.cloud.CloudSyncEngine(
+            this,
+            com.oropeza.urbanapp.asd.sync.cloud.NoopCloudSyncTarget()
+        )
+        return engine.processNextBatch()
+    }
 }
