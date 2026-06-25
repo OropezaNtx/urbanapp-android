@@ -15,8 +15,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.sync.AsdCatalogFirestoreSync
-import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
-import com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import com.oropeza.urbanapp.BuildConfig
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -54,16 +53,16 @@ fun AsdTripListScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val identity = remember { UrbanIdentityProvider.getIdentity(context) }
+    val shortId = remember { UrbanRuntime.getShortInstallationId(context) }
 
     LaunchedEffect(Unit) {
         runCatching {
             AsdCatalogFirestoreSync.checkVersionAndSyncIfNeeded()
         }
-        // ✅ Microphase 6.2: Initial cloud identity and heartbeat
+        // ✅ UrbanRuntime: Initial cloud identity and heartbeat
         runCatching {
-            UrbanCloudSyncScheduler.enqueueAndSyncInstallation(context)
-            UrbanCloudSyncScheduler.enqueueAndSyncHeartbeat(context)
+            UrbanRuntime.syncInstallation(context)
+            UrbanRuntime.syncHeartbeat(context)
         }
     }
 
@@ -83,12 +82,12 @@ fun AsdTripListScreen(
     ) { pad ->
         Column(modifier = Modifier.padding(pad).fillMaxSize()) {
             CloudSyncStatusCard(
-                installationId = identity.installationId,
+                shortId = shortId,
                 pendingCount = pendingCount,
                 failedCount = failedCount,
                 onSyncNow = {
                     scope.launch {
-                        UrbanCloudSyncScheduler.enqueueAndSyncHeartbeat(context)
+                        UrbanRuntime.syncHeartbeat(context)
                         snackbarHostState.showSnackbar("Sincronización solicitada")
                     }
                 }
@@ -123,7 +122,7 @@ fun AsdTripListScreen(
 
 @Composable
 private fun CloudSyncStatusCard(
-    installationId: String,
+    shortId: String,
     pendingCount: Int,
     failedCount: Int,
     onSyncNow: () -> Unit
@@ -144,7 +143,7 @@ private fun CloudSyncStatusCard(
             ) {
                 Text("Estado nube", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(
-                    "ID: ${installationId.take(8).uppercase()}",
+                    "ID: $shortId",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
