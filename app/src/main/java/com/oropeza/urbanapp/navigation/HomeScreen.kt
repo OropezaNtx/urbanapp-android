@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.oropeza.urbanapp.BuildConfig
 import com.oropeza.urbanapp.asd.AsdGraph
+import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -24,6 +25,9 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val identity = remember { AsdGraph.getDeviceIdentity(context) }
+    val orgId = remember { UrbanPlatformSettings.getOrganizationId(context) }
+    val projId = remember { UrbanPlatformSettings.getProjectId(context) }
+    val env = remember { UrbanPlatformSettings.getEnvironment(context) }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("UrbanApp") }) }
@@ -72,6 +76,8 @@ fun HomeScreen(
                     
                     Spacer(Modifier.height(4.dp))
                     Text("Device ID: ${identity.installationId.take(8).uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                    Text("Org: $orgId · Proj: $projId", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                    Text("Env: ${env.uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                 }
             }
         }

@@ -3,6 +3,9 @@ package com.oropeza.urbanapp.asd.data.repository
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.backup.AsdOnlineBackup
 import com.oropeza.urbanapp.asd.data.local.*
+import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
+import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
+import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
 import kotlinx.coroutines.flow.Flow
 import kotlin.math.max
 
@@ -504,12 +507,27 @@ class AsdRepository(private val db: AppDatabase) {
         priority: Int = 1
     ) {
         try {
+            val context = AsdGraph.appContext
+            val orgId = UrbanPlatformSettings.getOrganizationId(context)
+            val projId = UrbanPlatformSettings.getProjectId(context)
+            val deviceId = UrbanIdentityProvider.getIdentity(context).installationId
+            
+            val cloudPath = when(type) {
+                "TRIP" -> UrbanCloudPaths.tripPath(orgId, projId, "${deviceId}_$localId")
+                "EVENT" -> {
+                    val tripId = if (payload is StopEvent) payload.tripId else 0L
+                    "${UrbanCloudPaths.tripPath(orgId, projId, "${deviceId}_$tripId")}/events/${deviceId}_$localId"
+                }
+                else -> null
+            }
+
             syncQueueDao.insert(
                 AsdSyncQueueItem(
                     entityType = type,
                     operation = operation,
                     entityLocalId = localId,
                     payloadJson = gson.toJson(payload),
+                    cloudPath = cloudPath,
                     priority = priority,
                     status = "PENDING"
                 )
@@ -520,6 +538,7 @@ class AsdRepository(private val db: AppDatabase) {
     }
 
     fun syncQueuePendingCountFlow() = syncQueueDao.pendingCountFlow()
+    fun syncQueueFailedCountFlow() = syncQueueDao.failedCountFlow()
     fun lastSyncTimeFlow() = syncQueueDao.lastSyncTimeFlow()
     suspend fun getPendingSyncItems(limit: Int) = syncQueueDao.getPending(limit)
     suspend fun markSyncItemSynced(id: Long) = syncQueueDao.markSynced(id)

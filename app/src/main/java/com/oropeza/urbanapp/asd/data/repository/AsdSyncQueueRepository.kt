@@ -5,17 +5,85 @@ import com.oropeza.urbanapp.asd.data.local.AsdSyncQueueDao
 import com.oropeza.urbanapp.asd.data.local.AsdSyncQueueItem
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.Trip
+import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
+import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
+import com.oropeza.urbanapp.core.platform.UrbanPlatformCloudMapper
+import com.oropeza.urbanapp.core.platform.UrbanPlatformService
+import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
 
 class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
 
     private val gson = Gson()
 
-    suspend fun enqueueTripUpsert(operation: String, trip: Trip) {
-        enqueue("TRIP", operation, trip.tripId, trip, priority = 0)
+    private fun getCloudTripId(context: android.content.Context, localId: Long): String {
+        val deviceId = UrbanIdentityProvider.getIdentity(context).installationId
+        return "${deviceId}_$localId"
     }
 
-    suspend fun enqueueEventUpsert(operation: String, event: StopEvent) {
-        enqueue("EVENT", operation, event.eventId, event, priority = 0)
+    private fun getCloudEventId(context: android.content.Context, localId: Long): String {
+        val deviceId = UrbanIdentityProvider.getIdentity(context).installationId
+        return "${deviceId}_$localId"
+    }
+
+    suspend fun enqueueInstallationRegister(context: android.content.Context) {
+        val installation = UrbanPlatformService.buildCurrentInstallation(context)
+        val path = UrbanCloudPaths.installationPath(
+            installation.organizationId ?: "demo_org",
+            installation.projectId ?: "demo_project",
+            installation.installationId
+        )
+        enqueue(
+            type = "INSTALLATION",
+            operation = "UPSERT",
+            localId = 0L,
+            payload = UrbanPlatformCloudMapper.installationToMap(installation),
+            cloudPath = path,
+            priority = 0
+        )
+    }
+
+    suspend fun enqueueHeartbeat(context: android.content.Context, activeTripId: Long? = null) {
+        val heartbeat = UrbanPlatformService.buildHeartbeat(context, activeTripId?.toString())
+        val path = UrbanCloudPaths.heartbeatPath(
+            heartbeat.organizationId ?: "demo_org",
+            heartbeat.projectId ?: "demo_project",
+            heartbeat.installationId
+        )
+        enqueue(
+            type = "HEARTBEAT",
+            operation = "UPSERT",
+            localId = 0L,
+            payload = UrbanPlatformCloudMapper.heartbeatToMap(heartbeat),
+            cloudPath = path,
+            priority = 1
+        )
+    }
+
+    suspend fun enqueueHeartbeatNow(context: android.content.Context) {
+        enqueueHeartbeat(context)
+    }
+
+    suspend fun enqueueTripUpsert(context: android.content.Context, operation: String, trip: Trip) {
+        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val projId = UrbanPlatformSettings.getProjectId(context)
+        val cloudTripId = getCloudTripId(context, trip.tripId)
+        val path = UrbanCloudPaths.tripPath(orgId, projId, cloudTripId)
+
+        enqueue("TRIP", operation, trip.tripId, trip, cloudPath = path, priority = 0)
+    }
+
+    suspend fun enqueueEventUpsert(context: android.content.Context, event: StopEvent) {
+        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val projId = UrbanPlatformSettings.getProjectId(context)
+        val cloudTripId = getCloudTripId(context, event.tripId)
+        val cloudEventId = getCloudEventId(context, event.eventId)
+        val path = "${UrbanCloudPaths.tripPath(orgId, projId, cloudTripId)}/events/$cloudEventId"
+
+        enqueue("EVENT", "UPSERT", event.eventId, event, cloudPath = path, priority = 0)
+    }
+
+    suspend fun enqueueTripClose(context: android.content.Context, trip: Trip) {
+        enqueueTripUpsert(context, "CLOSE", trip)
     }
 
     private suspend fun enqueue(
@@ -23,6 +91,7 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
         operation: String,
         localId: Long,
         payload: Any,
+        cloudPath: String? = null,
         priority: Int = 1
     ) {
         try {
@@ -31,10 +100,14 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
                 operation = operation,
                 entityLocalId = localId,
                 payloadJson = gson.toJson(payload),
+                cloudPath = cloudPath,
                 priority = priority,
                 status = "PENDING"
             )
             dao.insert(item)
+            
+            // Trigger engine if online (future phase)
+            // AsdCloudSyncWorker.enqueue(context) // context needed if we trigger here
         } catch (e: Exception) {
             android.util.Log.e("AsdSyncQueueRepo", "Failed to enqueue sync for $type $localId", e)
         }

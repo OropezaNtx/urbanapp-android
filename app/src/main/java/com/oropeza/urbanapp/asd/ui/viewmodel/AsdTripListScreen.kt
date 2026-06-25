@@ -41,9 +41,13 @@ fun AsdTripListScreen(
 ) {
     val vm: AsdTripListVM = viewModel()
     val trips by vm.trips.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
         AsdCatalogFirestoreSync.checkVersionAndSyncIfNeeded()
+        // ✅ Phase 5: Initial platform sync
+        AsdGraph.syncQueue.enqueueInstallationRegister(context)
+        AsdGraph.syncQueue.enqueueHeartbeatNow(context)
     }
 
     Scaffold(
