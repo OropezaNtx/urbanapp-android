@@ -299,6 +299,52 @@ data class AsdFieldPersonCatalogItem(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+@Entity(
+    indices = [
+        Index(value = ["vehicleTypeId"], unique = true),
+        Index(value = ["name"]),
+        Index(value = ["active"]),
+        Index(value = ["sortOrder"])
+    ]
+)
+data class AsdVehicleTypeCatalogItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val vehicleTypeId: String,
+    val name: String,
+    val displayName: String,
+    val defaultSeatCapacity: Int,
+    val capacityApplies: Boolean,
+    val sortOrder: Int,
+    val active: Boolean = true,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "sync_queue",
+    indices = [
+        Index(value = ["status"]),
+        Index(value = ["nextAttemptAt"]),
+        Index(value = ["entityType"]),
+        Index(value = ["priority"]),
+        Index(value = ["createdAt"])
+    ]
+)
+data class AsdSyncQueueItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val entityType: String,      // TRIP | EVENT | TRACK_SUMMARY | DEVICE_STATUS
+    val operation: String,       // CREATE | UPDATE | CLOSE
+    val entityLocalId: Long,
+    val cloudPath: String? = null,
+    val payloadJson: String,
+    val status: String = "PENDING", // PENDING | IN_PROGRESS | SYNCED | FAILED | DEAD_LETTER
+    val priority: Int = 1,          // 0: High, 1: Normal, 2: Low
+    val attempts: Int = 0,
+    val lastError: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val nextAttemptAt: Long = 0L
+)
+
 @Entity
 data class AsdCatalogSyncState(
     @PrimaryKey val id: String = "ASD_CATALOG",
@@ -307,6 +353,7 @@ data class AsdCatalogSyncState(
     val source: String? = null, // XLSX, FIRESTORE, SEED
     val routesCount: Int = 0,
     val peopleCount: Int = 0,
+    val vehicleTypesCount: Int = 0,
     val status: String = "EMPTY", // EMPTY, READY, ERROR
     val message: String? = null
 )

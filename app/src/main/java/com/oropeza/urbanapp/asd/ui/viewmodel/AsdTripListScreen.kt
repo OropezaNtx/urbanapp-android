@@ -12,6 +12,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.Trip
+import com.oropeza.urbanapp.asd.sync.AsdCatalogFirestoreSync
 import com.oropeza.urbanapp.BuildConfig
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -40,6 +41,10 @@ fun AsdTripListScreen(
 ) {
     val vm: AsdTripListVM = viewModel()
     val trips by vm.trips.collectAsState()
+
+    LaunchedEffect(Unit) {
+        AsdCatalogFirestoreSync.checkVersionAndSyncIfNeeded()
+    }
 
     Scaffold(
         topBar = {

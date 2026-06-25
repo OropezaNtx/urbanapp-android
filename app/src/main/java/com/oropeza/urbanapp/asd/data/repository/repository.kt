@@ -1,5 +1,6 @@
 package com.oropeza.urbanapp.asd.data.repository
 
+import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.backup.AsdOnlineBackup
 import com.oropeza.urbanapp.asd.data.local.*
 import kotlinx.coroutines.flow.Flow
@@ -17,7 +18,11 @@ class AsdRepository(private val db: AppDatabase) {
 
     private val asdRouteCatalogDao = db.asdRouteCatalogDao()
     private val asdFieldPersonCatalogDao = db.asdFieldPersonCatalogDao()
+    private val asdVehicleTypeCatalogDao = db.asdVehicleTypeCatalogDao()
     private val asdCatalogSyncStateDao = db.asdCatalogSyncStateDao()
+    private val syncQueueDao = db.asdSyncQueueDao()
+
+    private val gson = com.google.gson.Gson()
 
     val tripsFlow: Flow<List<Trip>> = tripDao.getAll()
     fun tripFlow(id: Long): Flow<Trip?> = tripDao.getById(id)
@@ -74,7 +79,9 @@ class AsdRepository(private val db: AppDatabase) {
             deviceNumber = cleanText(deviceNumber),
             observerSex = normalizeSex(observerSex)
         )
-        return tripDao.update(updated) > 0
+        val ok = tripDao.update(updated) > 0
+        if (ok) enqueueSync("TRIP", "UPDATE", tripId, updated)
+        return ok
     }
 
     suspend fun completePendingGpsEvents(tripId: Long, point: TrackPoint): Int {
@@ -86,16 +93,20 @@ class AsdRepository(private val db: AppDatabase) {
             // ✅ Backfill inteligente: solo si la diferencia de tiempo es <= 30 segundos
             val diffMs = kotlin.math.abs(point.timeMs - event.timestamp)
             if (diffMs <= 30_000L) {
-                updated += stopDao.updateEventGpsFix(
-                    eventId = event.eventId,
-                    lat = point.lat,
-                    lon = point.lon,
-                    altM = point.altM,
-                    accM = point.accM,
-                    provider = point.provider,
-                    fixTime = point.timeMs,
-                    status = "GPS_BACKFILLED"
+                val updatedEvent = event.copy(
+                    stopLat = point.lat,
+                    stopLon = point.lon,
+                    stopAltM = point.altM,
+                    stopAccM = point.accM,
+                    stopProvider = point.provider,
+                    stopFixTime = point.timeMs,
+                    locationStatus = "GPS_BACKFILLED"
                 )
+                val ok = stopDao.update(updatedEvent) > 0
+                if (ok) {
+                    updated++
+                    enqueueSync("EVENT", "UPDATE", event.eventId, updatedEvent)
+                }
             }
         }
         return updated
@@ -131,29 +142,30 @@ class AsdRepository(private val db: AppDatabase) {
         val start = System.currentTimeMillis()
         val initialWp = if (continueWaypoints) (tripDao.getLastTripNextWaypoint() ?: 1) else 1
 
-        val tripId = tripDao.insert(
-            Trip(
-                planningRouteId = planningRouteId.trim().uppercase(),
-                routeName = routeName.trim().uppercase(),
-                company = cleanText(company),
-                vehicleEco = cleanText(vehicleEco),
-                direction = direction.trim().uppercase(),
-                startTime = start,
-                notes = cleanText(notes),
-                nextWaypointId = initialWp,
-                routeNumber = routeNumber,
-                esFs = cleanText(esFs),
-                baseStart = cleanText(baseStart),
-                baseEnd = cleanText(baseEnd),
-                plateNumber = cleanText(plateNumber),
-                vehicleType = cleanText(vehicleType),
-                seatCapacity = seatCapacity,
-                aforador = cleanText(aforador),
-                supervisor = cleanText(supervisor),
-                deviceNumber = cleanText(deviceNumber),
-                observerSex = normalizeSex(observerSex)
-            )
+        val trip = Trip(
+            planningRouteId = planningRouteId.trim().uppercase(),
+            routeName = routeName.trim().uppercase(),
+            company = cleanText(company),
+            vehicleEco = cleanText(vehicleEco),
+            direction = direction.trim().uppercase(),
+            startTime = start,
+            notes = cleanText(notes),
+            nextWaypointId = initialWp,
+            routeNumber = routeNumber,
+            esFs = cleanText(esFs),
+            baseStart = cleanText(baseStart),
+            baseEnd = cleanText(baseEnd),
+            plateNumber = cleanText(plateNumber),
+            vehicleType = cleanText(vehicleType),
+            seatCapacity = seatCapacity,
+            aforador = cleanText(aforador),
+            supervisor = cleanText(supervisor),
+            deviceNumber = cleanText(deviceNumber),
+            observerSex = normalizeSex(observerSex)
         )
+        val tripId = tripDao.insert(trip)
+        val finalTrip = trip.copy(tripId = tripId)
+        enqueueSync("TRIP", "CREATE", tripId, finalTrip)
 
         val normSex = normalizeSex(observerSex)
         val mUp = if (normSex == "H") 1 else 0
@@ -225,8 +237,10 @@ class AsdRepository(private val db: AppDatabase) {
             startProvider = stopProvider,
             startFixTime = stopFixTime
         )
-        tripDao.update(trip.copy(endTime = endMs))
-        return true
+        val finalTrip = trip.copy(endTime = endMs)
+        val ok = tripDao.update(finalTrip) > 0
+        if (ok) enqueueSync("TRIP", "CLOSE", tripId, finalTrip)
+        return ok
     }
 
     private suspend fun computeDetailedOnBoard(tripId: Long): Pair<Int, Int> {
@@ -368,7 +382,9 @@ class AsdRepository(private val db: AppDatabase) {
             otherDelayDesc = cleanText(otherDelayDesc)
         )
         val insertedId = stopDao.insert(event)
-        AsdOnlineBackup.backupStopEvent(event.copy(eventId = insertedId))
+        val finalEvent = event.copy(eventId = insertedId)
+        enqueueSync("EVENT", "CREATE", insertedId, finalEvent)
+        AsdOnlineBackup.backupStopEvent(finalEvent)
     }
 
     private fun normalizeCoord(lat: Double, lon: Double): Pair<Double, Double> {
@@ -413,7 +429,9 @@ class AsdRepository(private val db: AppDatabase) {
             paxMenUp = 0, paxWomenUp = 0, paxMenDown = 0, paxWomenDown = 0
         )
         val insertedId = stopDao.insert(event)
-        AsdOnlineBackup.backupStopEvent(event.copy(eventId = insertedId))
+        val finalEvent = event.copy(eventId = insertedId)
+        enqueueSync("EVENT", "CREATE", insertedId, finalEvent)
+        AsdOnlineBackup.backupStopEvent(finalEvent)
         return true
     }
 
@@ -431,9 +449,10 @@ class AsdRepository(private val db: AppDatabase) {
             startFixTime = if (endFixTime > 0L) endFixTime else now,
             locationStatus = locationStatus
         )
-        stopDao.update(updated)
+        val ok = stopDao.update(updated) > 0
+        if (ok) enqueueSync("EVENT", "UPDATE", updated.eventId, updated)
         AsdOnlineBackup.backupStopEvent(updated)
-        return true
+        return ok
     }
 
     val ccSessionsFlow: Flow<List<CcSession>> = ccSessionDao.getAll()
@@ -454,6 +473,8 @@ class AsdRepository(private val db: AppDatabase) {
     fun activeAsdPeopleFlow() = asdFieldPersonCatalogDao.getActivePeople()
     fun activeAsdPeopleByRoleFlow(role: String) = asdFieldPersonCatalogDao.getActiveByRole(role.trim().uppercase())
 
+    fun activeAsdVehicleTypesFlow() = asdVehicleTypeCatalogDao.getActiveVehicleTypesFlow()
+
     suspend fun getLastTripNextWaypoint() = tripDao.getLastTripNextWaypoint()
 
     suspend fun replaceAsdRouteCatalog(items: List<AsdRouteCatalogItem>) {
@@ -466,7 +487,41 @@ class AsdRepository(private val db: AppDatabase) {
         asdFieldPersonCatalogDao.upsertAll(items)
     }
 
+    suspend fun replaceAsdVehicleTypeCatalog(items: List<AsdVehicleTypeCatalogItem>) {
+        asdVehicleTypeCatalogDao.replaceAll(items)
+    }
+
     fun catalogSyncStateFlow() = asdCatalogSyncStateDao.getStateFlow()
     suspend fun getCatalogSyncStateOnce() = asdCatalogSyncStateDao.getStateOnce()
     suspend fun updateCatalogSyncState(state: AsdCatalogSyncState) = asdCatalogSyncStateDao.upsert(state)
+
+    // ✅ Sync Queue
+    internal suspend fun enqueueSync(
+        type: String,
+        operation: String,
+        localId: Long,
+        payload: Any,
+        priority: Int = 1
+    ) {
+        try {
+            syncQueueDao.insert(
+                AsdSyncQueueItem(
+                    entityType = type,
+                    operation = operation,
+                    entityLocalId = localId,
+                    payloadJson = gson.toJson(payload),
+                    priority = priority,
+                    status = "PENDING"
+                )
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AsdRepository", "Sync enqueue failed for $type", e)
+        }
+    }
+
+    fun syncQueuePendingCountFlow() = syncQueueDao.pendingCountFlow()
+    fun lastSyncTimeFlow() = syncQueueDao.lastSyncTimeFlow()
+    suspend fun getPendingSyncItems(limit: Int) = syncQueueDao.getPending(limit)
+    suspend fun markSyncItemSynced(id: Long) = syncQueueDao.markSynced(id)
+    suspend fun updateSyncItem(item: AsdSyncQueueItem) = syncQueueDao.update(item)
 }

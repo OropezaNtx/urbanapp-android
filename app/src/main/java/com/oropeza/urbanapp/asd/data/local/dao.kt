@@ -320,3 +320,61 @@ interface AsdCatalogSyncStateDao {
     @Upsert
     suspend fun upsert(state: AsdCatalogSyncState)
 }
+
+@Dao
+interface AsdVehicleTypeCatalogDao {
+    @Query("SELECT * FROM AsdVehicleTypeCatalogItem WHERE active = 1 ORDER BY sortOrder ASC")
+    fun getActiveVehicleTypesFlow(): Flow<List<AsdVehicleTypeCatalogItem>>
+
+    @Query("SELECT * FROM AsdVehicleTypeCatalogItem WHERE active = 1 ORDER BY sortOrder ASC")
+    suspend fun getActiveVehicleTypesOnce(): List<AsdVehicleTypeCatalogItem>
+
+    @Query("SELECT * FROM AsdVehicleTypeCatalogItem WHERE vehicleTypeId = :id LIMIT 1")
+    suspend fun getVehicleTypeById(id: String): AsdVehicleTypeCatalogItem?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(items: List<AsdVehicleTypeCatalogItem>)
+
+    @Query("DELETE FROM AsdVehicleTypeCatalogItem")
+    suspend fun clear()
+
+    @Transaction
+    suspend fun replaceAll(items: List<AsdVehicleTypeCatalogItem>) {
+        clear()
+        upsertAll(items)
+    }
+}
+
+@Dao
+interface AsdSyncQueueDao {
+    @Insert suspend fun insert(item: AsdSyncQueueItem): Long
+
+    @Query("SELECT * FROM sync_queue WHERE (status = 'PENDING' OR status = 'FAILED') AND nextAttemptAt <= :now ORDER BY priority ASC, createdAt ASC LIMIT :limit")
+    suspend fun getPending(limit: Int, now: Long = System.currentTimeMillis()): List<AsdSyncQueueItem>
+
+    @Query("UPDATE sync_queue SET status = 'IN_PROGRESS', updatedAt = :updatedAt WHERE id = :id")
+    suspend fun markInProgress(id: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE sync_queue SET status = 'SYNCED', updatedAt = :updatedAt WHERE id = :id")
+    suspend fun markSynced(id: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE sync_queue SET status = 'FAILED', attempts = :attempts, lastError = :lastError, nextAttemptAt = :nextAttemptAt, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun markFailed(id: Long, attempts: Int, lastError: String?, nextAttemptAt: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE sync_queue SET status = 'DEAD_LETTER', lastError = :lastError, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun markDeadLetter(id: Long, lastError: String?, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED'")
+    fun pendingCountFlow(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'FAILED'")
+    fun failedCountFlow(): Flow<Int>
+
+    @Query("SELECT lastError FROM sync_queue WHERE lastError IS NOT NULL ORDER BY updatedAt DESC LIMIT :limit")
+    suspend fun getLatestErrors(limit: Int): List<String>
+
+    @Update suspend fun update(item: AsdSyncQueueItem): Int
+
+    @Query("SELECT MAX(updatedAt) FROM sync_queue WHERE status = 'SYNCED'")
+    fun lastSyncTimeFlow(): Flow<Long?>
+}

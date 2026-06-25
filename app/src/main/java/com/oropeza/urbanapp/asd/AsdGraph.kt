@@ -13,8 +13,12 @@ object AsdGraph {
     lateinit var repo: AsdRepository
         private set
 
+    lateinit var appContext: Context
+        private set
+
     fun init(context: Context) {
-        db = DbProvider.getInstance(context.applicationContext)
+        appContext = context.applicationContext
+        db = DbProvider.getInstance(appContext)
         repo = AsdRepository(db)
     }
 }

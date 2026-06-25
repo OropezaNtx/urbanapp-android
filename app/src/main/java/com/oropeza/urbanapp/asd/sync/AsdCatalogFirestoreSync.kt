@@ -6,6 +6,7 @@ import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.AsdCatalogSyncState
 import com.oropeza.urbanapp.asd.data.local.AsdFieldPersonCatalogItem
 import com.oropeza.urbanapp.asd.data.local.AsdRouteCatalogItem
+import com.oropeza.urbanapp.asd.data.local.AsdVehicleTypeCatalogItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -14,6 +15,7 @@ data class AsdCatalogSyncResult(
     val version: String?,
     val routesCount: Int,
     val peopleCount: Int,
+    val vehicleTypesCount: Int,
     val message: String
 )
 
@@ -44,6 +46,16 @@ data class AsdFieldPersonCatalogFirestoreDto(
     val active: Boolean = true
 )
 
+data class AsdVehicleTypeCatalogFirestoreDto(
+    val vehicleTypeId: String = "",
+    val name: String = "",
+    val displayName: String = "",
+    val defaultSeatCapacity: Int = 0,
+    val capacityApplies: Boolean = false,
+    val sortOrder: Int = 100,
+    val active: Boolean = true
+)
+
 // Mappers
 fun AsdRouteCatalogFirestoreDto.toEntity() = AsdRouteCatalogItem(
     catalogId = catalogId,
@@ -68,7 +80,38 @@ fun AsdFieldPersonCatalogFirestoreDto.toEntity() = AsdFieldPersonCatalogItem(
     updatedAt = System.currentTimeMillis()
 )
 
+fun AsdVehicleTypeCatalogFirestoreDto.toEntity() = AsdVehicleTypeCatalogItem(
+    vehicleTypeId = vehicleTypeId,
+    name = name,
+    displayName = displayName,
+    defaultSeatCapacity = defaultSeatCapacity,
+    capacityApplies = capacityApplies,
+    sortOrder = sortOrder,
+    active = active,
+    updatedAt = System.currentTimeMillis()
+)
+
 object AsdCatalogFirestoreSync {
+
+    suspend fun checkVersionAndSyncIfNeeded(): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val db = Firebase.firestore
+            val versionDoc = db.collection("asd_catalog_versions").document("current").get().await()
+            if (!versionDoc.exists()) return@withContext Result.success(false)
+
+            val remoteVersion = versionDoc.getString("version") ?: ""
+            val localState = AsdGraph.repo.getCatalogSyncStateOnce()
+            
+            if (remoteVersion != localState?.version || localState.status != "READY") {
+                syncFromFirestore()
+                Result.success(true)
+            } else {
+                Result.success(false)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     
     suspend fun syncFromFirestore(): Result<AsdCatalogSyncResult> = withContext(Dispatchers.IO) {
         try {
@@ -130,13 +173,25 @@ object AsdCatalogFirestoreSync {
                 people.add(dto.copy(personId = personId, name = name, role = role, defaultSex = sex).toEntity())
             }
 
+            // 3. Vehicle Types
+            val vehiclesSnap = versionDoc.reference.collection("vehicle_types").get().await()
+            val vehicles = mutableListOf<AsdVehicleTypeCatalogItem>()
+            for (doc in vehiclesSnap.documents) {
+                val dto = doc.toObject(AsdVehicleTypeCatalogFirestoreDto::class.java) ?: continue
+                if (dto.vehicleTypeId.isBlank() || dto.name.isBlank()) continue
+                vehicles.add(dto.toEntity())
+            }
+
             // Guardar en Room
             AsdGraph.repo.replaceAsdRouteCatalog(routes)
             if (people.isNotEmpty()) {
                 AsdGraph.repo.replaceAsdPeopleCatalog(people)
             }
+            if (vehicles.isNotEmpty()) {
+                AsdGraph.repo.replaceAsdVehicleTypeCatalog(vehicles)
+            }
 
-            val syncMsg = if (people.isEmpty()) "Catálogo web sincronizado (sin personal web)." else "Catálogo web sincronizado correctamente."
+            val syncMsg = "Catálogo web sincronizado: ${routes.size} rutas, ${people.size} personas, ${vehicles.size} unidades."
 
             val state = AsdCatalogSyncState(
                 source = "FIRESTORE",
@@ -144,6 +199,7 @@ object AsdCatalogFirestoreSync {
                 lastSyncAt = System.currentTimeMillis(),
                 routesCount = routes.size,
                 peopleCount = people.size,
+                vehicleTypesCount = vehicles.size,
                 status = "READY",
                 message = syncMsg
             )
@@ -154,6 +210,7 @@ object AsdCatalogFirestoreSync {
                     version = versionStr,
                     routesCount = routes.size,
                     peopleCount = people.size,
+                    vehicleTypesCount = vehicles.size,
                     message = syncMsg
                 )
             )

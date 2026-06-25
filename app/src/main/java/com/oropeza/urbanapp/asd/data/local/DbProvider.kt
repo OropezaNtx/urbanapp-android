@@ -32,7 +32,10 @@ object DbProvider {
                 Migrations.MIGRATION_13_14,
                 Migrations.MIGRATION_14_15,
                 Migrations.MIGRATION_15_16,
-                Migrations.MIGRATION_16_17
+                Migrations.MIGRATION_16_17,
+                Migrations.MIGRATION_17_18,
+                Migrations.MIGRATION_18_19,
+                Migrations.MIGRATION_19_20
             )
             .build()
     }

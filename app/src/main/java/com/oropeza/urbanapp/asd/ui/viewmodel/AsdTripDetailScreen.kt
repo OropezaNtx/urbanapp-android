@@ -52,6 +52,7 @@ import com.oropeza.urbanapp.asd.location.LocationFix
 import com.oropeza.urbanapp.asd.location.LocationProvider
 import com.oropeza.urbanapp.asd.location.PolylineSmoother
 import com.oropeza.urbanapp.asd.location.TrackingService
+import com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -72,6 +73,10 @@ class AsdTripDetailVM : ViewModel() {
     fun trackLastPointFlow(tripId: Long): Flow<TrackPoint?> = AsdGraph.repo.trackLastPointFlow(tripId)
     fun trackCountFlow(tripId: Long): Flow<Int> = AsdGraph.repo.trackCountFlow(tripId)
     fun trackPointsFlow(tripId: Long): Flow<List<TrackPoint>> = AsdGraph.repo.trackPointsFlow(tripId)
+    
+    val syncPendingCount = AsdGraph.repo.syncQueuePendingCountFlow()
+    val lastSyncTime = AsdGraph.repo.lastSyncTimeFlow()
+
     suspend fun getTrackPointsOnce(tripId: Long) = AsdGraph.repo.getTrackPointsOnce(tripId)
     suspend fun getTrackPointsBetweenOnce(tripId: Long, fromMs: Long, toMs: Long) = AsdGraph.repo.getTrackPointsBetweenOnce(tripId, fromMs, toMs)
 
@@ -240,6 +245,8 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val stops by vm.stopsFlow(tripId).collectAsState(initial = emptyList())
     val lastPoint by vm.trackLastPointFlow(tripId).collectAsState(initial = null)
     val pointCount by vm.trackCountFlow(tripId).collectAsState(initial = 0)
+    val pendingSyncCount by vm.syncPendingCount.collectAsState(initial = 0)
+    val lastSyncTimeMs by vm.lastSyncTime.collectAsState(initial = null)
     
     // Optimización: Calcular estadísticas de paradas solo cuando cambian las paradas
     val stopsSummary by remember(stops) { 
@@ -688,7 +695,12 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         val activeElapsedSec = if (isDelayActive) ((tickMs - activeDelayStartMs).coerceAtLeast(0L) / 1000L) else 0L
         val captureOnBoard = (summary.onBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0)
 
-        val capacityApplies = t.vehicleType?.uppercase()?.trim() in listOf("COMBI", "VAN", "SPRINTER")
+        val vehicleTypesCatalog by AsdGraph.repo.activeAsdVehicleTypesFlow().collectAsState(initial = emptyList())
+        val capacityApplies = if (vehicleTypesCatalog.isNotEmpty()) {
+            vehicleTypesCatalog.any { it.name.equals(t.vehicleType, ignoreCase = true) && it.capacityApplies }
+        } else {
+            t.vehicleType?.uppercase()?.trim() in listOf("COMBI", "VAN", "SPRINTER")
+        }
         val exceedsCapacity = capacityApplies && t.seatCapacity != null && captureOnBoard > t.seatCapacity
 
         val protectedMen = if (t.observerSex == "H") 1 else 0
@@ -782,6 +794,15 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
 
             // 4. GPS / TRACKING
             item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount, qualitySummary) }
+
+            // 4.5 ESTADO NUBE
+            item {
+                CloudSyncStatusCard(
+                    pendingCount = pendingSyncCount,
+                    lastSyncTime = lastSyncTimeMs,
+                    onSyncNow = { AsdCloudSyncWorker.enqueue(context) }
+                )
+            }
 
             // 5. RESUMEN OPERATIVO
             item { DemoSummaryCard(summary) }
@@ -1737,6 +1758,61 @@ private fun LabelValue(label: String, value: String) {
     Column {
         Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f), fontWeight = FontWeight.Bold)
         Text(value, style = MaterialTheme.typography.bodySmall, color = Color.White)
+    }
+}
+
+@Composable
+private fun CloudSyncStatusCard(
+    pendingCount: Int,
+    lastSyncTime: Long?,
+    onSyncNow: () -> Unit
+) {
+    val fmt = remember { SimpleDateFormat("HH:mm:ss", Locale("es", "MX")) }
+    val lastSyncText = lastSyncTime?.let { fmt.format(Date(it)) } ?: "Nunca"
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xFF223A36)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716))
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("SINCRONIZACIÓN NUBE", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                Spacer(Modifier.weight(1f))
+                if (pendingCount > 0) {
+                    Surface(color = Color.Yellow.copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp)) {
+                        Text("PENDIENTE", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color.Yellow, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Surface(color = Color(0xFF35D36B).copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp)) {
+                        Text("AL DÍA", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFF35D36B), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text("Pendientes", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f))
+                    Text(pendingCount.toString(), style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Último sync", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f))
+                    Text(lastSyncText, style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (pendingCount > 0) {
+                Button(
+                    onClick = onSyncNow,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D36B).copy(alpha = 0.1f)),
+                    border = BorderStroke(1.dp, Color(0xFF35D36B).copy(alpha = 0.5f))
+                ) {
+                    Text("SINCRONIZAR AHORA", color = Color(0xFF35D36B), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
     }
 }
 

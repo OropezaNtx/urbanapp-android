@@ -110,6 +110,40 @@ async function run() {
         });
     }
 
+    // 3. PROCESAR TIPOS UNIDAD
+    const vehicleSheet = workbook.Sheets['TIPOS_UNIDAD'];
+    const vehiclesToUpload = [];
+    const vehicleWarnings = [];
+    if (vehicleSheet) {
+        const rawVehicles = XLSX.utils.sheet_to_json(vehicleSheet, { raw: false });
+        rawVehicles.forEach((row, i) => {
+            const normalizedRow = {};
+            Object.keys(row).forEach(k => {
+                normalizedRow[k.trim().toUpperCase()] = row[k];
+            });
+
+            const vId = normalizedRow['VEHICLE_TYPE_ID']?.toString().trim().toUpperCase();
+            const name = normalizedRow['NAME']?.toString().trim().toUpperCase();
+            if (!vId || !name) {
+                vehicleWarnings.push(`Fila ${i + 2} en UNIDADES: VEHICLE_TYPE_ID o NAME faltantes.`);
+                return;
+            }
+            vehiclesToUpload.push({
+                docId: vId,
+                data: {
+                    vehicleTypeId: vId,
+                    name: name,
+                    displayName: normalizedRow['DISPLAY_NAME']?.toString().trim().toUpperCase() || name,
+                    defaultSeatCapacity: parseInt(normalizedRow['DEFAULT_SEAT_CAPACITY']) || 0,
+                    capacityApplies: parseActive(normalizedRow['CAPACITY_APPLIES']),
+                    sortOrder: parseInt(normalizedRow['SORT_ORDER']) || 100,
+                    active: parseActive(normalizedRow['ACTIVE']),
+                    updatedAt: now
+                }
+            });
+        });
+    }
+
     // RESUMEN
     console.log("\n========================================");
     console.log("   RESUMEN DE CARGA CATÁLOGO ASD");
@@ -118,13 +152,14 @@ async function run() {
     console.log(`Versión:          ${CATALOG_VERSION}`);
     console.log(`Rutas válidas:    ${routesToUpload.length}`);
     console.log(`Personal válido:  ${peopleToUpload.length}`);
-    console.log(`Advertencias:     ${routeWarnings.length + peopleWarnings.length}`);
+    console.log(`Unidades válidas: ${vehiclesToUpload.length}`);
+    console.log(`Advertencias:     ${routeWarnings.length + peopleWarnings.length + vehicleWarnings.length}`);
     console.log("========================================\n");
 
-    if (routeWarnings.length > 0 || peopleWarnings.length > 0) {
+    if (routeWarnings.length > 0 || peopleWarnings.length > 0 || vehicleWarnings.length > 0) {
         console.log("⚠️  ADVERTENCIAS (estas filas se omitirán):");
-        [...routeWarnings, ...peopleWarnings].slice(0, 10).forEach(w => console.log(` - ${w}`));
-        if (routeWarnings.length + peopleWarnings.length > 10) console.log(" ... y más.");
+        [...routeWarnings, ...peopleWarnings, ...vehicleWarnings].slice(0, 10).forEach(w => console.log(` - ${w}`));
+        if (routeWarnings.length + peopleWarnings.length + vehicleWarnings.length > 10) console.log(" ... y más.");
         console.log("----------------------------------------\n");
     }
 
@@ -169,6 +204,18 @@ async function run() {
                     });
                     await batch.commit();
                     console.log(` ✅ Personal: ${Math.min(i + batchSize, peopleToUpload.length)}/${peopleToUpload.length}`);
+                }
+            }
+
+            // Subir Unidades
+            if (vehiclesToUpload.length > 0) {
+                for (let i = 0; i < vehiclesToUpload.length; i += batchSize) {
+                    const batch = db.batch();
+                    vehiclesToUpload.slice(i, i + batchSize).forEach(item => {
+                        batch.set(masterDocRef.collection('vehicle_types').doc(item.docId), item.data);
+                    });
+                    await batch.commit();
+                    console.log(` ✅ Unidades: ${Math.min(i + batchSize, vehiclesToUpload.length)}/${vehiclesToUpload.length}`);
                 }
             }
 

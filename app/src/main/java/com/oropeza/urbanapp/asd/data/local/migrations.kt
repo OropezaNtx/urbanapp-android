@@ -272,6 +272,73 @@ object Migrations {
         }
     }
 
+    val MIGRATION_17_18 = object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 1. Crear tabla de catálogo de tipos de unidad
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS AsdVehicleTypeCatalogItem (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    vehicleTypeId TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    displayName TEXT NOT NULL,
+                    defaultSeatCapacity INTEGER NOT NULL,
+                    capacityApplies INTEGER NOT NULL,
+                    sortOrder INTEGER NOT NULL,
+                    active INTEGER NOT NULL,
+                    updatedAt INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_AsdVehicleTypeCatalogItem_vehicleTypeId ON AsdVehicleTypeCatalogItem(vehicleTypeId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdVehicleTypeCatalogItem_name ON AsdVehicleTypeCatalogItem(name)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdVehicleTypeCatalogItem_active ON AsdVehicleTypeCatalogItem(active)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdVehicleTypeCatalogItem_sortOrder ON AsdVehicleTypeCatalogItem(sortOrder)")
+
+            // 2. Agregar columna a estado de sincronización
+            db.execSQL("ALTER TABLE AsdCatalogSyncState ADD COLUMN vehicleTypesCount INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    val MIGRATION_18_19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS AsdSyncQueueItem (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    entityType TEXT NOT NULL,
+                    entityLocalId INTEGER NOT NULL,
+                    payloadJson TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    attempts INTEGER NOT NULL,
+                    lastError TEXT,
+                    createdAt INTEGER NOT NULL,
+                    updatedAt INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdSyncQueueItem_status ON AsdSyncQueueItem(status)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdSyncQueueItem_entityType ON AsdSyncQueueItem(entityType)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_AsdSyncQueueItem_createdAt ON AsdSyncQueueItem(createdAt)")
+        }
+    }
+
+    val MIGRATION_19_20 = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 1. Renombrar tabla
+            db.execSQL("ALTER TABLE AsdSyncQueueItem RENAME TO sync_queue")
+            
+            // 2. Agregar nuevas columnas
+            db.execSQL("ALTER TABLE sync_queue ADD COLUMN operation TEXT NOT NULL DEFAULT 'CREATE'")
+            db.execSQL("ALTER TABLE sync_queue ADD COLUMN cloudPath TEXT")
+            db.execSQL("ALTER TABLE sync_queue ADD COLUMN priority INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE sync_queue ADD COLUMN nextAttemptAt INTEGER NOT NULL DEFAULT 0")
+
+            // 3. Recrear índices (los de la tabla vieja se mantienen pero el nombre cambia)
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_queue_status ON sync_queue(status)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_queue_nextAttemptAt ON sync_queue(nextAttemptAt)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_queue_entityType ON sync_queue(entityType)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_queue_priority ON sync_queue(priority)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_queue_createdAt ON sync_queue(createdAt)")
+        }
+    }
+
     private fun addTripOperationalMetadataColumns(db: SupportSQLiteDatabase) {
         if (!tripColumnExists(db, "aforador")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN aforador TEXT")

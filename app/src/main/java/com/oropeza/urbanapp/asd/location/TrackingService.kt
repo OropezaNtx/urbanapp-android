@@ -9,6 +9,8 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
+import com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker
+import com.oropeza.urbanapp.asd.sync.AsdSyncManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -124,6 +126,25 @@ class TrackingService : Service() {
                 Log.w(TAG, "Sin permisos de ubicación. No se inicia tracking.")
                 return@launch
             }
+            
+            // ✅ Sync loops
+            launch {
+                while (true) {
+                    delay(30_000L)
+                    val lastP = lastSavedLat?.let { lat -> lastSavedLon?.let { lon -> lastSavedTimeMs?.let { t -> 
+                        TrackPoint(tripId = tripId, timeMs = t, lat = lat, lon = lon, accM = 0.0, provider = "SNAPSHOT") 
+                    } } }
+                    AsdSyncManager.enqueueDeviceStatus(applicationContext, tripId, lastP)
+                }
+            }
+            
+            launch {
+                while (true) {
+                    delay(60_000L)
+                    AsdSyncManager.enqueueTrackSummary(applicationContext, tripId)
+                }
+            }
+
             switchMode(Mode.ACQUIRE)
             while (true) delay(1000L)
         }

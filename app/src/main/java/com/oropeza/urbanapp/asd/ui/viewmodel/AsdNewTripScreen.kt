@@ -142,6 +142,7 @@ fun AsdNewTripScreen(
     }
 
     // 4. UNIDAD
+    val vehicleTypesCatalog by AsdGraph.repo.activeAsdVehicleTypesFlow().collectAsState(initial = emptyList())
     var vehicleType by remember { mutableStateOf("COMBI") }
     var seatCapacityTxt by remember { mutableStateOf("") }
     var vehicleEco by remember { mutableStateOf("") }
@@ -172,7 +173,7 @@ fun AsdNewTripScreen(
     val borderCol = Color(0xFF223A36)
     val greenAcc = Color(0xFF35D36B)
 
-    val vehicleTypes = listOf(
+    val vehicleTypesFallback = listOf(
         "COMBI", "VAN", "SPRINTER", "MICROBUS", "MIDIBUS", "BUS URBANO", 
         "BUS FORANEO", "ARTICULADO", "TROLEBUS", "METROBUS", 
         "TAXI COLECTIVO", "CAMIONETA", "OTRO"
@@ -304,7 +305,7 @@ fun AsdNewTripScreen(
                             val syncFmt = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
                             Text("Última actualización: ${syncFmt.format(Date(state.lastSyncAt))}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
                         }
-                        Text("Rutas: ${state.routesCount} · Observadores: ${observers.size} · Supervisores: ${supervisors.size}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
+                        Text("Rutas: ${state.routesCount} · Personas: ${state.peopleCount} · Unidades: ${state.vehicleTypesCount}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
                     }
                     
                     HorizontalDivider(color = borderCol.copy(alpha = 0.5f))
@@ -552,14 +553,29 @@ fun AsdNewTripScreen(
                         expanded = expanded,
                         onDismissRequest = { expanded = false }
                     ) {
-                        vehicleTypes.forEach { type ->
-                            DropdownMenuItem(
-                                text = { Text(type) },
-                                onClick = {
-                                    vehicleType = type
-                                    expanded = false
-                                }
-                            )
+                        if (vehicleTypesCatalog.isEmpty()) {
+                            vehicleTypesFallback.forEach { type ->
+                                DropdownMenuItem(
+                                    text = { Text(type) },
+                                    onClick = {
+                                        vehicleType = type
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        } else {
+                            vehicleTypesCatalog.forEach { item ->
+                                DropdownMenuItem(
+                                    text = { Text(item.displayName) },
+                                    onClick = {
+                                        vehicleType = item.name
+                                        if (seatCapacityTxt.isBlank()) {
+                                            seatCapacityTxt = item.defaultSeatCapacity.toString()
+                                        }
+                                        expanded = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
