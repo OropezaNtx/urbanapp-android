@@ -3,10 +3,13 @@ package com.oropeza.urbanapp.navigation
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.oropeza.urbanapp.BuildConfig
+import com.oropeza.urbanapp.asd.AsdGraph
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -19,6 +22,9 @@ fun HomeScreen(
     onOpenCc: () -> Unit,
     onOpenFov: () -> Unit
 ) {
+    val context = LocalContext.current
+    val identity = remember { AsdGraph.getDeviceIdentity(context) }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text("UrbanApp") }) }
     ) { pad ->
@@ -63,6 +69,9 @@ fun HomeScreen(
                     val dateFmt = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
                     val buildDate = dateFmt.format(Date(BuildConfig.BUILD_TIME))
                     Text("Fecha compilación: $buildDate", style = MaterialTheme.typography.bodySmall)
+                    
+                    Spacer(Modifier.height(4.dp))
+                    Text("Device ID: ${identity.installationId.take(8).uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                 }
             }
         }

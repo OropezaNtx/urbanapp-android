@@ -33,4 +33,8 @@ object AsdGraph {
     fun getCloudSyncTarget(): com.oropeza.urbanapp.asd.sync.cloud.CloudSyncTarget {
         return com.oropeza.urbanapp.asd.sync.cloud.firestore.FirestoreCloudSyncTarget()
     }
+
+    fun getDeviceIdentity(context: Context): com.oropeza.urbanapp.core.identity.UrbanDeviceIdentity {
+        return com.oropeza.urbanapp.core.identity.UrbanIdentityProvider.getIdentity(context)
+    }
 }
