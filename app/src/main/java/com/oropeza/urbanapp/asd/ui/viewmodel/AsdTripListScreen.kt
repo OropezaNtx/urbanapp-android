@@ -45,10 +45,14 @@ fun AsdTripListScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
-        AsdCatalogFirestoreSync.checkVersionAndSyncIfNeeded()
-        // ✅ Phase 6: Cloud Activation
-        UrbanCloudSyncScheduler.enqueueAndSyncInstallation(context)
-        UrbanCloudSyncScheduler.enqueueAndSyncHeartbeat(context)
+        runCatching {
+            AsdCatalogFirestoreSync.checkVersionAndSyncIfNeeded()
+        }
+        // ✅ Microphase 6.2: Initial cloud identity and heartbeat
+        runCatching {
+            UrbanCloudSyncScheduler.enqueueAndSyncInstallation(context)
+            UrbanCloudSyncScheduler.enqueueAndSyncHeartbeat(context)
+        }
     }
 
     Scaffold(
