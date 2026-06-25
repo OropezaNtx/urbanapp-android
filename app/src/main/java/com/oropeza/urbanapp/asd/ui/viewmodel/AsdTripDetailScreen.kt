@@ -73,10 +73,14 @@ class AsdTripDetailVM : ViewModel() {
     fun trackLastPointFlow(tripId: Long): Flow<TrackPoint?> = AsdGraph.repo.trackLastPointFlow(tripId)
     fun trackCountFlow(tripId: Long): Flow<Int> = AsdGraph.repo.trackCountFlow(tripId)
     fun trackPointsFlow(tripId: Long): Flow<List<TrackPoint>> = AsdGraph.repo.trackPointsFlow(tripId)
+    fun observersFlow(role: String) = AsdGraph.repo.activeAsdPeopleByRoleFlow(role)
+    val vehicleTypesFlow = AsdGraph.repo.activeAsdVehicleTypesFlow()
     
     val syncPendingCount = AsdGraph.repo.syncQueuePendingCountFlow()
     val lastSyncTime = AsdGraph.repo.lastSyncTimeFlow()
 
+    suspend fun getTripOnce(tripId: Long) = AsdGraph.repo.getTripOnce(tripId)
+    suspend fun getStopsOnce(tripId: Long) = AsdGraph.repo.getStopsOnce(tripId)
     suspend fun getTrackPointsOnce(tripId: Long) = AsdGraph.repo.getTrackPointsOnce(tripId)
     suspend fun getTrackPointsBetweenOnce(tripId: Long, fromMs: Long, toMs: Long) = AsdGraph.repo.getTrackPointsBetweenOnce(tripId, fromMs, toMs)
 
@@ -233,11 +237,15 @@ class AsdTripDetailVM : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> Unit) {
+fun AsdTripDetailScreen(
+    tripId: Long,
+    onBack: () -> Unit,
+    onOpenMap: (Long) -> Unit,
+    vm: AsdTripDetailVM = viewModel()
+) {
     val haptic = LocalHapticFeedback.current
     fun triggerHaptic() = haptic.performHapticFeedback(HapticFeedbackType.LongPress)
 
-    val vm: AsdTripDetailVM = viewModel()
     val context = LocalContext.current
     val gps = remember { LocationProvider(context) }
     val scope = rememberCoroutineScope()
@@ -245,6 +253,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val stops by vm.stopsFlow(tripId).collectAsState(initial = emptyList())
     val lastPoint by vm.trackLastPointFlow(tripId).collectAsState(initial = null)
     val pointCount by vm.trackCountFlow(tripId).collectAsState(initial = 0)
+
     val pendingSyncCount by vm.syncPendingCount.collectAsState(initial = 0)
     val lastSyncTimeMs by vm.lastSyncTime.collectAsState(initial = null)
     
@@ -616,6 +625,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         EditTripHeaderDialog(
             trip = currentTrip,
             onDismiss = { showEditHeader = false },
+            vm = vm,
             onSave = { routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, headerNotes, aforador, supervisor, deviceNumber, observerSex ->
                 scope.launch {
                     val ok = vm.updateTripHeader(
@@ -695,7 +705,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
         val activeElapsedSec = if (isDelayActive) ((tickMs - activeDelayStartMs).coerceAtLeast(0L) / 1000L) else 0L
         val captureOnBoard = (summary.onBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0)
 
-        val vehicleTypesCatalog by AsdGraph.repo.activeAsdVehicleTypesFlow().collectAsState(initial = emptyList())
+        val vehicleTypesCatalog by vm.vehicleTypesFlow.collectAsState(initial = emptyList())
         val capacityApplies = if (vehicleTypesCatalog.isNotEmpty()) {
             vehicleTypesCatalog.any { it.name.equals(t.vehicleType, ignoreCase = true) && it.capacityApplies }
         } else {
@@ -1482,7 +1492,25 @@ private fun UpperNextTextField(value: String, onValueChange: (String) -> Unit, l
 private fun EditTripHeaderDialog(
     trip: Trip,
     onDismiss: () -> Unit,
-    onSave: (String, String?, String?, String, Int?, String?, String?, String?, String?, String?, Int?, String?, String?, String?, String?, String?) -> Unit
+    vm: AsdTripDetailVM,
+    onSave: (
+        routeName: String,
+        company: String?,
+        vehicleEco: String?,
+        direction: String,
+        routeNumber: Int?,
+        esFs: String?,
+        baseStart: String?,
+        baseEnd: String?,
+        plateNumber: String?,
+        vehicleType: String?,
+        seatCapacity: Int?,
+        notes: String?,
+        aforador: String?,
+        supervisor: String?,
+        deviceNumber: String?,
+        observerSex: String?
+    ) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     fun upper(v: String) = v.uppercase(Locale("es", "MX"))
@@ -1504,8 +1532,8 @@ private fun EditTripHeaderDialog(
     var observerSex by rememberSaveable(trip.tripId) { mutableStateOf(trip.observerSex ?: "") }
     var headerNotes by rememberSaveable(trip.tripId) { mutableStateOf(trip.notes?.uppercase(Locale("es", "MX")) ?: "") }
 
-    val observers by AsdGraph.repo.activeAsdPeopleByRoleFlow("OBSERVADOR").collectAsState(initial = emptyList())
-    val supervisors by AsdGraph.repo.activeAsdPeopleByRoleFlow("SUPERVISOR").collectAsState(initial = emptyList())
+    val observers by vm.observersFlow("OBSERVADOR").collectAsState(initial = emptyList())
+    val supervisors by vm.observersFlow("SUPERVISOR").collectAsState(initial = emptyList())
 
     @Composable
     fun NextField(label: String, value: String, change: (String) -> Unit, number: Boolean = false) {

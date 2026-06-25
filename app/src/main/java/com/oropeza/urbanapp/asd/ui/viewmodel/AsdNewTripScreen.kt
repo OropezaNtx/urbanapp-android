@@ -40,8 +40,69 @@ import java.util.Date
 import java.util.Locale
 
 class AsdNewTripVM : ViewModel() {
+    val syncState = AsdGraph.repo.catalogSyncStateFlow()
+    val vehicleTypesCatalog = AsdGraph.repo.activeAsdVehicleTypesFlow()
+    fun peopleByRole(role: String) = AsdGraph.repo.activeAsdPeopleByRoleFlow(role)
+    suspend fun getRoute(routeId: String, direction: String) = AsdGraph.repo.getAsdRouteByCatalogIdAndDirection(routeId, direction)
+    suspend fun getLastTripNextWaypoint() = AsdGraph.repo.getLastTripNextWaypoint()
 
     suspend fun createWithFix(
+        planningRouteId: String,
+        stopLat: Double,
+        stopLon: Double,
+        stopAltM: Double = 0.0,
+        stopAccM: Double,
+        stopProvider: String,
+        stopFixTime: Long,
+        locationStatus: String,
+        routeName: String,
+        company: String?,
+        vehicleEco: String?,
+        direction: String,
+        notes: String?,
+        routeNumber: Int? = null,
+        esFs: String? = null,
+        baseStart: String? = null,
+        baseEnd: String? = null,
+        plateNumber: String? = null,
+        vehicleType: String? = null,
+        seatCapacity: Int? = null,
+        aforador: String? = null,
+        supervisor: String? = null,
+        deviceNumber: String? = null,
+        observerSex: String? = null,
+        continueWaypoints: Boolean = false
+    ): Long {
+        return vmCreate(
+            planningRouteId = planningRouteId,
+            stopLat = stopLat,
+            stopLon = stopLon,
+            stopAltM = stopAltM,
+            stopAccM = stopAccM,
+            stopProvider = stopProvider,
+            stopFixTime = stopFixTime,
+            locationStatus = locationStatus,
+            routeName = routeName,
+            company = company,
+            vehicleEco = vehicleEco,
+            direction = direction,
+            notes = notes,
+            routeNumber = routeNumber,
+            esFs = esFs,
+            baseStart = baseStart,
+            baseEnd = baseEnd,
+            plateNumber = plateNumber,
+            vehicleType = vehicleType,
+            seatCapacity = seatCapacity,
+            aforador = aforador,
+            supervisor = supervisor,
+            deviceNumber = deviceNumber,
+            observerSex = observerSex,
+            continueWaypoints = continueWaypoints
+        )
+    }
+
+    private suspend fun vmCreate(
         planningRouteId: String,
         stopLat: Double,
         stopLon: Double,
@@ -110,7 +171,7 @@ fun AsdNewTripScreen(
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
     val gps = remember { LocationProvider(context) }
-    val syncState by AsdGraph.repo.catalogSyncStateFlow().collectAsState(initial = null)
+    val syncState by vm.syncState.collectAsState(initial = null)
 
     // 1. CATÁLOGO
     var planningRouteId by remember { mutableStateOf("") }
@@ -131,7 +192,7 @@ fun AsdNewTripScreen(
     
     var debugLastWp by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(Unit) {
-        debugLastWp = AsdGraph.repo.getLastTripNextWaypoint()
+        debugLastWp = vm.getLastTripNextWaypoint()
     }
 
     // Determinar ES/FS inicial
@@ -142,7 +203,7 @@ fun AsdNewTripScreen(
     }
 
     // 4. UNIDAD
-    val vehicleTypesCatalog by AsdGraph.repo.activeAsdVehicleTypesFlow().collectAsState(initial = emptyList())
+    val vehicleTypesCatalog by vm.vehicleTypesCatalog.collectAsState(initial = emptyList())
     var vehicleType by remember { mutableStateOf("COMBI") }
     var seatCapacityTxt by remember { mutableStateOf("") }
     var vehicleEco by remember { mutableStateOf("") }
@@ -154,8 +215,8 @@ fun AsdNewTripScreen(
     var supervisor by remember { mutableStateOf("") }
     var deviceNumber by remember { mutableStateOf("") }
 
-    val observers by AsdGraph.repo.activeAsdPeopleByRoleFlow("OBSERVADOR").collectAsState(initial = emptyList())
-    val supervisors by AsdGraph.repo.activeAsdPeopleByRoleFlow("SUPERVISOR").collectAsState(initial = emptyList())
+    val observers by vm.peopleByRole("OBSERVADOR").collectAsState(initial = emptyList())
+    val supervisors by vm.peopleByRole("SUPERVISOR").collectAsState(initial = emptyList())
 
     // 6. NOTAS
     var notes by remember { mutableStateOf("") }
@@ -182,7 +243,7 @@ fun AsdNewTripScreen(
     // Lógica de búsqueda en catálogo
     LaunchedEffect(planningRouteId, direction) {
         if (planningRouteId.length >= 3) {
-            val route = AsdGraph.repo.getAsdRouteByCatalogIdAndDirection(planningRouteId, direction)
+            val route = vm.getRoute(planningRouteId, direction)
             if (route != null) {
                 routeName = if (route.derrotero.isNullOrBlank()) route.routeName else "${route.routeName} (${route.derrotero})"
                 company = route.company ?: ""

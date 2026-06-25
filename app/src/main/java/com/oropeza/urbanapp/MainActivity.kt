@@ -7,13 +7,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.navigation.compose.rememberNavController
 import com.oropeza.urbanapp.asd.AsdGraph
+import com.oropeza.urbanapp.core.platform.UrbanSyncStatusProvider
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import com.oropeza.urbanapp.navigation.AppNavHost
 import com.oropeza.urbanapp.ui.theme.UrbanAppTheme
+import kotlinx.coroutines.flow.Flow
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AsdGraph.init(applicationContext)
+
+        UrbanRuntime.setSyncStatusProvider(object : UrbanSyncStatusProvider {
+            override fun pendingSyncCountFlow(): Flow<Int> = AsdGraph.repo.syncQueuePendingCountFlow()
+            override fun failedSyncCountFlow(): Flow<Int> = AsdGraph.repo.syncQueueFailedCountFlow()
+            override fun lastSyncTimeFlow(): Flow<Long?> = AsdGraph.repo.lastSyncTimeFlow()
+        })
+
         setContent {
             UrbanAppTheme {
                 val navController = rememberNavController()

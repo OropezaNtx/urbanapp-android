@@ -12,8 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.oropeza.urbanapp.BuildConfig
-import com.oropeza.urbanapp.asd.AsdGraph
-import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -27,13 +26,13 @@ fun HomeScreen(
     onOpenFov: () -> Unit
 ) {
     val context = LocalContext.current
-    val identity = remember { AsdGraph.getDeviceIdentity(context) }
-    val orgId = remember { UrbanPlatformSettings.getOrganizationId(context) }
-    val projId = remember { UrbanPlatformSettings.getProjectId(context) }
-    val env = remember { UrbanPlatformSettings.getEnvironment(context) }
+    val identity = remember { UrbanRuntime.identity(context) }
+    val orgId = remember { UrbanRuntime.platformSettings().getOrganizationId(context) }
+    val projId = remember { UrbanRuntime.platformSettings().getProjectId(context) }
+    val env = remember { UrbanRuntime.platformSettings().getEnvironment(context) }
     
-    val pendingSyncCount by AsdGraph.repo.syncQueuePendingCountFlow().collectAsState(initial = 0)
-    val lastSyncTime by AsdGraph.repo.lastSyncTimeFlow().collectAsState(initial = null)
+    val pendingSyncCount by UrbanRuntime.syncStatus().pendingSyncCountFlow().collectAsState(initial = 0)
+    val lastSyncTime by UrbanRuntime.syncStatus().lastSyncTimeFlow().collectAsState(initial = null)
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("UrbanApp") }) }

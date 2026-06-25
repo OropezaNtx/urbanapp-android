@@ -8,7 +8,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.oropeza.urbanapp.asd.AsdGraph
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.oropeza.urbanapp.cc.viewmodel.CcListVM
 import com.oropeza.urbanapp.asd.data.local.CcSession
 import kotlinx.coroutines.flow.collectLatest
 import java.text.SimpleDateFormat
@@ -19,9 +20,10 @@ import java.util.*
 fun CcSessionListScreen(
     onNew: () -> Unit,
     onOpen: (Long) -> Unit,
-    onBackHome: () -> Unit
+    onBackHome: () -> Unit,
+    vm: CcListVM = viewModel()
 ) {
-    val sessions by AsdGraph.repo.ccSessionsFlow.collectAsState(initial = emptyList())
+    val sessions by vm.sessions.collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {

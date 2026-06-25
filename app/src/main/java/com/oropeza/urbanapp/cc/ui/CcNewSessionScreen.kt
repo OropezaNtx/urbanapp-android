@@ -7,7 +7,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.oropeza.urbanapp.asd.AsdGraph
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.oropeza.urbanapp.cc.viewmodel.CcNewSessionVM
 import com.oropeza.urbanapp.asd.data.local.CcSession
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -16,7 +17,8 @@ import java.util.Calendar
 @Composable
 fun CcNewSessionScreen(
     onCreated: (Long) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    vm: CcNewSessionVM = viewModel()
 ) {
     val scope = rememberCoroutineScope()
 
@@ -78,7 +80,7 @@ fun CcNewSessionScreen(
             OutlinedButton(
                 onClick = {
                     scope.launch {
-                        val last = AsdGraph.repo.getLatestCcSession()
+                        val last = vm.getLatestCcSession()
                         if (last != null) applyTemplate(last)
                     }
                 },
@@ -122,7 +124,7 @@ fun CcNewSessionScreen(
             Button(
                 onClick = {
                     scope.launch {
-                        val id = AsdGraph.repo.createCcSession(
+                        val id = vm.createCcSession(
                             CcSession(
                                 planningId = planningId.trim(),
                                 base = base,

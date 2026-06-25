@@ -13,6 +13,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
+import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.location.GpsAuditDiagnostics
 import com.oropeza.urbanapp.asd.location.GpsAuditSummary
 import com.oropeza.urbanapp.asd.location.LatLng

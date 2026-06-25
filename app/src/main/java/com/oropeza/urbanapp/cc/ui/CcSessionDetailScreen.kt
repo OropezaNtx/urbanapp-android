@@ -15,7 +15,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.oropeza.urbanapp.asd.AsdGraph
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.oropeza.urbanapp.cc.viewmodel.CcDetailVM
 import com.oropeza.urbanapp.asd.data.local.CcEvent
 import com.oropeza.urbanapp.asd.data.local.CcSession
 import com.oropeza.urbanapp.asd.export.CcExcelExporter
@@ -36,14 +37,15 @@ private fun gpsQuality(accM: Double): String = when {
 @Composable
 fun CcSessionDetailScreen(
     sessionId: Long,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    vm: CcDetailVM = viewModel()
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val gps = remember { LocationProvider(context) }
 
-    val session by AsdGraph.repo.ccSessionFlow(sessionId).collectAsState(initial = null)
-    val events by AsdGraph.repo.ccEventsFlow(sessionId).collectAsState(initial = emptyList())
+    val session by vm.ccSessionFlow(sessionId).collectAsState(initial = null)
+    val events by vm.ccEventsFlow(sessionId).collectAsState(initial = emptyList())
     val snackbarHostState = remember { SnackbarHostState() }
 
     // ===== Permisos GPS =====
@@ -267,9 +269,9 @@ fun CcSessionDetailScreen(
                     ) { draft ->
                         scope.launch {
                             val fix = pickFixFast()
-                            val seq = AsdGraph.repo.nextCcSeq(ss.sessionId)
+                            val seq = vm.nextCcSeq(ss.sessionId)
 
-                            AsdGraph.repo.addCcEvent(
+                            vm.addCcEvent(
                                 CcEvent(
                                     sessionId = ss.sessionId,
                                     seqInSession = seq,
@@ -322,7 +324,7 @@ fun CcSessionDetailScreen(
             onDismiss = { showEndDialog = false },
             onConfirm = {
                 scope.launch {
-                    AsdGraph.repo.endCcSession(session!!.sessionId)
+                    vm.endCcSession(session!!.sessionId)
                     snackbarHostState.showSnackbar("Sesión terminada ✅")
                 }
                 showEndDialog = false

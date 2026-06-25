@@ -2,8 +2,8 @@ package com.oropeza.urbanapp.core.platform
 
 import android.content.Context
 import android.os.BatteryManager
-import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.flow.firstOrNull
 
 object UrbanPlatformService {
@@ -43,8 +43,8 @@ object UrbanPlatformService {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         
-        val pendingCount = AsdGraph.repo.syncQueuePendingCountFlow().firstOrNull() ?: 0
-        val failedCount = AsdGraph.repo.syncQueueFailedCountFlow().firstOrNull() ?: 0
+        val pendingCount = UrbanRuntime.syncStatus().pendingSyncCountFlow().firstOrNull() ?: 0
+        val failedCount = UrbanRuntime.syncStatus().failedSyncCountFlow().firstOrNull() ?: 0
         
         return UrbanHeartbeat(
             installationId = identity.installationId,

@@ -4,10 +4,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -34,8 +39,8 @@ class AsdTripListVM : ViewModel() {
         initialValue = emptyList()
     )
 
-    val pendingSyncCount = AsdGraph.repo.syncQueuePendingCountFlow()
-    val failedSyncCount = AsdGraph.repo.syncQueueFailedCountFlow()
+    val pendingSyncCount = UrbanRuntime.syncStatus().pendingSyncCountFlow()
+    val failedSyncCount = UrbanRuntime.syncStatus().failedSyncCountFlow()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,9 +49,9 @@ fun AsdTripListScreen(
     onNewTrip: () -> Unit,
     onOpenTrip: (Long) -> Unit,
     onOpenMap: (Long) -> Unit,
-    onBackHome: () -> Unit
+    onBackHome: () -> Unit,
+    vm: AsdTripListVM = viewModel()
 ) {
-    val vm: AsdTripListVM = viewModel()
     val trips by vm.trips.collectAsState()
     val pendingCount by vm.pendingSyncCount.collectAsState(initial = 0)
     val failedCount by vm.failedSyncCount.collectAsState(initial = 0)
@@ -54,6 +59,10 @@ fun AsdTripListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val shortId = remember { UrbanRuntime.getShortInstallationId(context) }
+    val clipboardManager = LocalClipboardManager.current
+    
+    var showDiag by remember { mutableStateOf(false) }
+    var diagText by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         runCatching {
@@ -90,8 +99,35 @@ fun AsdTripListScreen(
                         UrbanRuntime.syncHeartbeat(context)
                         snackbarHostState.showSnackbar("Sincronización solicitada")
                     }
+                },
+                onShowDiagnostics = {
+                    scope.launch {
+                        diagText = UrbanRuntime.diagnosticsText(context)
+                        showDiag = true
+                    }
                 }
             )
+
+            if (showDiag) {
+                AlertDialog(
+                    onDismissRequest = { showDiag = false },
+                    title = { Text("Diagnóstico de Plataforma") },
+                    text = { 
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            Text(diagText, style = MaterialTheme.typography.bodySmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { 
+                            clipboardManager.setText(AnnotatedString(diagText))
+                            scope.launch { snackbarHostState.showSnackbar("Copiado al portapapeles") }
+                        }) { Text("COPIAR") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDiag = false }) { Text("CERRAR") }
+                    }
+                )
+            }
 
             LazyColumn(
                 modifier = Modifier
@@ -125,7 +161,8 @@ private fun CloudSyncStatusCard(
     shortId: String,
     pendingCount: Int,
     failedCount: Int,
-    onSyncNow: () -> Unit
+    onSyncNow: () -> Unit,
+    onShowDiagnostics: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -142,11 +179,13 @@ private fun CloudSyncStatusCard(
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
             ) {
                 Text("Estado nube", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    "ID: $shortId",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
+                TextButton(onClick = onShowDiagnostics) {
+                    Text(
+                        "ID: $shortId",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
