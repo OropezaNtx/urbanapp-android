@@ -6,6 +6,8 @@ import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.platform.UrbanSyncStatusProvider
 import com.oropeza.urbanapp.core.platform.UrbanWorkspace
 import com.oropeza.urbanapp.core.platform.UrbanWorkspaceRepository
+import com.oropeza.urbanapp.core.events.UrbanEvent
+import com.oropeza.urbanapp.core.events.UrbanEventBus
 import com.oropeza.urbanapp.core.bootstrap.UrbanBootstrap
 import com.oropeza.urbanapp.core.bootstrap.UrbanBootstrapResult
 import com.oropeza.urbanapp.core.bootstrap.UrbanBootstrapStatus
@@ -41,6 +43,18 @@ object UrbanRuntime {
             override fun failedSyncCountFlow(): Flow<Int> = flowOf(0)
             override fun lastSyncTimeFlow(): Flow<Long?> = flowOf(null)
         }
+    }
+
+    fun events(): UrbanEventBus {
+        return UrbanEventBus
+    }
+
+    suspend fun publishEvent(event: UrbanEvent) {
+        UrbanEventBus.publish(event)
+    }
+
+    fun eventFlow(): Flow<UrbanEvent> {
+        return UrbanEventBus.eventsFlow()
     }
 
     suspend fun bootstrap(context: Context): UrbanBootstrapResult {

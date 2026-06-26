@@ -3,6 +3,8 @@ package com.oropeza.urbanapp.core.bootstrap
 import android.content.Context
 import android.util.Log
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
+import com.oropeza.urbanapp.core.events.UrbanEventFactory
+import com.oropeza.urbanapp.core.events.UrbanEventTypes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -25,24 +27,32 @@ object UrbanBootstrap {
             errors = emptyList(),
             warnings = emptyList()
         )
+        
+        UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.PLATFORM_BOOTSTRAP_STARTED))
 
         try {
             // 1. Identity (Critical)
             try {
                 UrbanRuntime.identity(context)
                 currentStatus = currentStatus.copy(identityReady = true)
+                UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.IDENTITY_READY))
             } catch (e: Exception) {
                 Log.e(TAG, "Identity initialization failed", e)
-                return@withContext failure("Critical failure: Identity could not be initialized")
+                val res = failure("Critical failure: Identity could not be initialized")
+                UrbanRuntime.publishEvent(UrbanEventFactory.error(UrbanEventTypes.PLATFORM_BOOTSTRAP_FAILED, "BOOTSTRAP", "IDENTITY", mapOf("error" to e.message)))
+                return@withContext res
             }
 
             // 2. Workspace (Critical)
             try {
                 UrbanRuntime.workspace(context)
                 currentStatus = currentStatus.copy(workspaceReady = true)
+                UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.WORKSPACE_READY))
             } catch (e: Exception) {
                 Log.e(TAG, "Workspace initialization failed", e)
-                return@withContext failure("Critical failure: Workspace could not be loaded")
+                val res = failure("Critical failure: Workspace could not be loaded")
+                UrbanRuntime.publishEvent(UrbanEventFactory.error(UrbanEventTypes.PLATFORM_BOOTSTRAP_FAILED, "BOOTSTRAP", "WORKSPACE", mapOf("error" to e.message)))
+                return@withContext res
             }
 
             // 3. Permissions
@@ -99,8 +109,10 @@ object UrbanBootstrap {
             )
 
             if (finalStatus == "SUCCESS") {
+                UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.PLATFORM_BOOTSTRAP_SUCCESS))
                 UrbanBootstrapResult.Success(currentStatus)
             } else {
+                UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.PLATFORM_BOOTSTRAP_WARNING, payload = mapOf("warnings" to currentStatus.warnings)))
                 UrbanBootstrapResult.Warning(currentStatus)
             }
 

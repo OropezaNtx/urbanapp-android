@@ -30,6 +30,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
+import com.oropeza.urbanapp.asd.data.local.StopEvent
+import com.oropeza.urbanapp.asd.data.local.TrackPoint
+import com.oropeza.urbanapp.asd.data.local.Trip
+import com.oropeza.urbanapp.core.events.UrbanEventFactory
+import com.oropeza.urbanapp.core.events.UrbanEventTypes
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import com.oropeza.urbanapp.asd.importer.AsdCatalogXlsxImporter
 import com.oropeza.urbanapp.asd.sync.AsdCatalogFirestoreSync
 import com.oropeza.urbanapp.asd.location.LocationProvider
@@ -129,7 +135,7 @@ class AsdNewTripVM : ViewModel() {
         observerSex: String? = null,
         continueWaypoints: Boolean = false
     ): Long {
-        return AsdGraph.repo.createTripWithStartFix(
+        val id = AsdGraph.repo.createTripWithStartFix(
             planningRouteId = planningRouteId,
             stopLat = stopLat,
             stopLon = stopLon,
@@ -156,6 +162,12 @@ class AsdNewTripVM : ViewModel() {
             observerSex = observerSex,
             continueWaypoints = continueWaypoints
         )
+        
+        if (id > 0) {
+            UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_CREATED, mapOf("tripId" to id, "routeName" to routeName)))
+        }
+        
+        return id
     }
 }
 

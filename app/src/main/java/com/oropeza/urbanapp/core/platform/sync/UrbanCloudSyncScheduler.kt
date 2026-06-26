@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.sync.cloud.CloudSyncEngine
+import com.oropeza.urbanapp.core.events.UrbanEventFactory
+import com.oropeza.urbanapp.core.events.UrbanEventTypes
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,6 +25,8 @@ object UrbanCloudSyncScheduler {
     suspend fun syncNow(context: Context): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting manual cloud sync attempt...")
+            UrbanRuntime.publishEvent(UrbanEventFactory.sync(UrbanEventTypes.SYNC_REQUESTED))
+            
             val engine = CloudSyncEngine(
                 repository = AsdGraph.repo,
                 target = AsdGraph.getCloudSyncTarget()
@@ -35,9 +40,11 @@ object UrbanCloudSyncScheduler {
             } while (lastBatchCount > 0 && totalSynced < 100)
             
             Log.d(TAG, "Cloud sync attempt finished. Items synced: $totalSynced")
+            UrbanRuntime.publishEvent(UrbanEventFactory.sync(UrbanEventTypes.SYNC_COMPLETED, mapOf("syncedCount" to totalSynced)))
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Cloud sync attempt failed", e)
+            UrbanRuntime.publishEvent(UrbanEventFactory.error(UrbanEventTypes.SYNC_FAILED, "SYNC_SCHEDULER", "SYNC", mapOf("error" to e.message)))
             Result.failure(e)
         }
     }

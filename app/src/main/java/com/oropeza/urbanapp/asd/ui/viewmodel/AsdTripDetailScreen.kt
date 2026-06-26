@@ -53,6 +53,9 @@ import com.oropeza.urbanapp.asd.location.LocationProvider
 import com.oropeza.urbanapp.asd.location.PolylineSmoother
 import com.oropeza.urbanapp.asd.location.TrackingService
 import com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker
+import com.oropeza.urbanapp.core.events.UrbanEventFactory
+import com.oropeza.urbanapp.core.events.UrbanEventTypes
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -193,46 +196,55 @@ class AsdTripDetailVM : ViewModel() {
         otherDelayDesc: String?,
         stopFix: LocationFix,
         startFix: LocationFix = stopFix
-    ) = AsdGraph.repo.addStopDetailed(
-        tripId = tripId,
-        stopType = stopType,
-        stopTimeMs = stopTimeMs,
-        startTimeMs = startTimeMs,
-        stopName = stopName,
-        notes = notes,
-        menUp = menUp,
-        womenUp = womenUp,
-        menDown = menDown,
-        womenDown = womenDown,
-        hasLuggage = hasLuggage,
-        delayCodes = delayCodes,
-        otherDelayDesc = otherDelayDesc,
-        eventTimestampMs = stopTimeMs,
-        stopLat = stopFix.lat,
-        stopLon = stopFix.lon,
-        stopAltM = stopFix.altM,
-        stopAccM = stopFix.accM,
-        stopProvider = stopFix.provider,
-        stopFixTime = stopFix.fixTime,
-        locationStatus = stopFix.status,
-        startLat = startFix.lat,
-        startLon = startFix.lon,
-        startAltM = startFix.altM,
-        startAccM = startFix.accM,
-        startProvider = startFix.provider,
-        startFixTime = startFix.fixTime
-    )
+    ) {
+        AsdGraph.repo.addStopDetailed(
+            tripId = tripId,
+            stopType = stopType,
+            stopTimeMs = stopTimeMs,
+            startTimeMs = startTimeMs,
+            stopName = stopName,
+            notes = notes,
+            menUp = menUp,
+            womenUp = womenUp,
+            menDown = menDown,
+            womenDown = womenDown,
+            hasLuggage = hasLuggage,
+            delayCodes = delayCodes,
+            otherDelayDesc = otherDelayDesc,
+            eventTimestampMs = stopTimeMs,
+            stopLat = stopFix.lat,
+            stopLon = stopFix.lon,
+            stopAltM = stopFix.altM,
+            stopAccM = stopFix.accM,
+            stopProvider = stopFix.provider,
+            stopFixTime = stopFix.fixTime,
+            locationStatus = stopFix.status,
+            startLat = startFix.lat,
+            startLon = startFix.lon,
+            startAltM = startFix.altM,
+            startAccM = startFix.accM,
+            startProvider = startFix.provider,
+            startFixTime = startFix.fixTime
+        )
+        UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_EVENT_CREATED, mapOf("tripId" to tripId, "type" to stopType)))
+    }
 
-    suspend fun endTripWithFix(tripId: Long, fix: LocationFix): Boolean = AsdGraph.repo.endTripWithFix(
-        tripId = tripId,
-        stopLat = fix.lat,
-        stopLon = fix.lon,
-        stopAltM = fix.altM,
-        stopAccM = fix.accM,
-        stopProvider = fix.provider,
-        stopFixTime = fix.fixTime,
-        locationStatus = fix.status
-    )
+    suspend fun endTripWithFix(tripId: Long, fix: LocationFix): Boolean {
+        val ok = AsdGraph.repo.endTripWithFix(
+            tripId = tripId,
+            stopLat = fix.lat,
+            stopLon = fix.lon,
+            stopAltM = fix.altM,
+            stopAccM = fix.accM,
+            stopProvider = fix.provider,
+            stopFixTime = fix.fixTime,
+            locationStatus = fix.status
+        )
+        if (ok) {
+            UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_CLOSED, mapOf("tripId" to tripId)))
+        }
+        return ok
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
