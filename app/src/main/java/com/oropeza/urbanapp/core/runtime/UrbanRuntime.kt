@@ -4,6 +4,8 @@ import android.content.Context
 import com.oropeza.urbanapp.core.identity.UrbanDeviceIdentity
 import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.platform.UrbanSyncStatusProvider
+import com.oropeza.urbanapp.core.platform.UrbanWorkspace
+import com.oropeza.urbanapp.core.platform.UrbanWorkspaceRepository
 import com.oropeza.urbanapp.core.config.UrbanConfigurationManager
 import com.oropeza.urbanapp.core.config.UrbanConfigurationRepository
 import com.oropeza.urbanapp.core.config.UrbanRemoteConfiguration
@@ -51,6 +53,18 @@ object UrbanRuntime {
         return com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
     }
 
+    fun workspace(context: Context): UrbanWorkspace {
+        return UrbanWorkspaceRepository(context).loadWorkspace()
+    }
+
+    fun reloadWorkspace(context: Context): UrbanWorkspace {
+        return UrbanWorkspaceRepository(context).loadWorkspace()
+    }
+
+    fun saveWorkspace(context: Context, workspace: UrbanWorkspace) {
+        UrbanWorkspaceRepository(context).saveWorkspace(workspace)
+    }
+
     fun cloudPaths(): UrbanCloudPaths {
         return UrbanPlatformManager.getCloudPaths()
     }
@@ -63,8 +77,8 @@ object UrbanRuntime {
         return UrbanConfigurationManager
     }
 
-    fun remoteConfig(): UrbanRemoteConfiguration {
-        return UrbanConfigurationManager.getRemoteConfig()
+    fun remoteConfig(context: Context): UrbanRemoteConfiguration {
+        return UrbanConfigurationManager.getRemoteConfig(context)
     }
 
     fun license(context: Context): UrbanLicense {

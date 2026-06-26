@@ -1,7 +1,6 @@
 package com.oropeza.urbanapp.core.license
 
 import android.content.Context
-import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 
 object UrbanLicenseManager {
@@ -9,9 +8,8 @@ object UrbanLicenseManager {
     private val repository = UrbanLicenseRepository()
 
     fun getLicense(context: Context): UrbanLicense {
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
-        val projId = UrbanPlatformSettings.getProjectId(context)
-        return repository.getLicense(orgId, projId)
+        val workspace = UrbanRuntime.workspace(context)
+        return repository.getLicense(workspace.organization.organizationId, workspace.project.projectId)
     }
 
     fun canUseModule(context: Context, moduleId: String): LicenseResult {
@@ -27,7 +25,7 @@ object UrbanLicenseManager {
     }
 
     fun getLicenseStatus(context: Context): UrbanLicenseStatus {
-        return getLicense(context).status
+        return UrbanRuntime.workspace(context).licenseStatus
     }
 
     private fun buildValidationContext(
@@ -35,13 +33,12 @@ object UrbanLicenseManager {
         moduleId: String? = null,
         featureId: String? = null
     ): LicenseValidationContext {
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
-        val projId = UrbanPlatformSettings.getProjectId(context)
+        val workspace = UrbanRuntime.workspace(context)
         val identity = UrbanRuntime.identity(context)
         
         return LicenseValidationContext(
-            organizationId = orgId,
-            projectId = projId,
+            organizationId = workspace.organization.organizationId,
+            projectId = workspace.project.projectId,
             moduleId = moduleId,
             featureId = featureId,
             deviceId = identity.installationId,
