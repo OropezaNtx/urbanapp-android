@@ -12,6 +12,7 @@ import com.oropeza.urbanapp.core.events.UrbanEventFactory
 import com.oropeza.urbanapp.core.events.UrbanEventTypes
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlin.math.max
 
 class AsdRepository(private val db: AppDatabase) {
@@ -618,6 +619,24 @@ class AsdRepository(private val db: AppDatabase) {
             AsdGraph.getCloudSyncTarget()
         )
         return engine.processNextBatch()
+    }
+
+    fun getTripSyncStatusFlow(tripId: Long): Flow<AsdTripSyncStatus> {
+        return syncQueueDao.getTripSyncItemStatusesFlow(tripId).map { statuses ->
+            if (statuses.isEmpty()) return@map AsdTripSyncStatus.NOT_QUEUED
+            
+            val distinct = statuses.distinct()
+            
+            return@map when {
+                distinct.all { it == "SYNCED" } -> AsdTripSyncStatus.SYNCED
+                distinct.any { it == "IN_PROGRESS" } -> AsdTripSyncStatus.IN_PROGRESS
+                distinct.any { it == "FAILED" } -> {
+                    if (distinct.any { it == "SYNCED" }) AsdTripSyncStatus.PARTIAL else AsdTripSyncStatus.FAILED
+                }
+                distinct.any { it == "SYNCED" } && distinct.any { it == "PENDING" } -> AsdTripSyncStatus.PARTIAL
+                else -> AsdTripSyncStatus.PENDING
+            }
+        }
     }
 
     private suspend fun enqueueTrackChunks(tripId: Long) {

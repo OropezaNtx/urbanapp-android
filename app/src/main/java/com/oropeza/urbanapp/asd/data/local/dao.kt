@@ -377,4 +377,11 @@ interface AsdSyncQueueDao {
 
     @Query("SELECT MAX(updatedAt) FROM sync_queue WHERE status = 'SYNCED'")
     fun lastSyncTimeFlow(): Flow<Long?>
+
+    @Query("""
+        SELECT status FROM sync_queue 
+        WHERE entityLocalId = :tripId 
+          AND (entityType = 'TRIP' OR entityType = 'EVENT' OR entityType = 'TRACK_CHUNK')
+    """)
+    fun getTripSyncItemStatusesFlow(tripId: Long): Flow<List<String>>
 }

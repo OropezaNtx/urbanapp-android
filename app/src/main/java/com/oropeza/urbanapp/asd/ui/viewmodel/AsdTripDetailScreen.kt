@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oropeza.urbanapp.asd.AsdGraph
+import com.oropeza.urbanapp.asd.data.local.AsdTripSyncStatus
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
@@ -81,6 +82,8 @@ class AsdTripDetailVM : ViewModel() {
     
     val syncPendingCount = AsdGraph.repo.syncQueuePendingCountFlow()
     val lastSyncTime = AsdGraph.repo.lastSyncTimeFlow()
+
+    fun tripSyncStatusFlow(tripId: Long) = AsdGraph.repo.getTripSyncStatusFlow(tripId)
 
     suspend fun getTripOnce(tripId: Long) = AsdGraph.repo.getTripOnce(tripId)
     suspend fun getStopsOnce(tripId: Long) = AsdGraph.repo.getStopsOnce(tripId)
@@ -268,6 +271,7 @@ fun AsdTripDetailScreen(
 
     val pendingSyncCount by vm.syncPendingCount.collectAsState(initial = 0)
     val lastSyncTimeMs by vm.lastSyncTime.collectAsState(initial = null)
+    val syncStatus by vm.tripSyncStatusFlow(tripId).collectAsState(initial = AsdTripSyncStatus.NOT_QUEUED)
     
     // Optimización: Calcular estadísticas de paradas solo cuando cambian las paradas
     val stopsSummary by remember(stops) { 
@@ -820,9 +824,16 @@ fun AsdTripDetailScreen(
             // 4.5 ESTADO NUBE
             item {
                 CloudSyncStatusCard(
+                    status = syncStatus,
                     pendingCount = pendingSyncCount,
                     lastSyncTime = lastSyncTimeMs,
-                    onSyncNow = { AsdCloudSyncWorker.enqueue(context) }
+                    onSyncNow = { 
+                        scope.launch {
+                            UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_SYNC_REQUESTED, mapOf("tripId" to tripId)))
+                            val res = UrbanRuntime.syncNow(context)
+                            snackbarText = if (res.isSuccess) "Sincronización finalizada ✅" else "Error al sincronizar"
+                        }
+                    }
                 )
             }
 
@@ -1803,6 +1814,7 @@ private fun LabelValue(label: String, value: String) {
 
 @Composable
 private fun CloudSyncStatusCard(
+    status: AsdTripSyncStatus,
     pendingCount: Int,
     lastSyncTime: Long?,
     onSyncNow: () -> Unit
@@ -1814,27 +1826,18 @@ private fun CloudSyncStatusCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
         shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, Color(0xFF223A36)),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716))
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101C1A))
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("SINCRONIZACIÓN NUBE", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                Spacer(Modifier.weight(1f))
-                if (pendingCount > 0) {
-                    Surface(color = Color.Yellow.copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp)) {
-                        Text("PENDIENTE", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color.Yellow, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    Surface(color = Color(0xFF35D36B).copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp)) {
-                        Text("AL DÍA", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFF35D36B), fontWeight = FontWeight.Bold)
-                    }
-                }
+                Text("SINCRONIZACIÓN NUBE", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+                SyncStatusChip(status)
             }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text("Pendientes", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f))
-                    Text(pendingCount.toString(), style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(pendingCount.toString(), style = MaterialTheme.typography.bodyLarge, color = if (pendingCount > 0) Color(0xFFFFB300) else Color.White, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Último sync", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f))
@@ -1842,16 +1845,46 @@ private fun CloudSyncStatusCard(
                 }
             }
 
-            if (pendingCount > 0) {
-                Button(
-                    onClick = onSyncNow,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D36B).copy(alpha = 0.1f)),
-                    border = BorderStroke(1.dp, Color(0xFF35D36B).copy(alpha = 0.5f))
-                ) {
-                    Text("SINCRONIZAR AHORA", color = Color(0xFF35D36B), style = MaterialTheme.typography.labelSmall)
-                }
+            Button(
+                onClick = onSyncNow,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF35D36B)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("SINCRONIZAR AHORA", color = Color.Black, fontWeight = FontWeight.ExtraBold)
             }
+        }
+    }
+}
+
+@Composable
+private fun SyncStatusChip(status: AsdTripSyncStatus) {
+    val (text, color) = when (status) {
+        AsdTripSyncStatus.PENDING -> "PENDIENTE" to Color(0xFFFFB300)
+        AsdTripSyncStatus.IN_PROGRESS -> "SINCRONIZANDO" to Color(0xFF2979FF)
+        AsdTripSyncStatus.SYNCED -> "SINCRONIZADO" to Color(0xFF35D36B)
+        AsdTripSyncStatus.FAILED -> "ERROR" to Color(0xFFF44336)
+        AsdTripSyncStatus.PARTIAL -> "PARCIAL" to Color(0xFF9C27B0)
+        else -> "DESCONOCIDO" to Color.Gray
+    }
+
+    Surface(
+        color = color.copy(alpha = 0.15f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text("☁", color = color, fontSize = 10.sp, modifier = Modifier.offset(y = (-1).dp))
+            Text(
+                text = text,
+                color = color,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
