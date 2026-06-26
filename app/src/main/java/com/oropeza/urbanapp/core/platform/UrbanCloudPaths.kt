@@ -22,6 +22,12 @@ object UrbanCloudPaths {
     fun tripPath(workspace: UrbanWorkspace, cloudTripId: String) =
         "${projectPath(workspace)}/trips/$cloudTripId"
 
+    fun tripEventPath(workspace: UrbanWorkspace, cloudTripId: String, cloudEventId: String) =
+        "${tripPath(workspace, cloudTripId)}/events/$cloudEventId"
+
+    fun trackChunkPath(workspace: UrbanWorkspace, cloudTripId: String, chunkId: String) =
+        "${tripPath(workspace, cloudTripId)}/track_chunks/$chunkId"
+
     fun configurationPath(orgId: String, projectId: String) =
         "asd_organizations/$orgId/projects/$projectId/configuration/current"
 

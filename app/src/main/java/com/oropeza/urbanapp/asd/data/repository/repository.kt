@@ -1,11 +1,16 @@
 package com.oropeza.urbanapp.asd.data.repository
 
+import android.util.Log
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.backup.AsdOnlineBackup
 import com.oropeza.urbanapp.asd.data.local.*
+import com.oropeza.urbanapp.asd.sync.cloud.*
 import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
 import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
+import com.oropeza.urbanapp.core.events.UrbanEventFactory
+import com.oropeza.urbanapp.core.events.UrbanEventTypes
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.flow.Flow
 import kotlin.math.max
 
@@ -168,7 +173,16 @@ class AsdRepository(private val db: AppDatabase) {
         )
         val tripId = tripDao.insert(trip)
         val finalTrip = trip.copy(tripId = tripId)
-        enqueueSync("TRIP", "CREATE", tripId, finalTrip)
+        
+        // Cloud Sync Enqueue
+        try {
+            val context = AsdGraph.appContext
+            val cloudTrip = AsdCloudMapper.toCloudDto(context, finalTrip)
+            enqueueSync("TRIP", "UPSERT", tripId, cloudTrip)
+            UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_ENQUEUED_FOR_SYNC, mapOf("tripId" to tripId)))
+        } catch (e: Exception) {
+            Log.w("AsdRepository", "Failed to enqueue trip for sync", e)
+        }
 
         val normSex = normalizeSex(observerSex)
         val mUp = if (normSex == "H") 1 else 0
@@ -242,7 +256,23 @@ class AsdRepository(private val db: AppDatabase) {
         )
         val finalTrip = trip.copy(endTime = endMs)
         val ok = tripDao.update(finalTrip) > 0
-        if (ok) enqueueSync("TRIP", "CLOSE", tripId, finalTrip)
+        
+        if (ok) {
+            // Cloud Sync Enqueue
+            try {
+                val context = AsdGraph.appContext
+                val cloudTrip = AsdCloudMapper.toCloudDto(context, finalTrip)
+                enqueueSync("TRIP", "UPSERT", tripId, cloudTrip)
+                
+                // Chunk track points
+                enqueueTrackChunks(tripId)
+                
+                UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_SYNC_READY, mapOf("tripId" to tripId)))
+            } catch (e: Exception) {
+                android.util.Log.w("AsdRepository", "Failed to enqueue trip closure for sync", e)
+            }
+        }
+
         return ok
     }
 
@@ -386,7 +416,28 @@ class AsdRepository(private val db: AppDatabase) {
         )
         val insertedId = stopDao.insert(event)
         val finalEvent = event.copy(eventId = insertedId)
-        enqueueSync("EVENT", "CREATE", insertedId, finalEvent)
+
+        // Cloud Sync Enqueue
+        try {
+            val context = AsdGraph.appContext
+            val identity = UrbanRuntime.identity(context)
+            val workspace = UrbanRuntime.workspace(context)
+            val cloudTripId = "${identity.installationId}_$tripId"
+            val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
+            
+            val cloudEvent = AsdCloudMapper.toCloudDto(context, finalEvent, cloudTripId, mOnBoard, wOnBoard)
+            enqueueSync(
+                type = "EVENT",
+                operation = "UPSERT",
+                localId = insertedId,
+                payload = cloudEvent,
+                cloudPath = UrbanCloudPaths.tripEventPath(workspace, cloudTripId, cloudEvent.cloudEventId)
+            )
+            UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_EVENT_ENQUEUED_FOR_SYNC, mapOf("tripId" to tripId, "eventId" to insertedId)))
+        } catch (e: Exception) {
+            android.util.Log.w("AsdRepository", "Failed to enqueue event for sync", e)
+        }
+
         AsdOnlineBackup.backupStopEvent(finalEvent)
     }
 
@@ -504,19 +555,19 @@ class AsdRepository(private val db: AppDatabase) {
         operation: String,
         localId: Long,
         payload: Any,
+        cloudPath: String? = null,
         priority: Int = 1
     ) {
         try {
             val context = AsdGraph.appContext
-            val orgId = UrbanPlatformSettings.getOrganizationId(context)
-            val projId = UrbanPlatformSettings.getProjectId(context)
-            val deviceId = UrbanIdentityProvider.getIdentity(context).installationId
+            val workspace = UrbanRuntime.workspace(context)
+            val identity = UrbanRuntime.identity(context)
             
-            val cloudPath = when(type) {
-                "TRIP" -> UrbanCloudPaths.tripPath(orgId, projId, "${deviceId}_$localId")
+            val effectivePath = cloudPath ?: when(type) {
+                "TRIP" -> UrbanCloudPaths.tripPath(workspace, "${identity.installationId}_$localId")
                 "EVENT" -> {
-                    val tripId = if (payload is StopEvent) payload.tripId else 0L
-                    "${UrbanCloudPaths.tripPath(orgId, projId, "${deviceId}_$tripId")}/events/${deviceId}_$localId"
+                    // This is a fallback for legacy enqueuing
+                    UrbanCloudPaths.tripEventPath(workspace, "${identity.installationId}_0", "${identity.installationId}_$localId")
                 }
                 else -> null
             }
@@ -527,13 +578,13 @@ class AsdRepository(private val db: AppDatabase) {
                     operation = operation,
                     entityLocalId = localId,
                     payloadJson = gson.toJson(payload),
-                    cloudPath = cloudPath,
+                    cloudPath = effectivePath,
                     priority = priority,
                     status = "PENDING"
                 )
             )
             // ✅ Phase 6: Trigger cloud sync activation
-            com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler.syncNow(AsdGraph.appContext)
+            com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler.syncNow(context)
         } catch (e: Exception) {
             android.util.Log.e("AsdRepository", "Sync enqueue failed for $type", e)
         }
@@ -567,5 +618,43 @@ class AsdRepository(private val db: AppDatabase) {
             AsdGraph.getCloudSyncTarget()
         )
         return engine.processNextBatch()
+    }
+
+    private suspend fun enqueueTrackChunks(tripId: Long) {
+        val context = AsdGraph.appContext
+        val workspace = UrbanRuntime.workspace(context)
+        val identity = UrbanRuntime.identity(context)
+        val cloudTripId = "${identity.installationId}_$tripId"
+        
+        val points = trackDao.getByTripOnce(tripId)
+        if (points.isEmpty()) return
+        
+        val chunkSize = UrbanRuntime.configuration(context).trackChunkSize.coerceAtLeast(10)
+        val chunks = points.chunked(chunkSize)
+        
+        chunks.forEachIndexed { index, chunk ->
+            val chunkId = "${cloudTripId}_chunk_$index"
+            val dto = AsdTrackChunkCloudDto(
+                chunkId = chunkId,
+                cloudTripId = cloudTripId,
+                localTripId = tripId,
+                chunkIndex = index,
+                pointCount = chunk.size,
+                points = chunk.map { AsdCloudMapper.toTrackPointDto(it) },
+                startTime = chunk.first().timeMs,
+                endTime = chunk.last().timeMs,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            
+            enqueueSync(
+                type = "TRACK_CHUNK",
+                operation = "UPSERT",
+                localId = tripId,
+                payload = dto,
+                cloudPath = UrbanCloudPaths.trackChunkPath(workspace, cloudTripId, chunkId)
+            )
+            UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRACK_CHUNK_ENQUEUED, mapOf("tripId" to tripId, "index" to index)))
+        }
     }
 }
