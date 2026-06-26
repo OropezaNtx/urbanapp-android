@@ -12,6 +12,8 @@ data class UrbanRuntimeStatus(
     val pendingSyncCount: Int?,
     val failedSyncCount: Int?,
     val lastSyncAt: Long?,
+    val lastSyncError: String?,
+    val lastSyncFailedPath: String?,
     val licenseStatus: String,
     val licenseType: String,
     val status: String

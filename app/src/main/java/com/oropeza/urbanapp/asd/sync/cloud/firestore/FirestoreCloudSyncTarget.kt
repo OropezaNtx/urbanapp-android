@@ -18,7 +18,7 @@ class FirestoreCloudSyncTarget : CloudSyncTarget {
     private val mapType = object : TypeToken<Map<String, Any?>>() {}.type
 
     private companion object {
-        const val TAG = "FirestoreSyncTarget"
+        const val TAG = "UrbanCloudSync"
     }
 
     override suspend fun upsert(item: CloudSyncItem): CloudSyncResult {

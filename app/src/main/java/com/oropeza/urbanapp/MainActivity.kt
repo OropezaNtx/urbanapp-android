@@ -23,6 +23,8 @@ class MainActivity : ComponentActivity() {
             override fun pendingSyncCountFlow(): Flow<Int> = AsdGraph.repo.syncQueuePendingCountFlow()
             override fun failedSyncCountFlow(): Flow<Int> = AsdGraph.repo.syncQueueFailedCountFlow()
             override fun lastSyncTimeFlow(): Flow<Long?> = AsdGraph.repo.lastSyncTimeFlow()
+            override suspend fun lastSyncError(): String? = AsdGraph.repo.getLastFailedSyncItem()?.lastError
+            override suspend fun lastSyncFailedPath(): String? = AsdGraph.repo.getLastFailedSyncItem()?.cloudPath
         })
 
         setContent {

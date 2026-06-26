@@ -14,7 +14,7 @@ class CloudSyncEngine(
     private val config: CloudSyncConfig = CloudSyncConfig()
 ) {
     private companion object {
-        const val TAG = "CloudSyncEngine"
+        const val TAG = "AsdCloudSync"
     }
 
     /**
@@ -25,11 +25,13 @@ class CloudSyncEngine(
         val pendingItems = repository.getPendingSyncItems(config.maxBatchSize)
         if (pendingItems.isEmpty()) return@withContext 0
 
+        Log.i(TAG, "Syncing batch of ${pendingItems.size} items...")
         var syncedCount = 0
         for (item in pendingItems) {
             val success = processItem(item)
             if (success) syncedCount++
         }
+        Log.i(TAG, "Batch sync finished. Success: $syncedCount, Failed: ${pendingItems.size - syncedCount}")
         return@withContext syncedCount
     }
 
@@ -37,6 +39,7 @@ class CloudSyncEngine(
         // Mark as in progress locally
         repository.updateSyncItem(item.copy(status = "IN_PROGRESS", updatedAt = System.currentTimeMillis()))
 
+        Log.d(TAG, "Syncing ${item.entityType} (${item.operation}) to ${item.cloudPath}")
         val domainItem = item.toDomain()
         
         val result = try {
@@ -46,7 +49,7 @@ class CloudSyncEngine(
                 target.upsert(domainItem)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception during sync for item ${item.id}", e)
+            Log.e(TAG, "Exception during sync for item ${item.id} at ${item.cloudPath}", e)
             CloudSyncResult.RetryableFailure(e.message ?: "Unknown exception")
         }
 
@@ -57,10 +60,12 @@ class CloudSyncEngine(
         val now = System.currentTimeMillis()
         return when (result) {
             is CloudSyncResult.Success -> {
+                Log.v(TAG, "Successfully synced item ${item.id}")
                 repository.markSyncItemSynced(item.id)
                 true
             }
             is CloudSyncResult.RetryableFailure -> {
+                Log.w(TAG, "Retryable failure for item ${item.id}: ${result.message}")
                 val nextAttempts = item.attempts + 1
                 if (nextAttempts >= config.maxAttempts) {
                     repository.updateSyncItem(item.copy(

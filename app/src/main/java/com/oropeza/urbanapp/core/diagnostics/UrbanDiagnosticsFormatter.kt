@@ -52,6 +52,8 @@ object UrbanDiagnosticsFormatter {
             Pending: ${snapshot.pendingSyncCount}
             Failed: ${snapshot.failedSyncCount}
             Last Sync: ${snapshot.lastSyncAt?.let { dateFmt.format(Date(it)) } ?: "Never"}
+            Last Error: ${snapshot.lastSyncError ?: "None"}
+            Failed Path: ${snapshot.lastSyncFailedPath ?: "None"}
             
             HEALTH & STATUS
             Runtime: ${snapshot.runtimeStatus}

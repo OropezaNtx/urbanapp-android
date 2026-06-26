@@ -830,6 +830,11 @@ fun AsdTripDetailScreen(
                     onSyncNow = { 
                         scope.launch {
                             UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_SYNC_REQUESTED, mapOf("tripId" to tripId)))
+                            val isOnline = UrbanRuntime.diagnostics(context).isNetworkAvailable
+                            if (!isOnline) {
+                                snackbarText = "Sin conexión, queda pendiente"
+                                return@launch
+                            }
                             val res = UrbanRuntime.syncNow(context)
                             snackbarText = if (res.isSuccess) "Sincronización finalizada ✅" else "Error al sincronizar"
                         }

@@ -378,6 +378,9 @@ interface AsdSyncQueueDao {
     @Query("SELECT MAX(updatedAt) FROM sync_queue WHERE status = 'SYNCED'")
     fun lastSyncTimeFlow(): Flow<Long?>
 
+    @Query("SELECT * FROM sync_queue WHERE status = 'FAILED' OR status = 'DEAD_LETTER' ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun getLastFailedItem(): AsdSyncQueueItem?
+
     @Query("""
         SELECT status FROM sync_queue 
         WHERE entityLocalId = :tripId 

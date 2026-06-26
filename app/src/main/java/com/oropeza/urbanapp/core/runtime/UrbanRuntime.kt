@@ -42,6 +42,8 @@ object UrbanRuntime {
             override fun pendingSyncCountFlow(): Flow<Int> = flowOf(0)
             override fun failedSyncCountFlow(): Flow<Int> = flowOf(0)
             override fun lastSyncTimeFlow(): Flow<Long?> = flowOf(null)
+            override suspend fun lastSyncError(): String? = null
+            override suspend fun lastSyncFailedPath(): String? = null
         }
     }
 
@@ -182,6 +184,8 @@ object UrbanRuntime {
         val pendingCount = syncStatus().pendingSyncCountFlow().firstOrNull()
         val failedCount = syncStatus().failedSyncCountFlow().firstOrNull()
         val lastSyncAt = syncStatus().lastSyncTimeFlow().firstOrNull()
+        val lastError = syncStatus().lastSyncError()
+        val lastPath = syncStatus().lastSyncFailedPath()
 
         return UrbanRuntimeStatus(
             installationId = identity.installationId,
@@ -195,6 +199,8 @@ object UrbanRuntime {
             pendingSyncCount = pendingCount,
             failedSyncCount = failedCount,
             lastSyncAt = lastSyncAt,
+            lastSyncError = lastError,
+            lastSyncFailedPath = lastPath,
             licenseStatus = workspace.license.status.name,
             licenseType = workspace.license.type.name,
             status = "READY"

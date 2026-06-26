@@ -485,7 +485,27 @@ class AsdRepository(private val db: AppDatabase) {
         )
         val insertedId = stopDao.insert(event)
         val finalEvent = event.copy(eventId = insertedId)
-        enqueueSync("EVENT", "CREATE", insertedId, finalEvent)
+        
+        // Cloud Sync Enqueue
+        try {
+            val context = AsdGraph.appContext
+            val identity = UrbanRuntime.identity(context)
+            val workspace = UrbanRuntime.workspace(context)
+            val cloudTripId = "${identity.installationId}_$tripId"
+            val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
+            
+            val cloudEvent = AsdCloudMapper.toCloudDto(context, finalEvent, cloudTripId, mOnBoard, wOnBoard)
+            enqueueSync(
+                type = "EVENT",
+                operation = "UPSERT",
+                localId = insertedId,
+                payload = cloudEvent,
+                cloudPath = UrbanCloudPaths.tripEventPath(workspace, cloudTripId, cloudEvent.cloudEventId)
+            )
+        } catch (e: Exception) {
+            Log.w("AsdRepository", "Failed to enqueue delay start for sync", e)
+        }
+
         AsdOnlineBackup.backupStopEvent(finalEvent)
         return true
     }
@@ -505,7 +525,27 @@ class AsdRepository(private val db: AppDatabase) {
             locationStatus = locationStatus
         )
         val ok = stopDao.update(updated) > 0
-        if (ok) enqueueSync("EVENT", "UPDATE", updated.eventId, updated)
+        if (ok) {
+            // Cloud Sync Enqueue
+            try {
+                val context = AsdGraph.appContext
+                val identity = UrbanRuntime.identity(context)
+                val workspace = UrbanRuntime.workspace(context)
+                val cloudTripId = "${identity.installationId}_$tripId"
+                val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
+                
+                val cloudEvent = AsdCloudMapper.toCloudDto(context, updated, cloudTripId, mOnBoard, wOnBoard)
+                enqueueSync(
+                    type = "EVENT",
+                    operation = "UPSERT",
+                    localId = updated.eventId,
+                    payload = cloudEvent,
+                    cloudPath = UrbanCloudPaths.tripEventPath(workspace, cloudTripId, cloudEvent.cloudEventId)
+                )
+            } catch (e: Exception) {
+                Log.w("AsdRepository", "Failed to enqueue delay end for sync", e)
+            }
+        }
         AsdOnlineBackup.backupStopEvent(updated)
         return ok
     }
@@ -597,6 +637,7 @@ class AsdRepository(private val db: AppDatabase) {
     suspend fun getPendingSyncItems(limit: Int) = syncQueueDao.getPending(limit)
     suspend fun markSyncItemSynced(id: Long) = syncQueueDao.markSynced(id)
     suspend fun updateSyncItem(item: AsdSyncQueueItem) = syncQueueDao.update(item)
+    suspend fun getLastFailedSyncItem() = syncQueueDao.getLastFailedItem()
 
     /**
      * Manual trigger for Phase 2 validation using NoopCloudSyncTarget.

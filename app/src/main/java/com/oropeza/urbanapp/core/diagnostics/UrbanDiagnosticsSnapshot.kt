@@ -39,6 +39,7 @@ data class UrbanDiagnosticsSnapshot(
     val lastSyncAt: Long?,
     val lastSyncStatus: String?,
     val lastSyncError: String?,
+    val lastSyncFailedPath: String?,
     
     // Runtime
     val runtimeStatus: String,

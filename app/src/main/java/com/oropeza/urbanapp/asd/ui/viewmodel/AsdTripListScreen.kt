@@ -102,6 +102,11 @@ fun AsdTripListScreen(
                 failedCount = failedCount,
                 onSyncNow = {
                     scope.launch {
+                        val isOnline = UrbanRuntime.diagnostics(context).isNetworkAvailable
+                        if (!isOnline) {
+                            snackbarHostState.showSnackbar("Sin conexión, queda pendiente")
+                            return@launch
+                        }
                         val res = UrbanRuntime.syncNow(context)
                         if (res.isSuccess) {
                             snackbarHostState.showSnackbar("Sincronización terminada ✅")

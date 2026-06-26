@@ -85,7 +85,8 @@ object UrbanDiagnosticsProvider {
             failedSyncCount = runtimeStatus.failedSyncCount ?: 0,
             lastSyncAt = runtimeStatus.lastSyncAt,
             lastSyncStatus = if (runtimeStatus.lastSyncAt != null) "SUCCESS" else null,
-            lastSyncError = null, // To be implemented if we track last error time
+            lastSyncError = runtimeStatus.lastSyncError,
+            lastSyncFailedPath = runtimeStatus.lastSyncFailedPath,
             runtimeStatus = runtimeStatus.status,
             cloudAvailable = isNetworkAvailable, // Basic mapping
             firebaseConfigured = true, // We assume since app runs
