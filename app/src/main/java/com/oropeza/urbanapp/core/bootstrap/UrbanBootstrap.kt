@@ -75,11 +75,13 @@ object UrbanBootstrap {
 
             // 5. Configuration
             try {
-                UrbanRuntime.remoteConfig(context)
+                UrbanRuntime.configuration(context)
                 currentStatus = currentStatus.copy(configurationReady = true)
+                UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.CONFIGURATION_LOADED))
             } catch (e: Exception) {
                 Log.w(TAG, "Configuration initialization warning", e)
                 currentStatus = currentStatus.addWarning("Using local configuration defaults")
+                UrbanRuntime.publishEvent(UrbanEventFactory.warning(UrbanEventTypes.CONFIGURATION_WARNING, "BOOTSTRAP", "CONFIG", mapOf("error" to e.message)))
             }
 
             // 6. Sync status

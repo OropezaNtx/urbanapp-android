@@ -14,9 +14,9 @@ import com.oropeza.urbanapp.core.bootstrap.UrbanBootstrapStatus
 import com.oropeza.urbanapp.core.auth.UrbanAccessManager
 import com.oropeza.urbanapp.core.auth.UrbanUser
 import com.oropeza.urbanapp.core.auth.UrbanPermissionSet
+import com.oropeza.urbanapp.core.config.UrbanConfiguration
 import com.oropeza.urbanapp.core.config.UrbanConfigurationManager
 import com.oropeza.urbanapp.core.config.UrbanConfigurationRepository
-import com.oropeza.urbanapp.core.config.UrbanRemoteConfiguration
 import com.oropeza.urbanapp.core.license.UrbanLicense
 import com.oropeza.urbanapp.core.license.UrbanLicenseManager
 import com.oropeza.urbanapp.core.license.UrbanLicenseStatus
@@ -101,16 +101,16 @@ object UrbanRuntime {
         return UrbanPlatformManager.getCloudPaths()
     }
 
-    fun configuration(): UrbanConfigurationRepository {
-        return UrbanConfigurationManager.getConfiguration()
+    fun configuration(context: Context): UrbanConfiguration {
+        return UrbanConfigurationManager.configuration(context)
     }
 
-    fun featureFlags(): UrbanConfigurationManager {
-        return UrbanConfigurationManager
+    fun isFeatureEnabled(context: Context, flag: String): Boolean {
+        return UrbanConfigurationManager.isFeatureEnabled(context, flag)
     }
 
-    fun remoteConfig(context: Context): UrbanRemoteConfiguration {
-        return UrbanConfigurationManager.getRemoteConfig(context)
+    fun enabledModules(context: Context): List<String> {
+        return UrbanConfigurationManager.enabledModules(context)
     }
 
     fun license(context: Context): UrbanLicense {

@@ -19,6 +19,7 @@ object UrbanDiagnosticsProvider {
         val runtimeStatus = UrbanRuntime.getRuntimeStatus(context)
         val identity = UrbanRuntime.identity(context)
         val bootstrap = UrbanRuntime.bootstrapStatus()
+        val config = UrbanRuntime.configuration(context)
 
         // Battery
         val batteryStatus: Intent? = IntentFilter(Intent.ACTION_BATTERY_CHANGED).let { filter ->
@@ -76,6 +77,8 @@ object UrbanDiagnosticsProvider {
             organizationId = runtimeStatus.organizationId,
             projectId = runtimeStatus.projectId,
             environment = runtimeStatus.environment,
+            enabledModules = config.enabledModules,
+            remoteConfigEnabled = config.featureFlags[com.oropeza.urbanapp.core.config.UrbanFeatureFlags.REMOTE_CONFIG_ENABLED] ?: false,
             pendingSyncCount = runtimeStatus.pendingSyncCount ?: 0,
             failedSyncCount = runtimeStatus.failedSyncCount ?: 0,
             lastSyncAt = runtimeStatus.lastSyncAt,

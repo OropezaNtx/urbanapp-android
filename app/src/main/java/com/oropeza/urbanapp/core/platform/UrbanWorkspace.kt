@@ -1,6 +1,6 @@
 package com.oropeza.urbanapp.core.platform
 
-import com.oropeza.urbanapp.core.config.UrbanRemoteConfiguration
+import com.oropeza.urbanapp.core.config.UrbanConfiguration
 import com.oropeza.urbanapp.core.license.UrbanLicense
 import com.oropeza.urbanapp.core.auth.UrbanUser
 import com.oropeza.urbanapp.core.auth.UrbanRole
@@ -10,7 +10,7 @@ data class UrbanWorkspace(
     val organization: UrbanOrganization,
     val project: UrbanProject,
     val environment: String,
-    val configuration: UrbanRemoteConfiguration,
+    val configuration: UrbanConfiguration,
     val license: UrbanLicense,
     val currentUser: UrbanUser,
     val roles: List<UrbanRole>,

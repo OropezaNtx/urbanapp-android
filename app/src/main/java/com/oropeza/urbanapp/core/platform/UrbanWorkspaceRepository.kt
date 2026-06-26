@@ -1,7 +1,7 @@
 package com.oropeza.urbanapp.core.platform
 
 import android.content.Context
-import com.oropeza.urbanapp.core.config.UrbanRemoteConfiguration
+import com.oropeza.urbanapp.core.config.UrbanConfigurationManager
 import com.oropeza.urbanapp.core.license.UrbanLicenseStatus
 import com.oropeza.urbanapp.core.auth.UrbanAccessRepository
 
@@ -36,7 +36,7 @@ class UrbanWorkspaceRepository(private val context: Context) {
                 updatedAt = System.currentTimeMillis()
             ),
             environment = env,
-            configuration = UrbanRemoteConfiguration(),
+            configuration = UrbanConfigurationManager.configuration(context),
             license = licenseRepo.getCurrentLicense(),
             currentUser = accessRepo.getCurrentUser(),
             roles = accessRepo.getDefaultRoles(),

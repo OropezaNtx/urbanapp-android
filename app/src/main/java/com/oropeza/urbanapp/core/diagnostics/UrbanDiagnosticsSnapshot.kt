@@ -28,7 +28,9 @@ data class UrbanDiagnosticsSnapshot(
     val organizationId: String,
     val projectId: String,
     val environment: String,
-    
+    val enabledModules: List<String>,
+    val remoteConfigEnabled: Boolean,
+
     // Sync
     val pendingSyncCount: Int,
     val failedSyncCount: Int,

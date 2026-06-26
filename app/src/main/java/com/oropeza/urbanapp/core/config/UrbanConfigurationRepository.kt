@@ -1,41 +1,60 @@
 package com.oropeza.urbanapp.core.config
 
+import android.content.Context
+import com.google.gson.Gson
+
 class UrbanConfigurationRepository {
+
+    private val gson = Gson()
     
-    // For now, only provides local defaults as per mission requirements.
-    // Architecture is prepared for future Firestore/RemoteConfig integration.
-
-    fun getRemoteConfiguration(): UrbanRemoteConfiguration {
-        return UrbanRemoteConfiguration()
+    private companion object {
+        const val PREFS_NAME = "urban_remote_config"
+        const val KEY_CONFIG_JSON = "current_config_json"
     }
 
-    fun getFeatureFlag(key: String, defaultValue: Boolean = false): Boolean {
-        return getRemoteConfiguration().featureFlags[key] ?: defaultValue
+    fun getDefaultConfiguration(): UrbanConfiguration {
+        return UrbanConfiguration(
+            environment = "pilot",
+            heartbeatIntervalSeconds = 60,
+            syncIntervalSeconds = 300,
+            trackChunkSize = 50,
+            gpsProfile = "BALANCED",
+            minSupportedAppVersion = "0.9.0",
+            enabledModules = listOf("ASD", "FOV", "CC"),
+            featureFlags = mapOf(
+                UrbanFeatureFlags.ASD_ENABLED to true,
+                UrbanFeatureFlags.ASD_EXPORT_ENABLED to true,
+                UrbanFeatureFlags.CLOUD_SYNC_ENABLED to true,
+                UrbanFeatureFlags.HEARTBEAT_ENABLED to true,
+                UrbanFeatureFlags.DIAGNOSTICS_ENABLED to true,
+                UrbanFeatureFlags.LICENSING_ENFORCEMENT_ENABLED to false,
+                UrbanFeatureFlags.REALTIME_ENABLED to false,
+                UrbanFeatureFlags.ANALYTICS_ENABLED to false,
+                UrbanFeatureFlags.REMOTE_CONFIG_ENABLED to true
+            ),
+            updatedAt = System.currentTimeMillis()
+        )
     }
 
-    fun getString(key: String, defaultValue: String = ""): String {
-        return when (key) {
-            "gps_profile" -> getRemoteConfiguration().gpsProfile
-            else -> defaultValue
+    fun getLocalConfiguration(context: Context): UrbanConfiguration? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = prefs.getString(KEY_CONFIG_JSON, null)
+        return try {
+            if (json != null) gson.fromJson(json, UrbanConfiguration::class.java) else null
+        } catch (e: Exception) {
+            null
         }
     }
 
-    fun getInt(key: String, defaultValue: Int = 0): Int {
-        return when (key) {
-            "upload_chunk_size" -> getRemoteConfiguration().uploadChunkSize
-            else -> defaultValue
-        }
+    fun saveLocalConfiguration(context: Context, config: UrbanConfiguration) {
+        val json = gson.toJson(config)
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_CONFIG_JSON, json)
+            .apply()
     }
 
-    fun getLong(key: String, defaultValue: Long = 0L): Long {
-        return when (key) {
-            "heartbeat_interval" -> getRemoteConfiguration().heartbeatIntervalMs
-            "sync_interval" -> getRemoteConfiguration().syncIntervalMs
-            else -> defaultValue
-        }
-    }
-    
-    fun getDouble(key: String, defaultValue: Double = 0.0): Double {
-        return defaultValue
+    fun getEffectiveConfiguration(context: Context): UrbanConfiguration {
+        return getLocalConfiguration(context) ?: getDefaultConfiguration()
     }
 }
