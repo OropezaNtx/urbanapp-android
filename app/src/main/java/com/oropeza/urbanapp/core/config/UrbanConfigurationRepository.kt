@@ -10,6 +10,7 @@ class UrbanConfigurationRepository {
     private companion object {
         const val PREFS_NAME = "urban_remote_config"
         const val KEY_CONFIG_JSON = "current_config_json"
+        const val KEY_CONFIG_SOURCE = "config_source"
     }
 
     fun getDefaultConfiguration(): UrbanConfiguration {
@@ -46,12 +47,18 @@ class UrbanConfigurationRepository {
         }
     }
 
-    fun saveLocalConfiguration(context: Context, config: UrbanConfiguration) {
+    fun saveLocalConfiguration(context: Context, config: UrbanConfiguration, source: String = "LOCAL") {
         val json = gson.toJson(config)
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_CONFIG_JSON, json)
+            .putString(KEY_CONFIG_SOURCE, source)
             .apply()
+    }
+
+    fun getConfigurationSource(context: Context): String {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_CONFIG_SOURCE, "DEFAULT") ?: "DEFAULT"
     }
 
     fun getEffectiveConfiguration(context: Context): UrbanConfiguration {

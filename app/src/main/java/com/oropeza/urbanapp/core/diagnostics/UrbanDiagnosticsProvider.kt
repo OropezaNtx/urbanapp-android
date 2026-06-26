@@ -77,6 +77,8 @@ object UrbanDiagnosticsProvider {
             organizationId = runtimeStatus.organizationId,
             projectId = runtimeStatus.projectId,
             environment = runtimeStatus.environment,
+            configurationSource = UrbanRuntime.configurationSource(context),
+            configurationUpdatedAt = config.updatedAt,
             enabledModules = config.enabledModules,
             remoteConfigEnabled = config.featureFlags[com.oropeza.urbanapp.core.config.UrbanFeatureFlags.REMOTE_CONFIG_ENABLED] ?: false,
             pendingSyncCount = runtimeStatus.pendingSyncCount ?: 0,

@@ -28,6 +28,8 @@ data class UrbanDiagnosticsSnapshot(
     val organizationId: String,
     val projectId: String,
     val environment: String,
+    val configurationSource: String,
+    val configurationUpdatedAt: Long,
     val enabledModules: List<String>,
     val remoteConfigEnabled: Boolean,
 

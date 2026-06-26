@@ -113,6 +113,10 @@ object UrbanRuntime {
         return UrbanConfigurationManager.enabledModules(context)
     }
 
+    fun configurationSource(context: Context): String {
+        return UrbanConfigurationManager.configurationSource(context)
+    }
+
     fun license(context: Context): UrbanLicense {
         return UrbanLicenseManager.currentLicense(context)
     }

@@ -36,6 +36,10 @@ object UrbanConfigurationManager {
     fun gpsProfile(context: Context): String {
         return configuration(context).gpsProfile
     }
+
+    fun configurationSource(context: Context): String {
+        return repository.getConfigurationSource(context)
+    }
     
     // Internal API for Repository access
     fun getRepository(): UrbanConfigurationRepository = repository

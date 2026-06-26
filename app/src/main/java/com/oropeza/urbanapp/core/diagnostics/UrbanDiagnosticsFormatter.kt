@@ -46,6 +46,7 @@ object UrbanDiagnosticsFormatter {
             Org: ${snapshot.organizationId}
             Proj: ${snapshot.projectId}
             Env: ${snapshot.environment}
+            Config: ${snapshot.configurationSource} (Updated: ${dateFmt.format(Date(snapshot.configurationUpdatedAt))})
             
             SYNC
             Pending: ${snapshot.pendingSyncCount}

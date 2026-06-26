@@ -5,6 +5,8 @@ import android.util.Log
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import com.oropeza.urbanapp.core.events.UrbanEventFactory
 import com.oropeza.urbanapp.core.events.UrbanEventTypes
+import com.oropeza.urbanapp.core.config.UrbanConfigurationCloudDatasource
+import com.oropeza.urbanapp.core.config.UrbanFeatureFlags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -75,7 +77,22 @@ object UrbanBootstrap {
 
             // 5. Configuration
             try {
-                UrbanRuntime.configuration(context)
+                val workspace = UrbanRuntime.workspace(context)
+                val configManager = com.oropeza.urbanapp.core.config.UrbanConfigurationManager
+                val currentConfig = UrbanRuntime.configuration(context)
+                
+                if (currentConfig.featureFlags[UrbanFeatureFlags.REMOTE_CONFIG_ENABLED] == true) {
+                    UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.CONFIGURATION_FETCH_STARTED))
+                    
+                    val cloudConfig = UrbanConfigurationCloudDatasource().fetchConfiguration(workspace)
+                    if (cloudConfig != null) {
+                        configManager.getRepository().saveLocalConfiguration(context, cloudConfig, source = "CLOUD")
+                        UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.CONFIGURATION_FETCH_SUCCESS))
+                    } else {
+                        UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.CONFIGURATION_FETCH_FAILED))
+                    }
+                }
+
                 currentStatus = currentStatus.copy(configurationReady = true)
                 UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.CONFIGURATION_LOADED))
             } catch (e: Exception) {
