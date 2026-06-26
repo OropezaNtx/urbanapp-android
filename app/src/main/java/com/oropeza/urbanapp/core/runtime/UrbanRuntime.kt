@@ -12,7 +12,6 @@ import com.oropeza.urbanapp.core.auth.UrbanPermissionSet
 import com.oropeza.urbanapp.core.config.UrbanConfigurationManager
 import com.oropeza.urbanapp.core.config.UrbanConfigurationRepository
 import com.oropeza.urbanapp.core.config.UrbanRemoteConfiguration
-import com.oropeza.urbanapp.core.license.LicenseResult
 import com.oropeza.urbanapp.core.license.UrbanLicense
 import com.oropeza.urbanapp.core.license.UrbanLicenseManager
 import com.oropeza.urbanapp.core.license.UrbanLicenseStatus
@@ -85,19 +84,19 @@ object UrbanRuntime {
     }
 
     fun license(context: Context): UrbanLicense {
-        return UrbanLicenseManager.getLicense(context)
+        return UrbanLicenseManager.currentLicense(context)
     }
 
-    fun canUseModule(context: Context, moduleId: String): LicenseResult {
-        return UrbanLicenseManager.canUseModule(context, moduleId)
+    fun canUseModule(context: Context, module: String): Boolean {
+        return UrbanLicenseManager.canUseModule(context, module)
     }
 
-    fun canUseFeature(context: Context, featureId: String): LicenseResult {
-        return UrbanLicenseManager.canUseFeature(context, featureId)
+    fun canUseFeature(context: Context, feature: String): Boolean {
+        return UrbanLicenseManager.canUseFeature(context, feature)
     }
 
     fun licenseStatus(context: Context): UrbanLicenseStatus {
-        return UrbanLicenseManager.getLicenseStatus(context)
+        return UrbanLicenseManager.status(context)
     }
 
     fun currentUser(context: Context): UrbanUser {
@@ -144,9 +143,7 @@ object UrbanRuntime {
 
     suspend fun getRuntimeStatus(context: Context): UrbanRuntimeStatus {
         val identity = identity(context)
-        val orgId = UrbanPlatformManager.getOrganizationId(context)
-        val projId = UrbanPlatformManager.getProjectId(context)
-        val env = UrbanPlatformManager.getEnvironment(context)
+        val workspace = workspace(context)
         
         val pendingCount = syncStatus().pendingSyncCountFlow().firstOrNull()
         val failedCount = syncStatus().failedSyncCountFlow().firstOrNull()
@@ -155,15 +152,17 @@ object UrbanRuntime {
         return UrbanRuntimeStatus(
             installationId = identity.installationId,
             shortInstallationId = getShortInstallationId(context),
-            organizationId = orgId,
-            projectId = projId,
-            environment = env,
+            organizationId = workspace.organization.organizationId,
+            projectId = workspace.project.projectId,
+            environment = workspace.environment,
             appVersionName = identity.appVersionName,
             appVersionCode = identity.appVersionCode,
             androidModel = identity.model,
             pendingSyncCount = pendingCount,
             failedSyncCount = failedCount,
             lastSyncAt = lastSyncAt,
+            licenseStatus = workspace.license.status.name,
+            licenseType = workspace.license.type.name,
             status = "READY"
         )
     }

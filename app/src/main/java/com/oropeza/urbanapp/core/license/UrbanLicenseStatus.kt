@@ -2,8 +2,9 @@ package com.oropeza.urbanapp.core.license
 
 enum class UrbanLicenseStatus {
     ACTIVE,
+    TRIAL,
     EXPIRED,
     SUSPENDED,
-    GRACE_PERIOD,
-    PENDING_ACTIVATION
+    INVALID,
+    UNKNOWN
 }

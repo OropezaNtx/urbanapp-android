@@ -5,6 +5,8 @@ import com.oropeza.urbanapp.core.config.UrbanRemoteConfiguration
 import com.oropeza.urbanapp.core.license.UrbanLicenseStatus
 import com.oropeza.urbanapp.core.auth.UrbanAccessRepository
 
+import com.oropeza.urbanapp.core.license.UrbanLicenseRepository
+
 class UrbanWorkspaceRepository(private val context: Context) {
 
     fun loadWorkspace(): UrbanWorkspace {
@@ -13,6 +15,7 @@ class UrbanWorkspaceRepository(private val context: Context) {
         val env = UrbanPlatformSettings.getEnvironment(context)
         
         val accessRepo = UrbanAccessRepository(context)
+        val licenseRepo = UrbanLicenseRepository(context)
         
         // Initial implementation using SharedPreferences defaults
         return UrbanWorkspace(
@@ -34,7 +37,7 @@ class UrbanWorkspaceRepository(private val context: Context) {
             ),
             environment = env,
             configuration = UrbanRemoteConfiguration(),
-            licenseStatus = UrbanLicenseStatus.ACTIVE,
+            license = licenseRepo.getCurrentLicense(),
             currentUser = accessRepo.getCurrentUser(),
             roles = accessRepo.getDefaultRoles(),
             permissions = accessRepo.getDefaultPermissions(),

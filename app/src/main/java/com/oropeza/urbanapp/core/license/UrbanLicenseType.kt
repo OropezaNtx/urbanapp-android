@@ -1,8 +1,9 @@
 package com.oropeza.urbanapp.core.license
 
 enum class UrbanLicenseType {
-    TRIAL,
-    PROFESSIONAL,
+    PILOT,
+    MONTHLY,
+    ANNUAL,
     ENTERPRISE,
-    DEVELOPER
+    INTERNAL
 }

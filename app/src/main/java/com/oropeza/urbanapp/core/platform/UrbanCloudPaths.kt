@@ -22,6 +22,12 @@ object UrbanCloudPaths {
     fun tripPath(workspace: UrbanWorkspace, cloudTripId: String) =
         "${projectPath(workspace)}/trips/$cloudTripId"
 
+    fun licensePath(orgId: String, licenseId: String) = 
+        "asd_organizations/$orgId/licenses/$licenseId"
+
+    fun projectLicensePath(orgId: String, projectId: String, licenseId: String) =
+        "asd_organizations/$orgId/projects/$projectId/licenses/$licenseId"
+
     fun userPath(orgId: String, userId: String) = 
         "asd_organizations/$orgId/users/$userId"
 
