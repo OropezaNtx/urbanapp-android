@@ -21,10 +21,16 @@ object UrbanDiagnosticsFormatter {
     }
 
     fun toDebugText(snapshot: UrbanDiagnosticsSnapshot): String {
+        val boot = snapshot.bootstrapStatus
         return """
             URBAN DIAGNOSTICS REPORT
             Generated: ${dateFmt.format(Date(snapshot.generatedAt))}
             -------------------------
+            BOOTSTRAP
+            Status: ${boot.status}
+            Ready: ID:${if (boot.identityReady) "✅" else "❌"} WS:${if (boot.workspaceReady) "✅" else "❌"} PERM:${if (boot.permissionsReady) "✅" else "❌"} LIC:${if (boot.licenseReady) "✅" else "❌"}
+            Errors: ${boot.errors.size} / Warnings: ${boot.warnings.size}
+
             IDENTITY
             Installation ID: ${snapshot.installationId}
             Short ID: ${snapshot.shortInstallationId}

@@ -6,6 +6,9 @@ import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.platform.UrbanSyncStatusProvider
 import com.oropeza.urbanapp.core.platform.UrbanWorkspace
 import com.oropeza.urbanapp.core.platform.UrbanWorkspaceRepository
+import com.oropeza.urbanapp.core.bootstrap.UrbanBootstrap
+import com.oropeza.urbanapp.core.bootstrap.UrbanBootstrapResult
+import com.oropeza.urbanapp.core.bootstrap.UrbanBootstrapStatus
 import com.oropeza.urbanapp.core.auth.UrbanAccessManager
 import com.oropeza.urbanapp.core.auth.UrbanUser
 import com.oropeza.urbanapp.core.auth.UrbanPermissionSet
@@ -38,6 +41,19 @@ object UrbanRuntime {
             override fun failedSyncCountFlow(): Flow<Int> = flowOf(0)
             override fun lastSyncTimeFlow(): Flow<Long?> = flowOf(null)
         }
+    }
+
+    suspend fun bootstrap(context: Context): UrbanBootstrapResult {
+        return UrbanBootstrap.initialize(context)
+    }
+
+    fun bootstrapStatus(): UrbanBootstrapStatus {
+        return UrbanBootstrap.status()
+    }
+
+    fun isPlatformReady(context: Context): Boolean {
+        val status = bootstrapStatus()
+        return status.identityReady && status.workspaceReady
     }
 
     fun identity(context: Context): UrbanDeviceIdentity {

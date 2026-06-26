@@ -1,8 +1,13 @@
 package com.oropeza.urbanapp.core.diagnostics
 
+import com.oropeza.urbanapp.core.bootstrap.UrbanBootstrapStatus
+
 data class UrbanDiagnosticsSnapshot(
     val generatedAt: Long = System.currentTimeMillis(),
     
+    // Bootstrap
+    val bootstrapStatus: UrbanBootstrapStatus,
+
     // Identity
     val installationId: String,
     val shortInstallationId: String,

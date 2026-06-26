@@ -1,0 +1,125 @@
+package com.oropeza.urbanapp.core.bootstrap
+
+import android.content.Context
+import android.util.Log
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+object UrbanBootstrap {
+    private const val TAG = "UrbanBootstrap"
+    
+    private var currentStatus = UrbanBootstrapStatus(startedAt = System.currentTimeMillis())
+
+    fun status(): UrbanBootstrapStatus = currentStatus
+
+    fun resetForTesting() {
+        currentStatus = UrbanBootstrapStatus(startedAt = System.currentTimeMillis())
+    }
+
+    suspend fun initialize(context: Context): UrbanBootstrapResult = withContext(Dispatchers.IO) {
+        val startTime = System.currentTimeMillis()
+        currentStatus = currentStatus.copy(
+            startedAt = startTime,
+            status = "RUNNING",
+            errors = emptyList(),
+            warnings = emptyList()
+        )
+
+        try {
+            // 1. Identity (Critical)
+            try {
+                UrbanRuntime.identity(context)
+                currentStatus = currentStatus.copy(identityReady = true)
+            } catch (e: Exception) {
+                Log.e(TAG, "Identity initialization failed", e)
+                return@withContext failure("Critical failure: Identity could not be initialized")
+            }
+
+            // 2. Workspace (Critical)
+            try {
+                UrbanRuntime.workspace(context)
+                currentStatus = currentStatus.copy(workspaceReady = true)
+            } catch (e: Exception) {
+                Log.e(TAG, "Workspace initialization failed", e)
+                return@withContext failure("Critical failure: Workspace could not be loaded")
+            }
+
+            // 3. Permissions
+            try {
+                UrbanRuntime.permissions(context)
+                currentStatus = currentStatus.copy(permissionsReady = true)
+            } catch (e: Exception) {
+                Log.w(TAG, "Permissions initialization warning", e)
+                currentStatus = currentStatus.addWarning("Permissions using local defaults due to initialization error")
+            }
+
+            // 4. License
+            try {
+                UrbanRuntime.license(context)
+                currentStatus = currentStatus.copy(licenseReady = true)
+            } catch (e: Exception) {
+                Log.w(TAG, "License initialization warning", e)
+                currentStatus = currentStatus.addWarning("License verification deferred due to initialization error")
+            }
+
+            // 5. Configuration
+            try {
+                UrbanRuntime.remoteConfig(context)
+                currentStatus = currentStatus.copy(configurationReady = true)
+            } catch (e: Exception) {
+                Log.w(TAG, "Configuration initialization warning", e)
+                currentStatus = currentStatus.addWarning("Using local configuration defaults")
+            }
+
+            // 6. Sync status
+            try {
+                UrbanRuntime.syncStatus()
+                currentStatus = currentStatus.copy(syncReady = true)
+            } catch (e: Exception) {
+                Log.w(TAG, "Sync status initialization warning", e)
+                currentStatus = currentStatus.addWarning("Sync status monitoring partially ready")
+            }
+
+            // 7. Diagnostics
+            try {
+                UrbanRuntime.diagnostics(context)
+                currentStatus = currentStatus.copy(diagnosticsReady = true)
+            } catch (e: Exception) {
+                Log.w(TAG, "Diagnostics initialization warning", e)
+                currentStatus = currentStatus.addWarning("Full diagnostics capture partially ready")
+            }
+
+            // Finalize status
+            val finishedAt = System.currentTimeMillis()
+            val finalStatus = if (currentStatus.warnings.isNotEmpty()) "WARNING" else "SUCCESS"
+            currentStatus = currentStatus.copy(
+                status = finalStatus,
+                finishedAt = finishedAt
+            )
+
+            if (finalStatus == "SUCCESS") {
+                UrbanBootstrapResult.Success(currentStatus)
+            } else {
+                UrbanBootstrapResult.Warning(currentStatus)
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected bootstrap failure", e)
+            failure("Unexpected bootstrap failure: ${e.message}")
+        }
+    }
+
+    private fun failure(error: String): UrbanBootstrapResult {
+        currentStatus = currentStatus.copy(
+            status = "FAILED",
+            finishedAt = System.currentTimeMillis(),
+            errors = currentStatus.errors + error
+        )
+        return UrbanBootstrapResult.Failure(currentStatus)
+    }
+
+    private fun UrbanBootstrapStatus.addWarning(warning: String): UrbanBootstrapStatus {
+        return this.copy(warnings = this.warnings + warning)
+    }
+}

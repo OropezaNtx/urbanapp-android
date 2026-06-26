@@ -18,6 +18,7 @@ object UrbanDiagnosticsProvider {
     suspend fun buildSnapshot(context: Context): UrbanDiagnosticsSnapshot {
         val runtimeStatus = UrbanRuntime.getRuntimeStatus(context)
         val identity = UrbanRuntime.identity(context)
+        val bootstrap = UrbanRuntime.bootstrapStatus()
 
         // Battery
         val batteryStatus: Intent? = IntentFilter(Intent.ACTION_BATTERY_CHANGED).let { filter ->
@@ -58,6 +59,8 @@ object UrbanDiagnosticsProvider {
         } else true
 
         return UrbanDiagnosticsSnapshot(
+            generatedAt = System.currentTimeMillis(),
+            bootstrapStatus = bootstrap,
             installationId = identity.installationId,
             shortInstallationId = runtimeStatus.shortInstallationId,
             androidId = identity.androidId,

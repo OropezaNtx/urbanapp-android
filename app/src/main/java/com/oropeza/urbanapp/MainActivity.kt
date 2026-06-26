@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.rememberNavController
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.core.platform.UrbanSyncStatusProvider
@@ -25,6 +26,9 @@ class MainActivity : ComponentActivity() {
         })
 
         setContent {
+            LaunchedEffect(Unit) {
+                UrbanRuntime.bootstrap(applicationContext)
+            }
             UrbanAppTheme {
                 val navController = rememberNavController()
                 Surface(color = MaterialTheme.colorScheme.background) {
