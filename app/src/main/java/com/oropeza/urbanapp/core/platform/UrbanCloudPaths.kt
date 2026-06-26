@@ -22,6 +22,18 @@ object UrbanCloudPaths {
     fun tripPath(workspace: UrbanWorkspace, cloudTripId: String) =
         "${projectPath(workspace)}/trips/$cloudTripId"
 
+    fun userPath(orgId: String, userId: String) = 
+        "asd_organizations/$orgId/users/$userId"
+
+    fun rolePath(orgId: String, roleId: String) = 
+        "asd_organizations/$orgId/roles/$roleId"
+
+    fun permissionPath(orgId: String, permissionId: String) = 
+        "asd_organizations/$orgId/permissions/$permissionId"
+
+    fun projectUserPath(orgId: String, projectId: String, userId: String) =
+        "asd_organizations/$orgId/projects/$projectId/users/$userId"
+
     // Backward compatibility (to be removed in next sprint)
     fun installationPath(orgId: String, projectId: String, installationId: String) =
         "${projectPath(orgId, projectId)}/installations/$installationId"

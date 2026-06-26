@@ -6,6 +6,9 @@ import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.platform.UrbanSyncStatusProvider
 import com.oropeza.urbanapp.core.platform.UrbanWorkspace
 import com.oropeza.urbanapp.core.platform.UrbanWorkspaceRepository
+import com.oropeza.urbanapp.core.auth.UrbanAccessManager
+import com.oropeza.urbanapp.core.auth.UrbanUser
+import com.oropeza.urbanapp.core.auth.UrbanPermissionSet
 import com.oropeza.urbanapp.core.config.UrbanConfigurationManager
 import com.oropeza.urbanapp.core.config.UrbanConfigurationRepository
 import com.oropeza.urbanapp.core.config.UrbanRemoteConfiguration
@@ -95,6 +98,22 @@ object UrbanRuntime {
 
     fun licenseStatus(context: Context): UrbanLicenseStatus {
         return UrbanLicenseManager.getLicenseStatus(context)
+    }
+
+    fun currentUser(context: Context): UrbanUser {
+        return UrbanAccessManager.currentUser(context)
+    }
+
+    fun permissions(context: Context): UrbanPermissionSet {
+        return UrbanAccessManager.permissions(context)
+    }
+
+    fun hasPermission(context: Context, code: String): Boolean {
+        return UrbanAccessManager.hasPermission(context, code)
+    }
+
+    fun can(context: Context, module: String, action: String): Boolean {
+        return UrbanAccessManager.can(context, module, action)
     }
 
     suspend fun syncNow(context: Context): Result<Unit> {

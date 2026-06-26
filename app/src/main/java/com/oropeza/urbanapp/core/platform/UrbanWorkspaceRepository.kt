@@ -3,6 +3,7 @@ package com.oropeza.urbanapp.core.platform
 import android.content.Context
 import com.oropeza.urbanapp.core.config.UrbanRemoteConfiguration
 import com.oropeza.urbanapp.core.license.UrbanLicenseStatus
+import com.oropeza.urbanapp.core.auth.UrbanAccessRepository
 
 class UrbanWorkspaceRepository(private val context: Context) {
 
@@ -10,6 +11,8 @@ class UrbanWorkspaceRepository(private val context: Context) {
         val orgId = UrbanPlatformSettings.getOrganizationId(context)
         val projId = UrbanPlatformSettings.getProjectId(context)
         val env = UrbanPlatformSettings.getEnvironment(context)
+        
+        val accessRepo = UrbanAccessRepository(context)
         
         // Initial implementation using SharedPreferences defaults
         return UrbanWorkspace(
@@ -32,6 +35,9 @@ class UrbanWorkspaceRepository(private val context: Context) {
             environment = env,
             configuration = UrbanRemoteConfiguration(),
             licenseStatus = UrbanLicenseStatus.ACTIVE,
+            currentUser = accessRepo.getCurrentUser(),
+            roles = accessRepo.getDefaultRoles(),
+            permissions = accessRepo.getDefaultPermissions(),
             modulesEnabled = listOf("ASD", "FOV", "CC"),
             createdAt = System.currentTimeMillis(),
             updatedAt = System.currentTimeMillis()
