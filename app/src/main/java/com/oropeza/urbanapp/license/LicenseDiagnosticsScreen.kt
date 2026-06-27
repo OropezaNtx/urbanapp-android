@@ -29,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.oropeza.urbanapp.core.config.UrbanConfiguration
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -43,7 +45,11 @@ fun LicenseDiagnosticsScreen(
     val manager = remember { LicenseManager(context) }
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf(manager.getCachedState()) }
+    var config by remember { mutableStateOf(UrbanRuntime.configuration(context)) }
+    var configSource by remember { mutableStateOf(UrbanRuntime.configurationSource(context)) }
+    var configLastFetchAt by remember { mutableStateOf(UrbanRuntime.configurationLastFetchAt(context)) }
     var loading by remember { mutableStateOf(false) }
+    var loadingConfig by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun refreshRemote() {
@@ -56,6 +62,25 @@ fun LicenseDiagnosticsScreen(
                 error = e.message ?: e.toString()
             } finally {
                 loading = false
+            }
+        }
+    }
+
+    fun refreshConfig() {
+        loadingConfig = true
+        error = null
+        scope.launch {
+            try {
+                config = UrbanRuntime.refreshConfiguration(context)
+                configSource = UrbanRuntime.configurationSource(context)
+                configLastFetchAt = UrbanRuntime.configurationLastFetchAt(context)
+            } catch (e: Exception) {
+                error = e.message ?: e.toString()
+                config = UrbanRuntime.configuration(context)
+                configSource = UrbanRuntime.configurationSource(context)
+                configLastFetchAt = UrbanRuntime.configurationLastFetchAt(context)
+            } finally {
+                loadingConfig = false
             }
         }
     }
@@ -83,6 +108,10 @@ fun LicenseDiagnosticsScreen(
                 }
             }
 
+            Button(onClick = { refreshConfig() }, enabled = !loadingConfig, modifier = Modifier.fillMaxWidth()) {
+                Text(if (loadingConfig) "Actualizando configuración..." else "Actualizar app_config")
+            }
+
             error?.let {
                 StatusCard(title = "Error", value = it, color = MaterialTheme.colorScheme.error)
             }
@@ -95,6 +124,8 @@ fun LicenseDiagnosticsScreen(
                 LicenseModulesCard(current.license.modules)
                 LicenseRawCard(current)
             }
+
+            AppConfigCard(config, configSource, configLastFetchAt)
         }
     }
 }
@@ -164,6 +195,29 @@ private fun LicenseRawCard(state: InstallationLicenseState) {
             InfoLine("isExpiredByDate", state.license.isExpiredByDate.toString())
             InfoLine("gracePeriodDays", state.license.gracePeriodDays.toString())
             InfoLine("checkedAt", formatMs(state.checkedAt))
+        }
+    }
+}
+
+@Composable
+private fun AppConfigCard(config: UrbanConfiguration, source: String, lastFetchAt: Long) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Urban Platform Core · app_config", style = MaterialTheme.typography.titleMedium)
+            InfoLine("Fuente", source)
+            InfoLine("Última descarga", formatMs(lastFetchAt))
+            InfoLine("Ambiente", config.environment)
+            InfoLine("Heartbeat", "${config.heartbeatIntervalSeconds} s")
+            InfoLine("Sync", "${config.syncIntervalSeconds} s")
+            InfoLine("Track chunk", config.trackChunkSize.toString())
+            InfoLine("GPS profile", config.gpsProfile)
+            InfoLine("Min app version", config.minSupportedAppVersion ?: "—")
+            InfoLine("Módulos", config.enabledModules.joinToString(", "))
+            Spacer(Modifier.height(4.dp))
+            Text("Feature flags", style = MaterialTheme.typography.labelMedium)
+            config.featureFlags.toSortedMap().forEach { (flag, enabled) ->
+                ModuleLine(flag, enabled)
+            }
         }
     }
 }
