@@ -20,9 +20,17 @@ data class AsdTripCloudDto(
     val appVersionCode: Long,
     val startTime: Long,
     val endTime: Long?,
-    val status: String, // ACTIVE / CLOSED
+    val status: String,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val company: String?,
+    val seatCapacity: Int?,
+    val baseStart: String?,
+    val baseEnd: String?,
+    val esFs: String?,
+    val deviceNumber: String?,
+    val observerSex: String?,
+    val notes: String?
 )
 
 data class AsdEventCloudDto(
@@ -40,6 +48,19 @@ data class AsdEventCloudDto(
     val lon: Double,
     val alt: Double?,
     val accuracy: Double,
+    val stopLat: Double,
+    val stopLon: Double,
+    val stopAltM: Double?,
+    val stopAccM: Double,
+    val stopProvider: String?,
+    val stopFixTime: Long,
+    val startLat: Double,
+    val startLon: Double,
+    val startAltM: Double?,
+    val startAccM: Double,
+    val startProvider: String?,
+    val startFixTime: Long,
+    val locationStatus: String,
     val menUp: Int,
     val womenUp: Int,
     val menDown: Int,
@@ -47,7 +68,10 @@ data class AsdEventCloudDto(
     val onboardMen: Int,
     val onboardWomen: Int,
     val delayCodes: String?,
+    val stopName: String?,
     val notes: String?,
+    val otherDelayDesc: String?,
+    val hasLuggage: Boolean,
     val createdAt: Long,
     val updatedAt: Long
 )
