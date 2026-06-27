@@ -50,6 +50,8 @@ fun LicenseDiagnosticsScreen(
     var configLastFetchAt by remember { mutableStateOf(UrbanRuntime.configurationLastFetchAt(context)) }
     var loading by remember { mutableStateOf(false) }
     var loadingConfig by remember { mutableStateOf(false) }
+    var loadingHeartbeat by remember { mutableStateOf(false) }
+    var lastHeartbeatResult by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun refreshRemote() {
@@ -85,6 +87,19 @@ fun LicenseDiagnosticsScreen(
         }
     }
 
+    fun publishHeartbeat() {
+        loadingHeartbeat = true
+        error = null
+        lastHeartbeatResult = null
+        scope.launch {
+            val result = UrbanRuntime.publishPlatformHeartbeat(context)
+            result
+                .onSuccess { lastHeartbeatResult = "Heartbeat enviado correctamente a installations/{installationId}." }
+                .onFailure { error = it.message ?: it.toString() }
+            loadingHeartbeat = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (state == null) refreshRemote()
     }
@@ -110,6 +125,14 @@ fun LicenseDiagnosticsScreen(
 
             Button(onClick = { refreshConfig() }, enabled = !loadingConfig, modifier = Modifier.fillMaxWidth()) {
                 Text(if (loadingConfig) "Actualizando configuración..." else "Actualizar app_config")
+            }
+
+            Button(onClick = { publishHeartbeat() }, enabled = !loadingHeartbeat, modifier = Modifier.fillMaxWidth()) {
+                Text(if (loadingHeartbeat) "Enviando heartbeat..." else "Enviar heartbeat de plataforma")
+            }
+
+            lastHeartbeatResult?.let {
+                StatusCard(title = "Heartbeat", value = it, color = Color(0xFF16A34A))
             }
 
             error?.let {
