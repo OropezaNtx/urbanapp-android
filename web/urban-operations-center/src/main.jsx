@@ -16,7 +16,12 @@ const fmt = (v) => {
 
 const val = (v) => v === null || v === undefined || v === '' ? '—' : String(v);
 const num = (v) => Number(v ?? 0) || 0;
-const closed = (t) => Boolean(t.endTime) || String(t.esFs || '').toUpperCase().includes('FS');
+const closed = (t) => {
+  const status = String(t?.status || '').toUpperCase();
+  if (status === 'ACTIVE') return false;
+  if (status === 'CLOSED') return true;
+  return Boolean(t?.endTime);
+};
 
 // Compatibilidad entre esquema Room/backup y esquema Cloud DTO.
 const menUp = (e) => num(e.menUp ?? e.paxMenUp);
