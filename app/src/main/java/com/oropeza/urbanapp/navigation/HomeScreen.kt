@@ -23,7 +23,8 @@ fun HomeScreen(
     onOpenDashboard: () -> Unit,
     onOpenAsd: () -> Unit,
     onOpenCc: () -> Unit,
-    onOpenFov: () -> Unit
+    onOpenFov: () -> Unit,
+    onOpenLicense: () -> Unit
 ) {
     val context = LocalContext.current
     val identity = remember { UrbanRuntime.identity(context) }
@@ -60,6 +61,10 @@ fun HomeScreen(
 
             OutlinedButton(onClick = onOpenFov, modifier = Modifier.fillMaxWidth()) {
                 Text("FOV (Frecuencia Observable)")
+            }
+
+            OutlinedButton(onClick = onOpenLicense, modifier = Modifier.fillMaxWidth()) {
+                Text("Licencia y dispositivo")
             }
 
             Spacer(Modifier.weight(1f))
