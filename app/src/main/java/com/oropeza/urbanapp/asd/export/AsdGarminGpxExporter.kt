@@ -37,6 +37,21 @@ object AsdGarminGpxExporter {
             .replace("'", "&apos;")
     }
 
+    private fun trackName(trip: Trip): String =
+        if (trip.direction.uppercase(Locale.ROOT).contains("REGRESO")) "REGRESO" else "IDA"
+
+    private fun garminTrackColor(trip: Trip): String =
+        if (trackName(trip) == "REGRESO") "Cyan" else "Red"
+
+    private fun waypointNameFromEvent(stop: StopEvent): String {
+        val wp = when {
+            stop.waypointStopId > 0 -> stop.waypointStopId
+            stop.waypointStartId > 0 -> stop.waypointStartId
+            else -> 0
+        }
+        return if (wp > 0) "%03d".format(Locale.US, wp) else "000"
+    }
+
     private val GPX_HEADER = """<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <gpx
  xmlns="http://www.topografix.com/GPX/1/1"
@@ -70,13 +85,14 @@ object AsdGarminGpxExporter {
             out.appendLine("    <time>${fmtIso(trip.startTime)}</time>")
             out.appendLine("  </metadata>")
 
-            val trackName = if (trip.direction.uppercase().contains("REGRESO")) "REGRESO" else "IDA"
+            val name = trackName(trip)
+            val color = garminTrackColor(trip)
 
             out.appendLine("  <trk>")
-            out.appendLine("    <name>${cleanForMapSource(trackName)}</name>")
+            out.appendLine("    <name>${cleanForMapSource(name)}</name>")
             out.appendLine("    <extensions>")
             out.appendLine("      <gpxx:TrackExtension>")
-            out.appendLine("        <gpxx:DisplayColor>Blue</gpxx:DisplayColor>")
+            out.appendLine("        <gpxx:DisplayColor>$color</gpxx:DisplayColor>")
             out.appendLine("      </gpxx:TrackExtension>")
             out.appendLine("    </extensions>")
 
@@ -116,18 +132,19 @@ object AsdGarminGpxExporter {
             out.appendLine("    </link>")
             out.appendLine("  </metadata>")
 
-            // Filtrar eventos GPS_PENDING o sin coordenadas
-            val validStops = stops.filter { 
-                it.stopLat != 0.0 && it.stopLon != 0.0 && it.locationStatus != "GPS_PENDING" 
+            // Filtrar eventos GPS_PENDING o sin coordenadas.
+            // El nombre del WP debe respetar la numeracion operativa real de Room,
+            // no un contador local 001, 002, 003. Ejemplo: 143, 145, 147...
+            val validStops = stops.filter {
+                it.stopLat != 0.0 && it.stopLon != 0.0 && it.locationStatus != "GPS_PENDING"
             }.sortedBy { it.timestamp }
 
-            var count = 1
             for (s in validStops) {
-                val wpName = "%03d".format(count++)
+                val wpName = waypointNameFromEvent(s)
                 val ele = if (s.stopAltM > 0.0) s.stopAltM else 0.0
                 out.appendLine("""  <wpt lat="${"%.6f".format(Locale.US, s.stopLat)}" lon="${"%.6f".format(Locale.US, s.stopLon)}">""")
                 out.appendLine("    <ele>${"%.1f".format(Locale.US, ele)}</ele>")
-                out.appendLine("    <time>${fmtIso(s.timestamp)}</time>")
+                out.appendLine("    <time>${fmtIso(if (s.stopTime > 0L) s.stopTime else s.timestamp)}</time>")
                 out.appendLine("    <name>$wpName</name>")
                 out.appendLine("    <sym>Flag, Blue</sym>")
                 out.appendLine("  </wpt>")
