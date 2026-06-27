@@ -3,16 +3,21 @@ package com.oropeza.urbanapp.navigation
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.oropeza.urbanapp.BuildConfig
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
+import com.oropeza.urbanapp.license.InstallationLicenseState
+import com.oropeza.urbanapp.license.LicenseManager
+import com.oropeza.urbanapp.license.LicensePolicy
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -31,9 +36,27 @@ fun HomeScreen(
     val orgId = remember { UrbanRuntime.platformSettings().getOrganizationId(context) }
     val projId = remember { UrbanRuntime.platformSettings().getProjectId(context) }
     val env = remember { UrbanRuntime.platformSettings().getEnvironment(context) }
+    val licenseManager = remember { LicenseManager(context) }
+    var licenseState by remember { mutableStateOf<InstallationLicenseState?>(licenseManager.getCachedState()) }
     
     val pendingSyncCount by UrbanRuntime.syncStatus().pendingSyncCountFlow().collectAsState(initial = 0)
     val lastSyncTime by UrbanRuntime.syncStatus().lastSyncTimeFlow().collectAsState(initial = null)
+
+    LaunchedEffect(Unit) {
+        runCatching { licenseManager.checkLicense() }
+            .onSuccess { licenseState = it }
+    }
+
+    val canOpenDashboard = LicensePolicy.canUseModule(licenseState, LicensePolicy.Module.DASHBOARD)
+    val canOpenAsd = LicensePolicy.canUseModule(licenseState, LicensePolicy.Module.ASD)
+    val canOpenCc = LicensePolicy.canUseModule(licenseState, LicensePolicy.Module.CC)
+    val canOpenFov = LicensePolicy.canUseModule(licenseState, LicensePolicy.Module.FOV)
+    val licenseStatusColor = when {
+        !LicensePolicy.enforcementEnabled -> MaterialTheme.colorScheme.primary
+        licenseState?.canUseApp == true -> Color(0xFF16A34A)
+        licenseState?.canUseOffline == true -> Color(0xFFEAB308)
+        else -> MaterialTheme.colorScheme.error
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("UrbanApp") }) }
@@ -47,19 +70,54 @@ fun HomeScreen(
             Text("Pantalla principal", style = MaterialTheme.typography.titleLarge)
             Text("Selecciona un módulo:")
 
-            Button(onClick = onOpenDashboard, modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Estado de licencia", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        LicensePolicy.statusMessage(licenseState),
+                        color = licenseStatusColor,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        "Enforcement: ${if (LicensePolicy.enforcementEnabled) "ACTIVO" else "DIAGNÓSTICO"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Button(
+                onClick = onOpenDashboard,
+                enabled = canOpenDashboard,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("Dashboard Operativo")
             }
 
-            OutlinedButton(onClick = onOpenAsd, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = onOpenAsd,
+                enabled = canOpenAsd,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("Ascensos y Descensos (ASD)")
             }
 
-            OutlinedButton(onClick = onOpenCc, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = onOpenCc,
+                enabled = canOpenCc,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("Cierres de Circuito (CC)")
             }
 
-            OutlinedButton(onClick = onOpenFov, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = onOpenFov,
+                enabled = canOpenFov,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("FOV (Frecuencia Observable)")
             }
 
