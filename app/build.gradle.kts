@@ -23,6 +23,7 @@ val keystoreProperties = Properties().apply {
 }
 
 val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY", "")
+val licenseEnforcementEnabled: String = localProperties.getProperty("LICENSE_ENFORCEMENT_ENABLED", "false")
 
 android {
     namespace = "com.oropeza.urbanapp"
@@ -42,7 +43,7 @@ android {
 
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
         buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
-        
+        buildConfigField("Boolean", "LICENSE_ENFORCEMENT_ENABLED", licenseEnforcementEnabled)
         buildConfigField("Long", "BUILD_TIME", "${System.currentTimeMillis()}L")
     }
 
