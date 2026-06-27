@@ -6,7 +6,7 @@ const GPXX_NS = 'http://www.garmin.com/xmlschemas/GpxExtensions/v3';
 const WPTX_NS = 'http://www.garmin.com/xmlschemas/WaypointExtension/v1';
 const GPXTPX_NS = 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1';
 const GPXTRKX_NS = 'http://www.garmin.com/xmlschemas/TrackStatsExtension/v1';
-const KML_BLUE_FLAG_ICON = 'http://maps.google.com/mapfiles/kml/shapes/flag.png';
+const KML_BLUE_FLAG_ICON = 'https://www.gpsvisualizer.com/google_maps/icons/garmin/24x24/Flag%2C_Blue.png';
 
 function safe(value) { return value === null || value === undefined ? '' : String(value); }
 function xmlEscape(value) {
@@ -226,9 +226,27 @@ export function buildGpx(trip, events = [], chunks = []) { return buildMapSource
 function kmlWaypointPlacemark(e, idx) {
   return [
     '      <Placemark>',
-    `        <name>${waypointName(idx)}</name>`,
-    '        <styleUrl>#blueFlag</styleUrl>',
-    `        <Point><coordinates>${formatNum(eventLon(e), 15)},${formatNum(eventLat(e), 15)},${formatNum(eventAlt(e), 6) || '0'}</coordinates></Point>`,
+    `        <name><![CDATA[${waypointName(idx)}]]></name>`,
+    '        <Snippet></Snippet>',
+    '        <description><![CDATA[&nbsp;]]></description>',
+    '        <Style>',
+    '          <IconStyle>',
+    '            <color>ffffffff</color>',
+    '            <scale>0.75</scale>',
+    '            <Icon>',
+    `              <href>${KML_BLUE_FLAG_ICON}</href>`,
+    '            </Icon>',
+    '            <hotSpot x="0.5" xunits="fraction" y="0.5" yunits="fraction" />',
+    '          </IconStyle>',
+    '          <LabelStyle>',
+    '            <color>ffffffff</color>',
+    '            <scale>1</scale>',
+    '          </LabelStyle>',
+    '        </Style>',
+    '        <Point>',
+    '          <altitudeMode>clampToGround</altitudeMode>',
+    `          <coordinates>${formatNum(eventLon(e), 15)},${formatNum(eventLat(e), 15)},${formatNum(eventAlt(e), 6) || '0'}</coordinates>`,
+    '        </Point>',
     '      </Placemark>',
   ].join('\n');
 }
