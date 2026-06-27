@@ -4,12 +4,12 @@ import android.content.Context
 import android.os.BatteryManager
 import android.provider.Settings
 import android.util.Log
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
+import com.oropeza.urbanapp.license.LicenseCache
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -30,6 +30,7 @@ class LiveDevicePublisher(
 ) {
     private val appContext = context.applicationContext
     private val installationId: String = resolveInstallationId(appContext)
+    private val licenseCache = LicenseCache(appContext)
 
     private var lastPublishedAtMs: Long = 0L
     private var lastPublishedLat: Double? = null
@@ -130,6 +131,7 @@ class LiveDevicePublisher(
         syncVersion += 1L
         val nowMs = System.currentTimeMillis()
         val battery = readBattery(appContext)
+        val licenseState = licenseCache.load()
 
         val data = hashMapOf<String, Any?>(
             "installationId" to installationId,
@@ -188,6 +190,19 @@ class LiveDevicePublisher(
                 "model" to android.os.Build.MODEL,
                 "manufacturer" to android.os.Build.MANUFACTURER,
                 "androidVersion" to android.os.Build.VERSION.RELEASE
+            ),
+
+            "license" to mapOf(
+                "licenseId" to licenseState?.license?.licenseId,
+                "customerId" to licenseState?.license?.customerId,
+                "projectId" to licenseState?.license?.projectId,
+                "licenseStatus" to licenseState?.license?.status,
+                "installationStatus" to licenseState?.installationStatus,
+                "plan" to licenseState?.license?.plan,
+                "source" to licenseState?.license?.source,
+                "lastCheckedAt" to licenseState?.license?.lastCheckedAt,
+                "canUseApp" to licenseState?.canUseApp,
+                "canUseOffline" to licenseState?.canUseOffline
             ),
 
             "tripStatus" to tripStatus,
