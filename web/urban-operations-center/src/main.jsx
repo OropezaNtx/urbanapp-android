@@ -7,6 +7,7 @@ import TrackSummary, { buildTrackMetrics } from './components/TrackSummary';
 import TripMap from './components/TripMap';
 import TripInsights from './components/TripInsights';
 import TripExportPanel from './components/TripExportPanel';
+import TripPlayback from './components/TripPlayback';
 import './styles.css';
 
 const fmt = (v) => {
@@ -191,6 +192,11 @@ function App() {
       <section className="card">
         <h3><MapPin size={18} /> Mapa del recorrido</h3>
         <TripMap chunks={trackChunks} events={allEvents} />
+      </section>
+
+      <section className="card">
+        <h3><Activity size={18} /> Playback del recorrido</h3>
+        <TripPlayback chunks={trackChunks} events={allEvents} />
       </section>
 
       <section className="card">
