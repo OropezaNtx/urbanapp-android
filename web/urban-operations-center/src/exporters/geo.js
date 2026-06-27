@@ -101,20 +101,60 @@ function tripName(trip) {
   return safe(trip?.routeName || `Urban trip ${tripId(trip)}`);
 }
 
-function trackName(trip) {
+function directionKey(trip) {
   const dir = String(trip?.direction || '').trim().toUpperCase();
-  if (dir.includes('IDA')) return 'IDA';
   if (dir.includes('REGRESO')) return 'REGRESO';
-  return safe(trip?.routeNumber || trip?.tripNumber || trip?.routeId || tripId(trip));
+  return 'IDA';
+}
+
+function directionTitle(trip) {
+  return directionKey(trip) === 'REGRESO' ? 'Regreso' : 'Ida';
+}
+
+function trackName(trip) {
+  return directionKey(trip);
+}
+
+function garminTrackColor(trip) {
+  return directionKey(trip) === 'REGRESO' ? 'Cyan' : 'Red';
+}
+
+function kmlTrackColor(trip) {
+  // KML usa AABBGGRR. IDA rojo: ff0000ff. REGRESO cyan: ffffff00.
+  return directionKey(trip) === 'REGRESO' ? 'ffffff00' : 'ff0000ff';
+}
+
+function cleanFilePart(value, fallback = 'NA') {
+  const s = safe(value || fallback)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\/:*?"<>|]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s || fallback;
+}
+
+function routeNumberForName(trip) {
+  const raw = safe(trip?.tripNumber ?? trip?.routeNumber ?? trip?.routeId ?? '1');
+  const match = raw.match(/\d+/);
+  return match ? match[0] : raw;
+}
+
+function idForName(trip) {
+  const raw = safe(trip?.localTripId ?? trip?.tripId ?? trip?.id ?? tripId(trip));
+  const cloudMatch = raw.match(/_(\d+)$/);
+  if (cloudMatch) return cloudMatch[1];
+  const match = raw.match(/\d+/);
+  return match ? match[0] : raw;
+}
+
+function exportBaseName(trip) {
+  const start = cleanFilePart(trip?.baseStart || trip?.startBase || trip?.base_inicio || 'Base inicio');
+  const end = cleanFilePart(trip?.baseEnd || trip?.endBase || trip?.base_fin || 'Base final');
+  return `ID_${idForName(trip)}_${start} - ${end}_R${routeNumberForName(trip)}_${directionTitle(trip)}`;
 }
 
 function fileBase(trip) {
-  const route = safe(trip?.routeName || 'UrbanTrip')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 70);
-  return `${tripId(trip)}_${route || 'UrbanTrip'}`;
+  return exportBaseName(trip).replace(/[^a-zA-Z0-9 _.-]+/g, '').slice(0, 120);
 }
 
 function collectTrackPoints(chunks = []) {
@@ -201,7 +241,7 @@ function trackDistanceMeters(points) {
   return Math.round(buildTrackMetrics([{ points }]).distance || 0);
 }
 
-function garminTrack(trip, points, { includeStats = false, color = 'Red' } = {}) {
+function garminTrack(trip, points, { includeStats = false, color = garminTrackColor(trip) } = {}) {
   const stats = includeStats ? [
     '    <extensions>',
     `      <gpxx:TrackExtension xmlns:gpxx="${GPXX_NS}">`,
@@ -247,7 +287,7 @@ export function buildGarminTrackGpx(trip, events = [], chunks = []) {
   return [
     garminHeader({ creator: 'eTrex 20', fullGarminNamespaces: true }),
     garminMetadata(metadataTime),
-    garminTrack({ ...trip, routeNumber: `Track actual: ${trackName(trip)}` }, points, { includeStats: true, color: 'Blue' }),
+    garminTrack(trip, points, { includeStats: true, color: garminTrackColor(trip) }),
     '</gpx>',
   ].join('\n');
 }
@@ -259,39 +299,22 @@ export function buildMapSourceCombinedGpx(trip, events = [], chunks = []) {
     garminHeader({ creator: 'MapSource 6.16.3', fullGarminNamespaces: false }),
     garminMetadata(nowIso(), boundsXml(events, points)),
     ...eventPoints.map((e, idx) => garminWaypoint(e, idx, true)),
-    garminTrack(trip, points, { includeStats: false, color: 'Red' }),
+    garminTrack(trip, points, { includeStats: false, color: garminTrackColor(trip) }),
     '</gpx>',
   ].join('\n');
 }
 
-// Mantiene compatibilidad con el botón GPX anterior, pero ahora genera el GPX combinado estilo MapSource.
 export function buildGpx(trip, events = [], chunks = []) {
   return buildMapSourceCombinedGpx(trip, events, chunks);
 }
 
-function kmlPointPlacemark(e, idx) {
-  const name = `${waypointName(idx)} · ${eventLabel(e)}`;
-  const desc = [
-    `Hora: ${fmtLocal(eventTime(e))}`,
-    `WP: ${safe(e.waypointStartId)} → ${safe(e.waypointStopId)}`,
-    `Suben: ${totalUp(e)} (${menUp(e)}/${womenUp(e)})`,
-    `Bajan: ${totalDown(e)} (${menDown(e)}/${womenDown(e)})`,
-    `GPS: ${safe(e.locationStatus || e.stopProvider || e.provider || e.startProvider)}`,
-    `Precisión: ${safe(e.stopAccM ?? e.accuracy ?? e.startAccM)} m`,
-    e.notes ? `Notas: ${e.notes}` : '',
-    e.otherDelayDesc ? `Otro: ${e.otherDelayDesc}` : '',
-  ].filter(Boolean).join('\n');
-  const type = String(eventType(e)).toUpperCase();
-  const delay = String(eventDelay(e)).trim();
-  const style = type.includes('BANDERA') ? '#flagStyle' : (type.includes('DEMORA') || delay ? '#delayStyle' : '#asdStyle');
-
+function kmlWaypointPlacemark(e, idx) {
   return [
-    '    <Placemark>',
-    `      <name>${xmlEscape(name)}</name>`,
-    `      <styleUrl>${style}</styleUrl>`,
-    `      <description><![CDATA[${desc.replaceAll(']]>', ']]&gt;')}]]></description>`,
-    `      <Point><coordinates>${formatNum(eventLon(e), 15)},${formatNum(eventLat(e), 15)},${formatNum(eventAlt(e), 6) || '0'}</coordinates></Point>`,
-    '    </Placemark>',
+    '      <Placemark>',
+    `        <name>${waypointName(idx)}</name>`,
+    '        <styleUrl>#blueFlag</styleUrl>',
+    `        <Point><coordinates>${formatNum(eventLon(e), 15)},${formatNum(eventLat(e), 15)},${formatNum(eventAlt(e), 6) || '0'}</coordinates></Point>`,
+    '      </Placemark>',
   ].join('\n');
 }
 
@@ -304,20 +327,29 @@ export function buildKml(trip, events = [], chunks = []) {
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<kml xmlns="http://www.opengis.net/kml/2.2">',
     '  <Document>',
-    `    <name>${xmlEscape(tripName(trip))}</name>`,
-    '    <Style id="trackStyle"><LineStyle><color>ff0000ff</color><width>5</width></LineStyle></Style>',
-    '    <Style id="asdStyle"><IconStyle><color>ffff6325</color><scale>1.1</scale></IconStyle></Style>',
-    '    <Style id="delayStyle"><IconStyle><color>ff1697f9</color><scale>1.1</scale></IconStyle></Style>',
-    '    <Style id="flagStyle"><IconStyle><color>ff4aa316</color><scale>1.1</scale></IconStyle></Style>',
-    '    <Placemark>',
-    `      <name>${xmlEscape(trackName(trip))}</name>`,
-    '      <styleUrl>#trackStyle</styleUrl>',
-    '      <LineString>',
-    '        <tessellate>1</tessellate>',
-    `        <coordinates>${coordinates}</coordinates>`,
-    '      </LineString>',
-    '    </Placemark>',
-    ...eventPoints.map(kmlPointPlacemark),
+    `    <name>${xmlEscape(exportBaseName(trip))}</name>`,
+    '    <Style id="blueFlag">',
+    '      <IconStyle>',
+    '        <scale>1.0</scale>',
+    '        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/blu-blank.png</href></Icon>',
+    '      </IconStyle>',
+    '    </Style>',
+    `    <Style id="trackStyle"><LineStyle><color>${kmlTrackColor(trip)}</color><width>4</width></LineStyle></Style>`,
+    '    <Folder>',
+    '      <name>Waypoints</name>',
+    ...eventPoints.map(kmlWaypointPlacemark),
+    '    </Folder>',
+    '    <Folder>',
+    '      <name>Tracks</name>',
+    '      <Placemark>',
+    `        <name>${xmlEscape(trackName(trip))}</name>`,
+    '        <styleUrl>#trackStyle</styleUrl>',
+    '        <LineString>',
+    '          <tessellate>1</tessellate>',
+    `          <coordinates>${coordinates}</coordinates>`,
+    '        </LineString>',
+    '      </Placemark>',
+    '    </Folder>',
     '  </Document>',
     '</kml>',
   ].join('\n');
@@ -331,16 +363,8 @@ export function buildGeoJson(trip, events = [], chunks = []) {
   if (points.length) {
     features.push({
       type: 'Feature',
-      properties: {
-        kind: 'track',
-        name: tripName(trip),
-        tripId: tripId(trip),
-        pointCount: points.length,
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: points.map((p) => [Number(p.lon), Number(p.lat), Number(p.alt ?? 0)]),
-      },
+      properties: { kind: 'track', name: trackName(trip), tripId: tripId(trip), pointCount: points.length },
+      geometry: { type: 'LineString', coordinates: points.map((p) => [Number(p.lon), Number(p.lat), Number(p.alt ?? 0)]) },
     });
   }
 
@@ -367,18 +391,11 @@ export function buildGeoJson(trip, events = [], chunks = []) {
         accuracy: e.stopAccM ?? e.accuracy ?? e.startAccM ?? null,
         notes: e.notes ?? null,
       },
-      geometry: {
-        type: 'Point',
-        coordinates: [Number(eventLon(e)), Number(eventLat(e)), Number(eventAlt(e) || 0)],
-      },
+      geometry: { type: 'Point', coordinates: [Number(eventLon(e)), Number(eventLat(e)), Number(eventAlt(e) || 0)] },
     });
   });
 
-  return JSON.stringify({
-    type: 'FeatureCollection',
-    name: tripName(trip),
-    features,
-  }, null, 2);
+  return JSON.stringify({ type: 'FeatureCollection', name: exportBaseName(trip), features }, null, 2);
 }
 
 export function buildTrackCsv(trip, events = [], chunks = []) {
@@ -399,13 +416,9 @@ export function buildTrackCsv(trip, events = [], chunks = []) {
     pointIndex: p.pointIndex,
   }));
 
-  return [
-    fields.join(','),
-    ...rows.map((r) => fields.map((f) => csvEscape(r[f])).join(',')),
-  ].join('\n');
+  return [fields.join(','), ...rows.map((r) => fields.map((f) => csvEscape(r[f])).join(','))].join('\n');
 }
 
-// ZIP sin compresión para generar KMZ en navegador sin dependencias externas.
 const crcTable = (() => {
   const table = new Uint32Array(256);
   for (let i = 0; i < 256; i += 1) {
@@ -442,52 +455,18 @@ function buildZipSingleFile(filename, content) {
   const local = [];
   const central = [];
 
-  writeU32(local, 0x04034b50);
-  writeU16(local, 20);
-  writeU16(local, 0);
-  writeU16(local, 0);
-  writeU16(local, dosTime);
-  writeU16(local, dosDate);
-  writeU32(local, crc);
-  writeU32(local, data.length);
-  writeU32(local, data.length);
-  writeU16(local, nameBytes.length);
-  writeU16(local, 0);
-  writeBytes(local, nameBytes);
-  writeBytes(local, data);
+  writeU32(local, 0x04034b50); writeU16(local, 20); writeU16(local, 0); writeU16(local, 0); writeU16(local, dosTime); writeU16(local, dosDate);
+  writeU32(local, crc); writeU32(local, data.length); writeU32(local, data.length); writeU16(local, nameBytes.length); writeU16(local, 0);
+  writeBytes(local, nameBytes); writeBytes(local, data);
 
-  writeU32(central, 0x02014b50);
-  writeU16(central, 20);
-  writeU16(central, 20);
-  writeU16(central, 0);
-  writeU16(central, 0);
-  writeU16(central, dosTime);
-  writeU16(central, dosDate);
-  writeU32(central, crc);
-  writeU32(central, data.length);
-  writeU32(central, data.length);
-  writeU16(central, nameBytes.length);
-  writeU16(central, 0);
-  writeU16(central, 0);
-  writeU16(central, 0);
-  writeU16(central, 0);
-  writeU32(central, 0);
-  writeU32(central, 0);
-  writeBytes(central, nameBytes);
+  writeU32(central, 0x02014b50); writeU16(central, 20); writeU16(central, 20); writeU16(central, 0); writeU16(central, 0); writeU16(central, dosTime); writeU16(central, dosDate);
+  writeU32(central, crc); writeU32(central, data.length); writeU32(central, data.length); writeU16(central, nameBytes.length); writeU16(central, 0); writeU16(central, 0); writeU16(central, 0); writeU16(central, 0);
+  writeU32(central, 0); writeU32(central, 0); writeBytes(central, nameBytes);
 
   const end = [];
-  writeU32(end, 0x06054b50);
-  writeU16(end, 0);
-  writeU16(end, 0);
-  writeU16(end, 1);
-  writeU16(end, 1);
-  writeU32(end, central.length);
-  writeU32(end, local.length);
-  writeU16(end, 0);
+  writeU32(end, 0x06054b50); writeU16(end, 0); writeU16(end, 0); writeU16(end, 1); writeU16(end, 1); writeU32(end, central.length); writeU32(end, local.length); writeU16(end, 0);
 
-  return new Blob([new Uint8Array(local), new Uint8Array(central), new Uint8Array(end)], {
-    type: 'application/vnd.google-earth.kmz',
-  });
+  return new Blob([new Uint8Array(local), new Uint8Array(central), new Uint8Array(end)], { type: 'application/vnd.google-earth.kmz' });
 }
 
 export function downloadGarminWaypointsGpx(trip, events) {
