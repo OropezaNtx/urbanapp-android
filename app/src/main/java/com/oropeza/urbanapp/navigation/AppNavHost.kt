@@ -17,6 +17,7 @@ import com.oropeza.urbanapp.asd.ui.viewmodel.AsdTripListScreen
 import com.oropeza.urbanapp.cc.ui.CcSessionListScreen
 import com.oropeza.urbanapp.cc.ui.CcNewSessionScreen
 import com.oropeza.urbanapp.cc.ui.CcSessionDetailScreen
+import com.oropeza.urbanapp.license.LicenseDiagnosticsScreen
 
 // ✅ FOV
 import com.oropeza.urbanapp.fov.ui.FovMapScreen
@@ -38,8 +39,13 @@ fun AppNavHost(navController: NavHostController) {
                 onOpenDashboard = { navController.navigate("dashboard") },
                 onOpenAsd = { navController.navigate("asd_list") },
                 onOpenCc = { navController.navigate("cc_list") },
-                onOpenFov = { navController.navigate("fov_list") }
+                onOpenFov = { navController.navigate("fov_list") },
+                onOpenLicense = { navController.navigate("license_diag") }
             )
+        }
+
+        composable("license_diag") {
+            LicenseDiagnosticsScreen(onBack = { navController.popBackStack() })
         }
 
         composable("dashboard") {
