@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { Activity, MapPin, Search, Smartphone } from "lucide-react";
+import { Activity, MapPin, Search } from "lucide-react";
+import "./LiveDevicesPanel.css";
 
 const val = (value) => value === null || value === undefined || value === "" ? "—" : String(value);
 
