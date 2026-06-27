@@ -4,6 +4,7 @@ import { RefreshCw, Download, ArrowLeft, Bus, Users, MapPin } from 'lucide-react
 import { fetchDevices, fetchTripDetail, fetchTrips } from './services/firestore';
 import { downloadTripEventsCsv } from './exporters/csv';
 import TrackSummary, { buildTrackMetrics } from './components/TrackSummary';
+import TripMap from './components/TripMap';
 import './styles.css';
 
 const fmt = (v) => {
@@ -178,6 +179,11 @@ function App() {
           <Field label="Next WP" value={selected?.nextWaypointId} />
           <Field label="Notas" value={selected?.notes} />
         </div>
+      </section>
+
+      <section className="card">
+        <h3><MapPin size={18} /> Mapa del recorrido</h3>
+        <TripMap chunks={trackChunks} events={allEvents} />
       </section>
 
       <section className="card">
