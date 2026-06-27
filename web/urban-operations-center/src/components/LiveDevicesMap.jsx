@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Battery, Clock, MapPin, Navigation } from "lucide-react";
+import { Battery, Clock, Crosshair, MapPin, Navigation, Radio, Route } from "lucide-react";
 import "./LiveDevicesMap.css";
 
 const W = 1000;
@@ -44,18 +44,20 @@ function direction(d) { return d.route?.direction ?? d.direction; }
 function observer(d) { return d.observer?.name ?? d.observerName ?? d.aforador; }
 function deviceName(d) { return [d.device?.manufacturer, d.device?.model].filter(Boolean).join(" ") || d.id; }
 function vehicle(d) { return [d.vehicle?.eco ?? d.vehicleEco, d.vehicle?.plate ?? d.plateNumber].filter(Boolean).join(" / "); }
+function speed(d) { return Number(d.position?.speed ?? d.speed ?? 0) || 0; }
+function heading(d) { return Number(d.position?.heading ?? d.heading ?? 0) || 0; }
 
 function state(d) {
   const trip = String(d.tripStatus || "").toUpperCase();
-  if (trip === "FINISHED" || trip === "IDLE") return { label: "Finalizado", cls: "s-muted" };
+  if (trip === "FINISHED" || trip === "IDLE") return { label: "Finalizado", cls: "s-muted", priority: 4 };
   const gps = String(d.gpsStatus || "").toUpperCase();
-  if (["LOST", "OFF", "POOR"].includes(gps)) return { label: "GPS bajo", cls: "s-danger" };
+  if (["LOST", "OFF", "POOR"].includes(gps)) return { label: "GPS bajo", cls: "s-danger", priority: 1 };
   const m = minutes(d.lastUpdateClient || d.lastUpdateServer);
-  if (m === null) return { label: "Sin reporte", cls: "s-muted" };
-  if (m <= 2) return { label: "Vivo", cls: "s-ok" };
-  if (m <= 10) return { label: "Reciente", cls: "s-warn" };
-  if (m <= 30) return { label: "Atrasado", cls: "s-late" };
-  return { label: "Perdido", cls: "s-danger" };
+  if (m === null) return { label: "Sin reporte", cls: "s-muted", priority: 4 };
+  if (m <= 2) return { label: "Vivo", cls: "s-ok", priority: 5 };
+  if (m <= 10) return { label: "Reciente", cls: "s-warn", priority: 3 };
+  if (m <= 30) return { label: "Atrasado", cls: "s-late", priority: 2 };
+  return { label: "Perdido", cls: "s-danger", priority: 1 };
 }
 
 function projector(devices) {
@@ -77,9 +79,10 @@ function DeviceDot({ d, p, selected, onSelect }) {
   const st = state(d);
   const label = observer(d) || deviceName(d);
   return <g className={`live-dot ${st.cls} ${selected ? "selected" : ""}`} transform={`translate(${p.x} ${p.y})`} onClick={() => onSelect(d.id)}>
-    <circle className="pulse" r="23" />
+    <circle className="pulse" r="25" />
     <circle className="core" r="11" />
-    <text x="16" y="5">{label}</text>
+    <g transform={`rotate(${heading(d)})`}><path className="heading-arrow" d="M0 -27 L7 -13 L0 -17 L-7 -13 Z" /></g>
+    <text x="17" y="5">{label}</text>
   </g>;
 }
 
@@ -88,6 +91,7 @@ function InfoCard({ d }) {
   const st = state(d);
   const updated = d.lastUpdateClient || d.lastUpdateServer;
   const b = battery(d);
+  const kmh = Math.round(speed(d) * 3.6);
   return <div className="live-map-info">
     <div className="live-map-info-head">
       <div><b>{val(observer(d) || deviceName(d))}</b><span>{val(d.installationId || d.id)}</span></div>
@@ -98,19 +102,35 @@ function InfoCard({ d }) {
       <span><MapPin size={14} /> {val(direction(d))}</span>
       <span><Battery size={14} /> {val(b)}{b !== undefined && b !== null ? "%" : ""}</span>
       <span><Clock size={14} /> {age(updated)}</span>
+      <span><Crosshair size={14} /> {val(vehicle(d))}</span>
+      <span><Route size={14} /> {kmh} km/h</span>
     </div>
-    <p>{val(vehicle(d))} · GPS {val(d.gpsStatus)} · {fmt(updated)} · {val(lat(d))}, {val(lon(d))}</p>
+    <p>GPS {val(d.gpsStatus)} · {val(d.syncReason)} · {fmt(updated)} · {val(lat(d))}, {val(lon(d))}</p>
+  </div>;
+}
+
+function OpsStrip({ devices }) {
+  const total = devices.length;
+  const validCount = devices.filter(valid).length;
+  const active = devices.filter((d) => String(d.tripStatus || "").toUpperCase() === "ACTIVE").length;
+  const attention = devices.filter((d) => ["s-danger", "s-late"].includes(state(d).cls)).length;
+  return <div className="ops-strip">
+    <span><Radio size={14} /> {total} reportando</span>
+    <span><MapPin size={14} /> {validCount} con ubicación</span>
+    <span><Navigation size={14} /> {active} activos</span>
+    <span className={attention ? "attention" : ""}><Crosshair size={14} /> {attention} atención</span>
   </div>;
 }
 
 export default function LiveDevicesMap({ devices, selectedId, onSelectDevice }) {
   const validDevices = useMemo(() => devices.filter(valid), [devices]);
   const project = useMemo(() => projector(validDevices), [validDevices]);
-  const selected = useMemo(() => devices.find((d) => d.id === selectedId) || validDevices[0] || null, [devices, selectedId, validDevices]);
+  const selected = useMemo(() => devices.find((d) => d.id === selectedId) || validDevices.slice().sort((a, b) => state(a).priority - state(b).priority)[0] || null, [devices, selectedId, validDevices]);
   const points = useMemo(() => project ? validDevices.map((d) => ({ d, p: project(d) })) : [], [project, validDevices]);
 
   return <section className="card live-map-card">
     <div className="live-map-head"><div><h3><MapPin size={18} /> Mapa live simplificado</h3><p>Vista operativa sin API key, alimentada por <b>live_devices</b>.</p></div><div className="map-count"><b>{validDevices.length}</b><span>ubicaciones válidas</span></div></div>
+    <OpsStrip devices={devices} />
     <div className="live-map-stage">
       {!validDevices.length ? <div className="live-map-empty">Aún no hay ubicaciones válidas para pintar en el mapa.</div> : <>
         <svg className="live-map-svg" viewBox={`0 0 ${W} ${H}`}>
