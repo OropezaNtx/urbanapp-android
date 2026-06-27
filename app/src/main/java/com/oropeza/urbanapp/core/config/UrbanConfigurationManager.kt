@@ -1,16 +1,17 @@
 package com.oropeza.urbanapp.core.config
 
 import android.content.Context
-import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 
 object UrbanConfigurationManager {
     
     private val repository = UrbanConfigurationRepository()
 
     fun configuration(context: Context): UrbanConfiguration {
-        // In the future, this can prioritize Workspace memory state.
-        // For now, delegates to repository's effective calculation.
         return repository.getEffectiveConfiguration(context)
+    }
+
+    suspend fun refreshRemote(context: Context): UrbanConfiguration {
+        return repository.fetchRemoteConfiguration(context)
     }
 
     fun isFeatureEnabled(context: Context, flag: String): Boolean {
@@ -39,6 +40,10 @@ object UrbanConfigurationManager {
 
     fun configurationSource(context: Context): String {
         return repository.getConfigurationSource(context)
+    }
+
+    fun lastFetchAt(context: Context): Long {
+        return repository.getLastFetchAt(context)
     }
     
     // Internal API for Repository access
