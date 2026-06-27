@@ -1,6 +1,7 @@
 package com.oropeza.urbanapp.core.runtime
 
 import android.content.Context
+import com.oropeza.urbanapp.core.heartbeat.UrbanHeartbeatPublisher
 import com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler
 
 object UrbanSyncManager {
@@ -14,5 +15,9 @@ object UrbanSyncManager {
 
     fun syncHeartbeat(context: Context, activeTripId: Long? = null) {
         UrbanCloudSyncScheduler.enqueueAndSyncHeartbeat(context, activeTripId)
+    }
+
+    suspend fun publishPlatformHeartbeat(context: Context, activeTripId: Long? = null): Result<Unit> {
+        return UrbanHeartbeatPublisher(context).publish(activeTripId)
     }
 }
