@@ -80,9 +80,6 @@ object UrbanRuntime {
         return UrbanIdentityManager.getShortInstallationId(context)
     }
 
-    /**
-     * Returns the platform settings object using fully qualified name to avoid resolution issues.
-     */
     fun platformSettings(): com.oropeza.urbanapp.core.platform.UrbanPlatformSettings {
         return com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
     }
@@ -105,6 +102,14 @@ object UrbanRuntime {
 
     fun configuration(context: Context): UrbanConfiguration {
         return UrbanConfigurationManager.configuration(context)
+    }
+
+    suspend fun refreshConfiguration(context: Context): UrbanConfiguration {
+        return UrbanConfigurationManager.refreshRemote(context)
+    }
+
+    fun configurationLastFetchAt(context: Context): Long {
+        return UrbanConfigurationManager.lastFetchAt(context)
     }
 
     fun isFeatureEnabled(context: Context, flag: String): Boolean {
