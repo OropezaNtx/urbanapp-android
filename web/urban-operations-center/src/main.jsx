@@ -10,6 +10,7 @@ import TripInsights from './components/TripInsights';
 import TripExportPanel from './components/TripExportPanel';
 import TripPlayback from './components/TripPlayback';
 import LiveDevicesPanel from './components/LiveDevicesPanel';
+import LiveDevicesMap from './components/LiveDevicesMap';
 import './styles.css';
 
 const toMillis = (v) => {
@@ -37,7 +38,6 @@ const closed = (t) => {
   return Boolean(t?.endTime);
 };
 
-// Compatibilidad entre esquema Room/backup y esquema Cloud DTO.
 const menUp = (e) => num(e.menUp ?? e.paxMenUp);
 const womenUp = (e) => num(e.womenUp ?? e.paxWomenUp);
 const menDown = (e) => num(e.menDown ?? e.paxMenDown);
@@ -51,7 +51,6 @@ const eventDelay = (e) => e.delayCodes ?? '';
 function eventLabel(e) {
   const type = String(eventType(e) || '').trim();
   const delay = String(eventDelay(e) || '').trim();
-
   if (type && delay && !type.includes(delay)) return `${type} + ${delay}`;
   return type || delay || '—';
 }
@@ -81,6 +80,7 @@ function App() {
   const [trips, setTrips] = useState([]);
   const [devices, setDevices] = useState([]);
   const [liveDevices, setLiveDevices] = useState([]);
+  const [selectedLiveId, setSelectedLiveId] = useState(null);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
   const [err, setErr] = useState('');
@@ -176,9 +176,10 @@ function App() {
 
     {view === 'devices' && <main>
       <h2>Live Devices</h2>
+      <LiveDevicesMap devices={liveDevices} selectedId={selectedLiveId} onSelectDevice={setSelectedLiveId} />
       <LiveDevicesPanel devices={liveDevices} />
       <section className="card">
-        <h3><SmartphoneFallback /> Instalaciones registradas</h3>
+        <h3><Activity size={18} /> Instalaciones registradas</h3>
         <DevicesTable devices={devices} />
       </section>
     </main>}
@@ -194,142 +195,51 @@ function App() {
         <Stat label="Puntos GPS" value={track.totalPoints} />
       </section>
 
-      <section className="card">
-        <h3><Bus size={18} /> Encabezado</h3>
-        <div className="fields">
-          <Field label="Ruta" value={selected?.routeName} />
-          <Field label="Ruta núm." value={selected?.routeNumber ?? selected?.tripNumber} />
-          <Field label="Planning" value={selected?.planningRouteId ?? selected?.routeId} />
-          <Field label="Dirección" value={selected?.direction} />
-          <Field label="Empresa" value={selected?.company} />
-          <Field label="Aforador" value={selected?.aforador ?? selected?.observerName} />
-          <Field label="Supervisor" value={selected?.supervisor ?? selected?.supervisorName} />
-          <Field label="Sexo obs." value={selected?.observerSex} />
-          <Field label="Dispositivo" value={selected?.deviceNumber ?? selected?.deviceInstallationId} />
-          <Field label="Eco" value={selected?.vehicleEco} />
-          <Field label="Placas" value={selected?.plateNumber} />
-          <Field label="Tipo" value={selected?.vehicleType} />
-          <Field label="Capacidad" value={selected?.seatCapacity} />
-          <Field label="Base inicio" value={selected?.baseStart} />
-          <Field label="Base fin" value={selected?.baseEnd} />
-          <Field label="Estado ES/FS" value={selected?.esFs} />
-          <Field label="Inicio" value={fmt(selected?.startTime)} />
-          <Field label="Fin" value={fmt(selected?.endTime)} />
-          <Field label="Next WP" value={selected?.nextWaypointId} />
-          <Field label="Notas" value={selected?.notes} />
-        </div>
-      </section>
+      <section className="card"><h3><Bus size={18} /> Encabezado</h3><div className="fields">
+        <Field label="Ruta" value={selected?.routeName} />
+        <Field label="Ruta núm." value={selected?.routeNumber ?? selected?.tripNumber} />
+        <Field label="Planning" value={selected?.planningRouteId ?? selected?.routeId} />
+        <Field label="Dirección" value={selected?.direction} />
+        <Field label="Empresa" value={selected?.company} />
+        <Field label="Aforador" value={selected?.aforador ?? selected?.observerName} />
+        <Field label="Supervisor" value={selected?.supervisor ?? selected?.supervisorName} />
+        <Field label="Sexo obs." value={selected?.observerSex} />
+        <Field label="Dispositivo" value={selected?.deviceNumber ?? selected?.deviceInstallationId} />
+        <Field label="Eco" value={selected?.vehicleEco} />
+        <Field label="Placas" value={selected?.plateNumber} />
+        <Field label="Tipo" value={selected?.vehicleType} />
+        <Field label="Capacidad" value={selected?.seatCapacity} />
+        <Field label="Base inicio" value={selected?.baseStart} />
+        <Field label="Base fin" value={selected?.baseEnd} />
+        <Field label="Estado ES/FS" value={selected?.esFs} />
+        <Field label="Inicio" value={fmt(selected?.startTime)} />
+        <Field label="Fin" value={fmt(selected?.endTime)} />
+        <Field label="Next WP" value={selected?.nextWaypointId} />
+        <Field label="Notas" value={selected?.notes} />
+      </div></section>
 
-      <section className="card">
-        <h3><MapPin size={18} /> Mapa del recorrido</h3>
-        <TripMap chunks={trackChunks} events={allEvents} />
-      </section>
-
-      <section className="card">
-        <h3><Activity size={18} /> Playback del recorrido</h3>
-        <TripPlayback chunks={trackChunks} events={allEvents} />
-      </section>
-
-      <section className="card">
-        <h3><Download size={18} /> Exportación geoespacial</h3>
-        <TripExportPanel trip={selected} events={allEvents} chunks={trackChunks} />
-      </section>
-
-      <section className="card">
-        <h3><Activity size={18} /> Inteligencia operacional</h3>
-        <TripInsights trip={selected} events={allEvents} chunks={trackChunks} />
-      </section>
-
-      <section className="card">
-        <div className="row">
-          <h3><Users size={18} /> Eventos</h3>
-          <button onClick={() => downloadTripEventsCsv(selected, allEvents)}><Download size={16} />CSV eventos</button>
-        </div>
-        <EventsTable events={allEvents} />
-      </section>
-
-      <section className="card">
-        <h3><MapPin size={18} /> Track summary</h3>
-        <TrackSummary chunks={trackChunks} />
-      </section>
+      <section className="card"><h3><MapPin size={18} /> Mapa del recorrido</h3><TripMap chunks={trackChunks} events={allEvents} /></section>
+      <section className="card"><h3><Activity size={18} /> Playback del recorrido</h3><TripPlayback chunks={trackChunks} events={allEvents} /></section>
+      <section className="card"><h3><Download size={18} /> Exportación geoespacial</h3><TripExportPanel trip={selected} events={allEvents} chunks={trackChunks} /></section>
+      <section className="card"><h3><Activity size={18} /> Inteligencia operacional</h3><TripInsights trip={selected} events={allEvents} chunks={trackChunks} /></section>
+      <section className="card"><div className="row"><h3><Users size={18} /> Eventos</h3><button onClick={() => downloadTripEventsCsv(selected, allEvents)}><Download size={16} />CSV eventos</button></div><EventsTable events={allEvents} /></section>
+      <section className="card"><h3><MapPin size={18} /> Track summary</h3><TrackSummary chunks={trackChunks} /></section>
     </main>}
 
     {loading && <div className="loading">Cargando...</div>}
   </div>;
 }
 
-function SmartphoneFallback() {
-  return <Activity size={18} />;
-}
-
 function TripsTable({ trips, onOpen }) {
-  return <div className="table"><table>
-    <thead><tr><th>Trip</th><th>Ruta</th><th>Dir</th><th>Aforador</th><th>Unidad</th><th>Inicio</th><th>Fin</th><th>Estado</th></tr></thead>
-    <tbody>{trips.map(t => <tr key={t.id} onClick={() => onOpen(t)}>
-      <td>{val(t.localTripId || t.tripId || t.id)}</td>
-      <td>{val(t.routeName)}</td>
-      <td>{val(t.direction)}</td>
-      <td>{val(t.aforador ?? t.observerName)}</td>
-      <td>{val(t.vehicleEco)} / {val(t.plateNumber)}</td>
-      <td>{fmt(t.startTime)}</td>
-      <td>{fmt(t.endTime)}</td>
-      <td>{closed(t) ? 'Cerrado' : 'Activo'}</td>
-    </tr>)}</tbody>
-  </table></div>;
+  return <div className="table"><table><thead><tr><th>Trip</th><th>Ruta</th><th>Dir</th><th>Aforador</th><th>Unidad</th><th>Inicio</th><th>Fin</th><th>Estado</th></tr></thead><tbody>{trips.map(t => <tr key={t.id} onClick={() => onOpen(t)}><td>{val(t.localTripId || t.tripId || t.id)}</td><td>{val(t.routeName)}</td><td>{val(t.direction)}</td><td>{val(t.aforador ?? t.observerName)}</td><td>{val(t.vehicleEco)} / {val(t.plateNumber)}</td><td>{fmt(t.startTime)}</td><td>{fmt(t.endTime)}</td><td>{closed(t) ? 'Cerrado' : 'Activo'}</td></tr>)}</tbody></table></div>;
 }
 
 function DevicesTable({ devices }) {
-  return <div className="table"><table>
-    <thead><tr><th>ID</th><th>Número</th><th>Última ubicación</th><th>Batería</th><th>GPS</th><th>Heartbeat</th><th>Trip activo</th></tr></thead>
-    <tbody>{devices.map(d => <tr key={d.id}>
-      <td>{d.id}</td>
-      <td>{val(d.deviceNumber || d.number)}</td>
-      <td>{val(d.lat)}, {val(d.lon)}</td>
-      <td>{val(d.battery || d.batteryPct)}</td>
-      <td>{val(d.gps || d.locationStatus)}</td>
-      <td>{fmt(d.lastHeartbeatAt || d.heartbeatAt || d.timestamp)}</td>
-      <td>{val(d.activeTripId)}</td>
-    </tr>)}</tbody>
-  </table></div>;
+  return <div className="table"><table><thead><tr><th>ID</th><th>Número</th><th>Última ubicación</th><th>Batería</th><th>GPS</th><th>Heartbeat</th><th>Trip activo</th></tr></thead><tbody>{devices.map(d => <tr key={d.id}><td>{d.id}</td><td>{val(d.deviceNumber || d.number)}</td><td>{val(d.lat)}, {val(d.lon)}</td><td>{val(d.battery || d.batteryPct)}</td><td>{val(d.gps || d.locationStatus)}</td><td>{fmt(d.lastHeartbeatAt || d.heartbeatAt || d.timestamp)}</td><td>{val(d.activeTripId)}</td></tr>)}</tbody></table></div>;
 }
 
 function EventsTable({ events }) {
-  return <div className="table"><table>
-    <thead><tr>
-      <th>#</th>
-      <th>Tipo</th>
-      <th>Hora</th>
-      <th>WP Start</th>
-      <th>WP Stop</th>
-      <th>Start lat/lon</th>
-      <th>Stop lat/lon</th>
-      <th>Suben</th>
-      <th>Bajan</th>
-      <th>H/M Suben</th>
-      <th>H/M Bajan</th>
-      <th>GPS</th>
-      <th>Precisión</th>
-      <th>Notas</th>
-      <th>Fuente</th>
-    </tr></thead>
-    <tbody>{events.map(e => <tr key={e.id}>
-      <td>{val(e.eventId || e.cloudEventId || e.id)}</td>
-      <td>{eventLabel(e)}</td>
-      <td>{fmt(e.timestamp || e.stopTime || e.startTime)}</td>
-      <td>{val(e.waypointStartId)}</td>
-      <td>{val(e.waypointStopId)}</td>
-      <td>{val(eventStartLat(e))}, {val(eventStartLon(e))}</td>
-      <td>{val(eventStopLat(e))}, {val(eventStopLon(e))}</td>
-      <td>{totalUp(e)}</td>
-      <td>{totalDown(e)}</td>
-      <td>{menUp(e)} / {womenUp(e)}</td>
-      <td>{menDown(e)} / {womenDown(e)}</td>
-      <td>{val(eventGps(e))}</td>
-      <td>{val(eventAccuracy(e))}</td>
-      <td>{val(e.notes || e.otherDelayDesc)}</td>
-      <td>{val(e.source)}</td>
-    </tr>)}</tbody>
-  </table></div>;
+  return <div className="table"><table><thead><tr><th>#</th><th>Tipo</th><th>Hora</th><th>WP Start</th><th>WP Stop</th><th>Start lat/lon</th><th>Stop lat/lon</th><th>Suben</th><th>Bajan</th><th>H/M Suben</th><th>H/M Bajan</th><th>GPS</th><th>Precisión</th><th>Notas</th><th>Fuente</th></tr></thead><tbody>{events.map(e => <tr key={e.id}><td>{val(e.eventId || e.cloudEventId || e.id)}</td><td>{eventLabel(e)}</td><td>{fmt(e.timestamp || e.stopTime || e.startTime)}</td><td>{val(e.waypointStartId)}</td><td>{val(e.waypointStopId)}</td><td>{val(eventStartLat(e))}, {val(eventStartLon(e))}</td><td>{val(eventStopLat(e))}, {val(eventStopLon(e))}</td><td>{totalUp(e)}</td><td>{totalDown(e)}</td><td>{menUp(e)} / {womenUp(e)}</td><td>{menDown(e)} / {womenDown(e)}</td><td>{val(eventGps(e))}</td><td>{val(eventAccuracy(e))}</td><td>{val(e.notes || e.otherDelayDesc)}</td><td>{val(e.source)}</td></tr>)}</tbody></table></div>;
 }
 
 createRoot(document.getElementById('root')).render(<App />);
