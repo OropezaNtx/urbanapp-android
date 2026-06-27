@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { RefreshCw, Download, ArrowLeft, Bus, Users, MapPin } from 'lucide-react';
 import { fetchDevices, fetchTripDetail, fetchTrips } from './services/firestore';
 import { downloadTripEventsCsv } from './exporters/csv';
+import TrackSummary, { buildTrackMetrics } from './components/TrackSummary';
 import './styles.css';
 
 const fmt = (v) => {
@@ -96,6 +97,8 @@ function App() {
   }), [trips, devices]);
 
   const allEvents = detail?.events || [];
+  const trackChunks = detail?.trackChunks || detail?.trackSummary || [];
+  const track = useMemo(() => buildTrackMetrics(trackChunks), [trackChunks]);
 
   const pax = allEvents.reduce((a, e) => ({
     up: a.up + totalUp(e),
@@ -142,27 +145,27 @@ function App() {
 
     {view === 'detail' && <main>
       <button className="ghost" onClick={() => setView('trips')}><ArrowLeft size={16} />Regresar</button>
-      <h2>Trip Detail #{val(selected?.tripId || selected?.id)}</h2>
+      <h2>Trip Detail #{val(selected?.localTripId || selected?.tripId || selected?.id)}</h2>
 
       <section className="grid stats">
         <Stat label="Eventos" value={allEvents.length} />
         <Stat label="Subidas" value={pax.up} />
         <Stat label="Bajadas" value={pax.down} />
-        <Stat label="Track summary" value={detail?.trackSummary?.length || 0} />
+        <Stat label="Puntos GPS" value={track.totalPoints} />
       </section>
 
       <section className="card">
         <h3><Bus size={18} /> Encabezado</h3>
         <div className="fields">
           <Field label="Ruta" value={selected?.routeName} />
-          <Field label="Ruta núm." value={selected?.routeNumber} />
-          <Field label="Planning" value={selected?.planningRouteId} />
+          <Field label="Ruta núm." value={selected?.routeNumber ?? selected?.tripNumber} />
+          <Field label="Planning" value={selected?.planningRouteId ?? selected?.routeId} />
           <Field label="Dirección" value={selected?.direction} />
           <Field label="Empresa" value={selected?.company} />
-          <Field label="Aforador" value={selected?.aforador} />
-          <Field label="Supervisor" value={selected?.supervisor} />
+          <Field label="Aforador" value={selected?.aforador ?? selected?.observerName} />
+          <Field label="Supervisor" value={selected?.supervisor ?? selected?.supervisorName} />
           <Field label="Sexo obs." value={selected?.observerSex} />
-          <Field label="Dispositivo" value={selected?.deviceNumber} />
+          <Field label="Dispositivo" value={selected?.deviceNumber ?? selected?.deviceInstallationId} />
           <Field label="Eco" value={selected?.vehicleEco} />
           <Field label="Placas" value={selected?.plateNumber} />
           <Field label="Tipo" value={selected?.vehicleType} />
@@ -187,7 +190,7 @@ function App() {
 
       <section className="card">
         <h3><MapPin size={18} /> Track summary</h3>
-        <pre>{JSON.stringify(detail?.trackSummary || [], null, 2)}</pre>
+        <TrackSummary chunks={trackChunks} />
       </section>
     </main>}
 
@@ -199,10 +202,10 @@ function TripsTable({ trips, onOpen }) {
   return <div className="table"><table>
     <thead><tr><th>Trip</th><th>Ruta</th><th>Dir</th><th>Aforador</th><th>Unidad</th><th>Inicio</th><th>Fin</th><th>Estado</th></tr></thead>
     <tbody>{trips.map(t => <tr key={t.id} onClick={() => onOpen(t)}>
-      <td>{val(t.tripId || t.id)}</td>
+      <td>{val(t.localTripId || t.tripId || t.id)}</td>
       <td>{val(t.routeName)}</td>
       <td>{val(t.direction)}</td>
-      <td>{val(t.aforador)}</td>
+      <td>{val(t.aforador ?? t.observerName)}</td>
       <td>{val(t.vehicleEco)} / {val(t.plateNumber)}</td>
       <td>{fmt(t.startTime)}</td>
       <td>{fmt(t.endTime)}</td>
@@ -246,7 +249,7 @@ function EventsTable({ events }) {
       <th>Fuente</th>
     </tr></thead>
     <tbody>{events.map(e => <tr key={e.id}>
-      <td>{val(e.eventId || e.id)}</td>
+      <td>{val(e.eventId || e.cloudEventId || e.id)}</td>
       <td>{eventLabel(e)}</td>
       <td>{fmt(e.timestamp || e.stopTime || e.startTime)}</td>
       <td>{val(e.waypointStartId)}</td>
