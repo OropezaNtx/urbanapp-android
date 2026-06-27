@@ -21,12 +21,12 @@ const fmtDuration = (ms) => {
   return `${s}s`;
 };
 
-function eventType(e) { return e.eventType ?? e.stopType ?? ''; }
-function delayCodes(e) { return e.delayCodes ?? ''; }
-function menUp(e) { return num(e.menUp ?? e.paxMenUp); }
-function womenUp(e) { return num(e.womenUp ?? e.paxWomenUp); }
-function menDown(e) { return num(e.menDown ?? e.paxMenDown); }
-function womenDown(e) { return num(e.womenDown ?? e.paxWomenDown); }
+function eventType(e) { return e?.eventType ?? e?.stopType ?? ''; }
+function delayCodes(e) { return e?.delayCodes ?? ''; }
+function menUp(e) { return num(e?.menUp ?? e?.paxMenUp); }
+function womenUp(e) { return num(e?.womenUp ?? e?.paxWomenUp); }
+function menDown(e) { return num(e?.menDown ?? e?.paxMenDown); }
+function womenDown(e) { return num(e?.womenDown ?? e?.paxWomenDown); }
 function totalUp(e) { return menUp(e) + womenUp(e); }
 function totalDown(e) { return menDown(e) + womenDown(e); }
 
@@ -38,10 +38,12 @@ function eventLabel(e) {
 }
 
 function eventTime(e) {
+  if (!e) return 0;
   return num(e.timestamp || e.stopTime || e.startTime || e.createdAt);
 }
 
 function eventDuration(e) {
+  if (!e) return 0;
   const start = num(e.startTime);
   const stop = num(e.stopTime || e.timestamp);
   if (start > 100_000_000_000 && stop > 100_000_000_000 && stop >= start) return stop - start;
@@ -62,16 +64,18 @@ function metric(label, value, hint) {
 }
 
 export function buildTripInsights(trip, events = [], chunks = []) {
-  const sorted = [...events].sort((a, b) => eventTime(a) - eventTime(b));
-  const track = buildTrackMetrics(chunks);
+  const sorted = (Array.isArray(events) ? [...events] : []).sort((a, b) => eventTime(a) - eventTime(b));
+  const track = buildTrackMetrics(Array.isArray(chunks) ? chunks : []);
   const up = sorted.reduce((sum, e) => sum + totalUp(e), 0);
   const down = sorted.reduce((sum, e) => sum + totalDown(e), 0);
   const delayEvents = sorted.filter((e) => String(eventType(e)).toUpperCase().includes('DEMORA') || String(delayCodes(e)).trim());
   const asdEvents = sorted.filter((e) => String(eventType(e)).toUpperCase().includes('ASD'));
   const flagEvents = sorted.filter((e) => String(eventType(e)).toUpperCase().includes('BANDERA'));
   const delayMs = delayEvents.reduce((sum, e) => sum + eventDuration(e), 0);
-  const tripStart = num(trip?.startTime || track.startTime || eventTime(sorted[0]));
-  const tripEnd = num(trip?.endTime || track.endTime || eventTime(sorted[sorted.length - 1]));
+  const firstEventTime = eventTime(sorted[0]);
+  const lastEventTime = eventTime(sorted.at(-1));
+  const tripStart = num(trip?.startTime || track.startTime || firstEventTime);
+  const tripEnd = num(trip?.endTime || track.endTime || lastEventTime);
   const tripMs = tripStart && tripEnd && tripEnd >= tripStart ? tripEnd - tripStart : track.durationMs;
   const km = track.distance / 1000;
   const avgKmh = tripMs && km ? km / (tripMs / 3_600_000) : 0;
