@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { RefreshCw, Download, ArrowLeft, Bus, Users, MapPin } from 'lucide-react';
+import { RefreshCw, Download, ArrowLeft, Bus, Users, MapPin, Activity } from 'lucide-react';
 import { fetchDevices, fetchTripDetail, fetchTrips } from './services/firestore';
 import { downloadTripEventsCsv } from './exporters/csv';
 import TrackSummary, { buildTrackMetrics } from './components/TrackSummary';
 import TripMap from './components/TripMap';
+import TripInsights from './components/TripInsights';
 import './styles.css';
 
 const fmt = (v) => {
@@ -184,6 +185,11 @@ function App() {
       <section className="card">
         <h3><MapPin size={18} /> Mapa del recorrido</h3>
         <TripMap chunks={trackChunks} events={allEvents} />
+      </section>
+
+      <section className="card">
+        <h3><Activity size={18} /> Inteligencia operacional</h3>
+        <TripInsights trip={selected} events={allEvents} chunks={trackChunks} />
       </section>
 
       <section className="card">
