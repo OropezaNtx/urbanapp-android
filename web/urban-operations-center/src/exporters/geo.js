@@ -1,6 +1,11 @@
 import { buildTrackMetrics } from '../components/TrackSummary';
 
 const EPOCH_MIN_REASONABLE = 100_000_000_000;
+const GPX_NS = 'http://www.topografix.com/GPX/1/1';
+const GPXX_NS = 'http://www.garmin.com/xmlschemas/GpxExtensions/v3';
+const WPTX_NS = 'http://www.garmin.com/xmlschemas/WaypointExtension/v1';
+const GPXTPX_NS = 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1';
+const GPXTRKX_NS = 'http://www.garmin.com/xmlschemas/TrackStatsExtension/v1';
 
 function safe(value) {
   return value === null || value === undefined ? '' : String(value);
@@ -30,8 +35,15 @@ function validCoord(lat, lon) {
   return Number.isFinite(a) && Number.isFinite(b) && !(a === 0 && b === 0);
 }
 
+function formatNum(value, decimals = 12) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '';
+  return Number(n.toFixed(decimals)).toString();
+}
+
 function eventLat(e) { return e?.stopLat ?? e?.lat ?? e?.startLat; }
 function eventLon(e) { return e?.stopLon ?? e?.lon ?? e?.startLon; }
+function eventAlt(e) { return e?.stopAltM ?? e?.alt ?? e?.startAltM ?? 0; }
 function eventType(e) { return e?.eventType ?? e?.stopType ?? 'EVENT'; }
 function eventDelay(e) { return e?.delayCodes ?? ''; }
 function eventTime(e) { return e?.timestamp ?? e?.stopTime ?? e?.startTime ?? e?.createdAt; }
@@ -56,6 +68,10 @@ function iso(ms) {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
 function fmtLocal(ms) {
   const n = Number(ms);
   if (!Number.isFinite(n) || n < EPOCH_MIN_REASONABLE) return '';
@@ -65,6 +81,10 @@ function fmtLocal(ms) {
 
 function downloadText(filename, content, mime) {
   const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+  downloadBlob(filename, blob);
+}
+
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -81,8 +101,25 @@ function tripName(trip) {
   return safe(trip?.routeName || `Urban trip ${tripId(trip)}`);
 }
 
+function trackName(trip) {
+  const dir = String(trip?.direction || '').trim().toUpperCase();
+  if (dir.includes('IDA')) return 'IDA';
+  if (dir.includes('REGRESO')) return 'REGRESO';
+  return safe(trip?.routeNumber || trip?.tripNumber || trip?.routeId || tripId(trip));
+}
+
+function fileBase(trip) {
+  const route = safe(trip?.routeName || 'UrbanTrip')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 70);
+  return `${tripId(trip)}_${route || 'UrbanTrip'}`;
+}
+
 function collectTrackPoints(chunks = []) {
-  return buildTrackMetrics(Array.isArray(chunks) ? chunks : []).points;
+  return buildTrackMetrics(Array.isArray(chunks) ? chunks : []).points
+    .filter((p) => validCoord(p.lat, p.lon));
 }
 
 function collectEventPoints(events = []) {
@@ -91,59 +128,149 @@ function collectEventPoints(events = []) {
     .sort((a, b) => num(eventTime(a)) - num(eventTime(b)));
 }
 
-function gpxWaypoint(e, idx) {
-  const lat = eventLat(e);
-  const lon = eventLon(e);
-  const time = iso(eventTime(e));
-  const name = `${idx + 1}. ${eventLabel(e)}`;
-  const desc = [
-    `WP ${safe(e.waypointStartId)} → ${safe(e.waypointStopId)}`,
-    `Suben ${totalUp(e)} (${menUp(e)}/${womenUp(e)})`,
-    `Bajan ${totalDown(e)} (${menDown(e)}/${womenDown(e)})`,
-    `GPS ${safe(e.locationStatus || e.stopProvider || e.provider || e.startProvider)}`,
-    `Precisión ${safe(e.stopAccM ?? e.accuracy ?? e.startAccM)} m`,
-    e.notes ? `Notas: ${e.notes}` : '',
-    e.otherDelayDesc ? `Otro: ${e.otherDelayDesc}` : '',
-  ].filter(Boolean).join(' | ');
-
+function allCoords(events = [], points = []) {
   return [
-    `  <wpt lat="${xmlEscape(lat)}" lon="${xmlEscape(lon)}">`,
-    `    <name>${xmlEscape(name)}</name>`,
-    time ? `    <time>${time}</time>` : '',
-    `    <desc>${xmlEscape(desc)}</desc>`,
-    `    <type>${xmlEscape(eventType(e))}</type>`,
+    ...points.map((p) => ({ lat: Number(p.lat), lon: Number(p.lon) })),
+    ...collectEventPoints(events).map((e) => ({ lat: Number(eventLat(e)), lon: Number(eventLon(e)) })),
+  ];
+}
+
+function boundsXml(events = [], points = []) {
+  const coords = allCoords(events, points);
+  if (!coords.length) return '';
+  const maxlat = Math.max(...coords.map((c) => c.lat));
+  const minlat = Math.min(...coords.map((c) => c.lat));
+  const maxlon = Math.max(...coords.map((c) => c.lon));
+  const minlon = Math.min(...coords.map((c) => c.lon));
+  return `<bounds maxlat="${formatNum(maxlat, 15)}" maxlon="${formatNum(maxlon, 15)}" minlat="${formatNum(minlat, 15)}" minlon="${formatNum(minlon, 15)}"/>`;
+}
+
+function garminHeader({ creator = 'MapSource 6.16.3', fullGarminNamespaces = false } = {}) {
+  if (fullGarminNamespaces) {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="no" ?>\n<gpx xmlns="${GPX_NS}" xmlns:gpxx="${GPXX_NS}" xmlns:gpxtrkx="${GPXTRKX_NS}" xmlns:wptx1="${WPTX_NS}" xmlns:gpxtpx="${GPXTPX_NS}" creator="${creator}" version="1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="${GPX_NS} ${GPX_NS}/gpx.xsd ${GPXX_NS} http://www8.garmin.com/xmlschemas/GpxExtensionsv3.xsd ${GPXTRKX_NS} http://www8.garmin.com/xmlschemas/TrackStatsExtension.xsd ${WPTX_NS} http://www8.garmin.com/xmlschemas/WaypointExtensionv1.xsd ${GPXTPX_NS} http://www8.garmin.com/xmlschemas/TrackPointExtensionv1.xsd">`;
+  }
+  return `<?xml version="1.0" encoding="UTF-8" standalone="no" ?>\n<gpx xmlns="${GPX_NS}" creator="${creator}" version="1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="${GPX_NS} ${GPX_NS}/gpx.xsd">`;
+}
+
+function garminMetadata(time, bounds = '') {
+  return [
+    '  <metadata>',
+    '    <link href="http://www.garmin.com">',
+    '      <text>Garmin International</text>',
+    '    </link>',
+    `    <time>${xmlEscape(time || nowIso())}</time>`,
+    bounds ? `    ${bounds}` : '',
+    '  </metadata>',
+  ].filter(Boolean).join('\n');
+}
+
+function waypointName(idx) {
+  return String(idx + 1).padStart(3, '0');
+}
+
+function garminWaypoint(e, idx, withDisplayMode = false) {
+  const time = iso(eventTime(e)) || nowIso();
+  const ele = formatNum(eventAlt(e), 6) || '0';
+  return [
+    `  <wpt lat="${formatNum(eventLat(e), 15)}" lon="${formatNum(eventLon(e), 15)}">`,
+    `    <ele>${ele}</ele>`,
+    `    <time>${xmlEscape(time)}</time>`,
+    `    <name>${waypointName(idx)}</name>`,
+    '    <sym>Flag, Blue</sym>',
+    withDisplayMode ? '    <extensions>' : '',
+    withDisplayMode ? `      <gpxx:WaypointExtension xmlns:gpxx="${GPXX_NS}">` : '',
+    withDisplayMode ? '        <gpxx:DisplayMode>SymbolAndName</gpxx:DisplayMode>' : '',
+    withDisplayMode ? '      </gpxx:WaypointExtension>' : '',
+    withDisplayMode ? '    </extensions>' : '',
     '  </wpt>',
   ].filter(Boolean).join('\n');
 }
 
-export function buildGpx(trip, events = [], chunks = []) {
-  const points = collectTrackPoints(chunks);
-  const eventPoints = collectEventPoints(events);
-  const trkpts = points.map((p) => [
-    `      <trkpt lat="${xmlEscape(p.lat)}" lon="${xmlEscape(p.lon)}">`,
-    p.alt !== undefined && p.alt !== null ? `        <ele>${xmlEscape(p.alt)}</ele>` : '',
-    iso(p.time) ? `        <time>${iso(p.time)}</time>` : '',
-    p.provider ? `        <desc>${xmlEscape(`${p.provider} · ${safe(p.accuracy)} m`)}</desc>` : '',
+function garminTrackPoint(p) {
+  const time = iso(p.time);
+  const ele = formatNum(p.alt ?? 0, 6) || '0';
+  return [
+    `      <trkpt lat="${formatNum(p.lat, 15)}" lon="${formatNum(p.lon, 15)}">`,
+    `        <ele>${ele}</ele>`,
+    time ? `        <time>${xmlEscape(time)}</time>` : '',
     '      </trkpt>',
-  ].filter(Boolean).join('\n')).join('\n');
+  ].filter(Boolean).join('\n');
+}
+
+function trackDistanceMeters(points) {
+  return Math.round(buildTrackMetrics([{ points }]).distance || 0);
+}
+
+function garminTrack(trip, points, { includeStats = false, color = 'Red' } = {}) {
+  const stats = includeStats ? [
+    '    <extensions>',
+    `      <gpxx:TrackExtension xmlns:gpxx="${GPXX_NS}">`,
+    `        <gpxx:DisplayColor>${xmlEscape(color)}</gpxx:DisplayColor>`,
+    '      </gpxx:TrackExtension>',
+    `      <gpxtrkx:TrackStatsExtension xmlns:gpxtrkx="${GPXTRKX_NS}">`,
+    `        <gpxtrkx:Distance>${trackDistanceMeters(points)}</gpxtrkx:Distance>`,
+    '      </gpxtrkx:TrackStatsExtension>',
+    '    </extensions>',
+  ] : [
+    '    <extensions>',
+    `      <gpxx:TrackExtension xmlns:gpxx="${GPXX_NS}">`,
+    `        <gpxx:DisplayColor>${xmlEscape(color)}</gpxx:DisplayColor>`,
+    '      </gpxx:TrackExtension>',
+    '    </extensions>',
+  ];
 
   return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<gpx version="1.1" creator="Urban Operations Center" xmlns="http://www.topografix.com/GPX/1/1">',
-    `  <metadata><name>${xmlEscape(tripName(trip))}</name><desc>${xmlEscape(`UrbanApp ASD trip ${tripId(trip)}`)}</desc></metadata>`,
-    ...eventPoints.map(gpxWaypoint),
     '  <trk>',
-    `    <name>${xmlEscape(tripName(trip))}</name>`,
+    `    <name>${xmlEscape(trackName(trip))}</name>`,
+    ...stats,
     '    <trkseg>',
-    trkpts,
+    points.map(garminTrackPoint).join('\n'),
     '    </trkseg>',
     '  </trk>',
+  ].join('\n');
+}
+
+export function buildGarminWaypointsGpx(trip, events = []) {
+  const eventPoints = collectEventPoints(events);
+  const metadataTime = iso(eventTime(eventPoints[0])) || nowIso();
+  return [
+    garminHeader({ creator: 'eTrex 20', fullGarminNamespaces: true }),
+    garminMetadata(metadataTime),
+    ...eventPoints.map((e, idx) => garminWaypoint(e, idx, false)),
     '</gpx>',
   ].join('\n');
 }
 
+export function buildGarminTrackGpx(trip, events = [], chunks = []) {
+  const points = collectTrackPoints(chunks);
+  const metadataTime = iso(points[0]?.time) || nowIso();
+  return [
+    garminHeader({ creator: 'eTrex 20', fullGarminNamespaces: true }),
+    garminMetadata(metadataTime),
+    garminTrack({ ...trip, routeNumber: `Track actual: ${trackName(trip)}` }, points, { includeStats: true, color: 'Blue' }),
+    '</gpx>',
+  ].join('\n');
+}
+
+export function buildMapSourceCombinedGpx(trip, events = [], chunks = []) {
+  const points = collectTrackPoints(chunks);
+  const eventPoints = collectEventPoints(events);
+  return [
+    garminHeader({ creator: 'MapSource 6.16.3', fullGarminNamespaces: false }),
+    garminMetadata(nowIso(), boundsXml(events, points)),
+    ...eventPoints.map((e, idx) => garminWaypoint(e, idx, true)),
+    garminTrack(trip, points, { includeStats: false, color: 'Red' }),
+    '</gpx>',
+  ].join('\n');
+}
+
+// Mantiene compatibilidad con el botón GPX anterior, pero ahora genera el GPX combinado estilo MapSource.
+export function buildGpx(trip, events = [], chunks = []) {
+  return buildMapSourceCombinedGpx(trip, events, chunks);
+}
+
 function kmlPointPlacemark(e, idx) {
-  const name = `${idx + 1}. ${eventLabel(e)}`;
+  const name = `${waypointName(idx)} · ${eventLabel(e)}`;
   const desc = [
     `Hora: ${fmtLocal(eventTime(e))}`,
     `WP: ${safe(e.waypointStartId)} → ${safe(e.waypointStopId)}`,
@@ -163,7 +290,7 @@ function kmlPointPlacemark(e, idx) {
     `      <name>${xmlEscape(name)}</name>`,
     `      <styleUrl>${style}</styleUrl>`,
     `      <description><![CDATA[${desc.replaceAll(']]>', ']]&gt;')}]]></description>`,
-    `      <Point><coordinates>${xmlEscape(eventLon(e))},${xmlEscape(eventLat(e))},0</coordinates></Point>`,
+    `      <Point><coordinates>${formatNum(eventLon(e), 15)},${formatNum(eventLat(e), 15)},${formatNum(eventAlt(e), 6) || '0'}</coordinates></Point>`,
     '    </Placemark>',
   ].join('\n');
 }
@@ -171,19 +298,19 @@ function kmlPointPlacemark(e, idx) {
 export function buildKml(trip, events = [], chunks = []) {
   const points = collectTrackPoints(chunks);
   const eventPoints = collectEventPoints(events);
-  const coordinates = points.map((p) => `${p.lon},${p.lat},${p.alt ?? 0}`).join(' ');
+  const coordinates = points.map((p) => `${formatNum(p.lon, 15)},${formatNum(p.lat, 15)},${formatNum(p.alt ?? 0, 6) || '0'}`).join(' ');
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<kml xmlns="http://www.opengis.net/kml/2.2">',
     '  <Document>',
     `    <name>${xmlEscape(tripName(trip))}</name>`,
-    '    <Style id="trackStyle"><LineStyle><color>ffff6325</color><width>5</width></LineStyle></Style>',
+    '    <Style id="trackStyle"><LineStyle><color>ff0000ff</color><width>5</width></LineStyle></Style>',
     '    <Style id="asdStyle"><IconStyle><color>ffff6325</color><scale>1.1</scale></IconStyle></Style>',
     '    <Style id="delayStyle"><IconStyle><color>ff1697f9</color><scale>1.1</scale></IconStyle></Style>',
     '    <Style id="flagStyle"><IconStyle><color>ff4aa316</color><scale>1.1</scale></IconStyle></Style>',
     '    <Placemark>',
-    `      <name>${xmlEscape(`Recorrido · ${tripName(trip)}`)}</name>`,
+    `      <name>${xmlEscape(trackName(trip))}</name>`,
     '      <styleUrl>#trackStyle</styleUrl>',
     '      <LineString>',
     '        <tessellate>1</tessellate>',
@@ -223,6 +350,7 @@ export function buildGeoJson(trip, events = [], chunks = []) {
       properties: {
         kind: 'event',
         index: idx + 1,
+        name: waypointName(idx),
         label: eventLabel(e),
         eventType: eventType(e),
         delayCodes: eventDelay(e),
@@ -241,7 +369,7 @@ export function buildGeoJson(trip, events = [], chunks = []) {
       },
       geometry: {
         type: 'Point',
-        coordinates: [Number(eventLon(e)), Number(eventLat(e)), 0],
+        coordinates: [Number(eventLon(e)), Number(eventLat(e)), Number(eventAlt(e) || 0)],
       },
     });
   });
@@ -277,20 +405,122 @@ export function buildTrackCsv(trip, events = [], chunks = []) {
   ].join('\n');
 }
 
+// ZIP sin compresión para generar KMZ en navegador sin dependencias externas.
+const crcTable = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i += 1) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(date = new Date()) {
+  const year = Math.max(1980, date.getFullYear());
+  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return { dosTime, dosDate };
+}
+
+function writeU16(out, value) { out.push(value & 0xff, (value >>> 8) & 0xff); }
+function writeU32(out, value) { out.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff); }
+function writeBytes(out, bytes) { bytes.forEach((b) => out.push(b)); }
+
+function buildZipSingleFile(filename, content) {
+  const encoder = new TextEncoder();
+  const nameBytes = encoder.encode(filename);
+  const data = encoder.encode(content);
+  const crc = crc32(data);
+  const { dosTime, dosDate } = dosDateTime();
+  const local = [];
+  const central = [];
+
+  writeU32(local, 0x04034b50);
+  writeU16(local, 20);
+  writeU16(local, 0);
+  writeU16(local, 0);
+  writeU16(local, dosTime);
+  writeU16(local, dosDate);
+  writeU32(local, crc);
+  writeU32(local, data.length);
+  writeU32(local, data.length);
+  writeU16(local, nameBytes.length);
+  writeU16(local, 0);
+  writeBytes(local, nameBytes);
+  writeBytes(local, data);
+
+  writeU32(central, 0x02014b50);
+  writeU16(central, 20);
+  writeU16(central, 20);
+  writeU16(central, 0);
+  writeU16(central, 0);
+  writeU16(central, dosTime);
+  writeU16(central, dosDate);
+  writeU32(central, crc);
+  writeU32(central, data.length);
+  writeU32(central, data.length);
+  writeU16(central, nameBytes.length);
+  writeU16(central, 0);
+  writeU16(central, 0);
+  writeU16(central, 0);
+  writeU16(central, 0);
+  writeU32(central, 0);
+  writeU32(central, 0);
+  writeBytes(central, nameBytes);
+
+  const end = [];
+  writeU32(end, 0x06054b50);
+  writeU16(end, 0);
+  writeU16(end, 0);
+  writeU16(end, 1);
+  writeU16(end, 1);
+  writeU32(end, central.length);
+  writeU32(end, local.length);
+  writeU16(end, 0);
+
+  return new Blob([new Uint8Array(local), new Uint8Array(central), new Uint8Array(end)], {
+    type: 'application/vnd.google-earth.kmz',
+  });
+}
+
+export function downloadGarminWaypointsGpx(trip, events) {
+  downloadText(`Waypoints_${fileBase(trip)}.gpx`, buildGarminWaypointsGpx(trip, events), 'application/gpx+xml');
+}
+
+export function downloadGarminTrackGpx(trip, events, chunks) {
+  downloadText(`Track_${fileBase(trip)}.gpx`, buildGarminTrackGpx(trip, events, chunks), 'application/gpx+xml');
+}
+
+export function downloadMapSourceCombinedGpx(trip, events, chunks) {
+  downloadText(`${fileBase(trip)}_Juntos.gpx`, buildMapSourceCombinedGpx(trip, events, chunks), 'application/gpx+xml');
+}
+
 export function downloadGpx(trip, events, chunks) {
-  downloadText(`urban_trip_${tripId(trip)}.gpx`, buildGpx(trip, events, chunks), 'application/gpx+xml');
+  downloadMapSourceCombinedGpx(trip, events, chunks);
 }
 
 export function downloadKml(trip, events, chunks) {
-  downloadText(`urban_trip_${tripId(trip)}.kml`, buildKml(trip, events, chunks), 'application/vnd.google-earth.kml+xml');
+  downloadText(`${fileBase(trip)}.kml`, buildKml(trip, events, chunks), 'application/vnd.google-earth.kml+xml');
+}
+
+export function downloadKmz(trip, events, chunks) {
+  const blob = buildZipSingleFile('doc.kml', buildKml(trip, events, chunks));
+  downloadBlob(`${fileBase(trip)}.kmz`, blob);
 }
 
 export function downloadGeoJson(trip, events, chunks) {
-  downloadText(`urban_trip_${tripId(trip)}.geojson`, buildGeoJson(trip, events, chunks), 'application/geo+json');
+  downloadText(`${fileBase(trip)}.geojson`, buildGeoJson(trip, events, chunks), 'application/geo+json');
 }
 
 export function downloadTrackCsv(trip, events, chunks) {
-  downloadText(`urban_trip_${tripId(trip)}_track_points.csv`, buildTrackCsv(trip, events, chunks), 'text/csv');
+  downloadText(`${fileBase(trip)}_track_points.csv`, buildTrackCsv(trip, events, chunks), 'text/csv');
 }
 
 export function buildExportStats(events = [], chunks = []) {
