@@ -15,6 +15,8 @@ data class AsdTripCloudDto(
     val plateNumber: String?,
     val observerName: String?,
     val supervisorName: String?,
+    val aforador: String?,
+    val supervisor: String?,
     val deviceInstallationId: String,
     val appVersionName: String,
     val appVersionCode: Long,

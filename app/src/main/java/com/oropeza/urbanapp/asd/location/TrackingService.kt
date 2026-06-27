@@ -23,6 +23,8 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import com.oropeza.urbanapp.asd.live.LiveDevicePublisher
+import com.oropeza.urbanapp.asd.live.LiveEventBus
 
 class TrackingService : Service() {
 
@@ -56,7 +58,8 @@ class TrackingService : Service() {
 
     private lateinit var gps: LocationProvider
     private lateinit var headingProvider: HeadingProvider
-
+    private lateinit var livePublisher: LiveDevicePublisher
+    private var liveEventsJob: Job? = null
     private var goodFixStreak = 0
     private var recordingArmed = false
 
@@ -80,6 +83,7 @@ class TrackingService : Service() {
         gps = LocationProvider(this)
         headingProvider = HeadingProvider(this)
         headingProvider.start()
+        livePublisher = LiveDevicePublisher(this)
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification("Tracking ASD activo"))
     }
@@ -122,22 +126,34 @@ class TrackingService : Service() {
         updatesJob = null
 
         job = scope.launch {
+            val trip = AsdGraph.db.tripDao().getByIdOnce(tripId)
+            if (trip != null) livePublisher.publishTripStart(trip)
+
+            liveEventsJob?.cancel()
+            liveEventsJob = launch {
+                LiveEventBus.events.collect { signal ->
+                    if (signal.tripId == tripId) {
+                        val currentTrip = AsdGraph.db.tripDao().getByIdOnce(tripId) ?: return@collect
+                        livePublisher.publishEvent(currentTrip, signal)
+                    }
+                }
+            }
             if (!gps.hasPermission()) {
                 Log.w(TAG, "Sin permisos de ubicación. No se inicia tracking.")
                 return@launch
             }
-            
+
             // ✅ Sync loops
             launch {
                 while (true) {
                     delay(30_000L)
-                    val lastP = lastSavedLat?.let { lat -> lastSavedLon?.let { lon -> lastSavedTimeMs?.let { t -> 
-                        TrackPoint(tripId = tripId, timeMs = t, lat = lat, lon = lon, accM = 0.0, provider = "SNAPSHOT") 
+                    val lastP = lastSavedLat?.let { lat -> lastSavedLon?.let { lon -> lastSavedTimeMs?.let { t ->
+                        TrackPoint(tripId = tripId, timeMs = t, lat = lat, lon = lon, accM = 0.0, provider = "SNAPSHOT")
                     } } }
                     AsdSyncManager.enqueueDeviceStatus(applicationContext, tripId, lastP)
                 }
             }
-            
+
             launch {
                 while (true) {
                     delay(60_000L)
@@ -157,6 +173,15 @@ class TrackingService : Service() {
     }
 
     private fun stopTracking() {
+        currentTripId?.let { tripId ->
+            scope.launch {
+                val trip = AsdGraph.db.tripDao().getByIdOnce(tripId)
+                if (trip != null) livePublisher.publishTripEnd(trip)
+            }
+        }
+
+        liveEventsJob?.cancel()
+        liveEventsJob = null
         updatesJob?.cancel()
         updatesJob = null
         job?.cancel()
@@ -274,6 +299,7 @@ class TrackingService : Service() {
         val lastLat = lastAcceptedLat
         val lastLon = lastAcceptedLon
         val isFirst = (lastT == null || lastLat == null || lastLon == null)
+        var currentSpeedMs: Double? = null
 
         if (!isFirst) {
             val dtSec = if (elapsedNanos > 0L && lastAcceptedElapsedNanos != null) {
@@ -284,6 +310,7 @@ class TrackingService : Service() {
 
             val distM = haversineMeters(lastLat!!, lastLon!!, lat, lon)
             val speedMs = distM / dtSec
+            currentSpeedMs = speedMs
 
             if (speedMs > maxSpeedMs) return
             if (distM > jumpM && accM > jumpAccM) return
@@ -332,6 +359,16 @@ class TrackingService : Service() {
             scope.launch {
                 try {
                     AsdGraph.db.trackDao().insert(p)
+                    val trip = AsdGraph.db.tripDao().getByIdOnce(tripId)
+                    if (trip != null) {
+                        livePublisher.maybePublishLocation(
+                            trip = trip,
+                            point = p,
+                            heading = headingProvider.getHeadingDeg(timeMs),
+                            speedMs = currentSpeedMs,
+                            gpsStatus = gpsStatusFromAccuracy(accM)
+                        )
+                    }
                     val completed = AsdGraph.repo.completePendingGpsEvents(tripId, p)
                     if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
                 } catch (e: Exception) {
@@ -384,6 +421,12 @@ class TrackingService : Service() {
         }
 
         return false
+    }
+
+    private fun gpsStatusFromAccuracy(accM: Double): String = when {
+        accM <= 25.0 -> "OK"
+        accM <= 45.0 -> "WEAK"
+        else -> "POOR"
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

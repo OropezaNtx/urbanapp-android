@@ -11,9 +11,9 @@ object AsdCloudMapper {
     fun toCloudDto(context: Context, trip: Trip): AsdTripCloudDto {
         val workspace = UrbanRuntime.workspace(context)
         val identity = UrbanRuntime.identity(context)
-        
+
         return AsdTripCloudDto(
-            cloudTripId = "${identity.installationId}_${trip.tripId}",
+            cloudTripId = identity.installationId + "_" + trip.tripId,
             localTripId = trip.tripId,
             organizationId = workspace.organization.organizationId,
             projectId = workspace.project.projectId,
@@ -27,6 +27,8 @@ object AsdCloudMapper {
             plateNumber = trip.plateNumber,
             observerName = trip.aforador,
             supervisorName = trip.supervisor,
+            aforador = trip.aforador,
+            supervisor = trip.supervisor,
             deviceInstallationId = identity.installationId,
             appVersionName = identity.appVersionName,
             appVersionCode = identity.appVersionCode,
@@ -34,15 +36,57 @@ object AsdCloudMapper {
             endTime = trip.endTime,
             status = if (trip.endTime == null) "ACTIVE" else "CLOSED",
             createdAt = trip.startTime,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+
+            company = trip.company,
+            seatCapacity = trip.seatCapacity,
+            baseStart = trip.baseStart,
+            baseEnd = trip.baseEnd,
+            esFs = trip.esFs,
+            deviceNumber = trip.deviceNumber,
+            observerSex = trip.observerSex,
+            notes = trip.notes
         )
     }
 
-    fun toCloudDto(context: Context, event: StopEvent, cloudTripId: String, onboardMen: Int, onboardWomen: Int): AsdEventCloudDto {
+    fun toCloudDto(
+        context: Context,
+        event: StopEvent,
+        cloudTripId: String,
+        onboardMen: Int,
+        onboardWomen: Int
+    ): AsdEventCloudDto {
         val identity = UrbanRuntime.identity(context)
-        
+
+        val hasStop = event.stopLat != 0.0 && event.stopLon != 0.0
+        val hasStart = event.startLat != 0.0 && event.startLon != 0.0
+
+        val primaryLat = when {
+            hasStop -> event.stopLat
+            hasStart -> event.startLat
+            else -> 0.0
+        }
+
+        val primaryLon = when {
+            hasStop -> event.stopLon
+            hasStart -> event.startLon
+            else -> 0.0
+        }
+
+        val primaryAlt = when {
+            hasStop -> event.stopAltM
+            hasStart -> event.startAltM
+            else -> 0.0
+        }
+
+        val primaryAcc = when {
+            hasStop && event.stopAccM > 0.0 -> event.stopAccM
+            hasStart && event.startAccM > 0.0 -> event.startAccM
+            else -> maxOf(event.stopAccM, event.startAccM)
+        }
+
         return AsdEventCloudDto(
-            cloudEventId = "${identity.installationId}_${event.eventId}",
+            cloudEventId = identity.installationId + "_" + event.eventId,
             cloudTripId = cloudTripId,
             localEventId = event.eventId,
             localTripId = event.tripId,
@@ -52,18 +96,41 @@ object AsdCloudMapper {
             timestamp = event.timestamp,
             startTime = event.startTime,
             stopTime = event.stopTime,
-            lat = event.stopLat,
-            lon = event.stopLon,
-            alt = event.stopAltM,
-            accuracy = event.stopAccM,
+
+            lat = primaryLat,
+            lon = primaryLon,
+            alt = primaryAlt,
+            accuracy = primaryAcc,
+
+            stopLat = event.stopLat,
+            stopLon = event.stopLon,
+            stopAltM = event.stopAltM,
+            stopAccM = event.stopAccM,
+            stopProvider = event.stopProvider,
+            stopFixTime = event.stopFixTime,
+
+            startLat = event.startLat,
+            startLon = event.startLon,
+            startAltM = event.startAltM,
+            startAccM = event.startAccM,
+            startProvider = event.startProvider,
+            startFixTime = event.startFixTime,
+
+            locationStatus = event.locationStatus,
+
             menUp = event.paxMenUp,
             womenUp = event.paxWomenUp,
             menDown = event.paxMenDown,
             womenDown = event.paxWomenDown,
             onboardMen = onboardMen,
             onboardWomen = onboardWomen,
+
             delayCodes = event.delayCodes,
+            stopName = event.stopName,
             notes = event.notes,
+            otherDelayDesc = event.otherDelayDesc,
+            hasLuggage = event.hasLuggage,
+
             createdAt = event.timestamp,
             updatedAt = System.currentTimeMillis()
         )

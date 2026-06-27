@@ -14,6 +14,8 @@ import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlin.math.max
+import com.oropeza.urbanapp.asd.live.LiveEventBus
+import com.oropeza.urbanapp.asd.live.LiveSignal
 
 class AsdRepository(private val db: AppDatabase) {
 
@@ -174,7 +176,7 @@ class AsdRepository(private val db: AppDatabase) {
         )
         val tripId = tripDao.insert(trip)
         val finalTrip = trip.copy(tripId = tripId)
-        
+
         // Cloud Sync Enqueue
         try {
             val context = AsdGraph.appContext
@@ -257,17 +259,17 @@ class AsdRepository(private val db: AppDatabase) {
         )
         val finalTrip = trip.copy(endTime = endMs)
         val ok = tripDao.update(finalTrip) > 0
-        
+
         if (ok) {
             // Cloud Sync Enqueue
             try {
                 val context = AsdGraph.appContext
                 val cloudTrip = AsdCloudMapper.toCloudDto(context, finalTrip)
                 enqueueSync("TRIP", "UPSERT", tripId, cloudTrip)
-                
+
                 // Chunk track points
                 enqueueTrackChunks(tripId)
-                
+
                 UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_SYNC_READY, mapOf("tripId" to tripId)))
             } catch (e: Exception) {
                 android.util.Log.w("AsdRepository", "Failed to enqueue trip closure for sync", e)
@@ -417,6 +419,15 @@ class AsdRepository(private val db: AppDatabase) {
         )
         val insertedId = stopDao.insert(event)
         val finalEvent = event.copy(eventId = insertedId)
+        Log.d(
+            "ASD_ROOM_EVENT",
+            "inserted eventId=${finalEvent.eventId}, " +
+                    "type=${finalEvent.stopType}, " +
+                    "delayCodes=${finalEvent.delayCodes}, " +
+                    "locationStatus=${finalEvent.locationStatus}, " +
+                    "stopLat=${finalEvent.stopLat}, stopLon=${finalEvent.stopLon}, stopAcc=${finalEvent.stopAccM}, " +
+                    "startLat=${finalEvent.startLat}, startLon=${finalEvent.startLon}, startAcc=${finalEvent.startAccM}"
+        )
 
         // Cloud Sync Enqueue
         try {
@@ -425,7 +436,7 @@ class AsdRepository(private val db: AppDatabase) {
             val workspace = UrbanRuntime.workspace(context)
             val cloudTripId = "${identity.installationId}_$tripId"
             val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
-            
+
             val cloudEvent = AsdCloudMapper.toCloudDto(context, finalEvent, cloudTripId, mOnBoard, wOnBoard)
             enqueueSync(
                 type = "EVENT",
@@ -440,6 +451,16 @@ class AsdRepository(private val db: AppDatabase) {
         }
 
         AsdOnlineBackup.backupStopEvent(finalEvent)
+        LiveEventBus.tryEmit(
+            LiveSignal(
+                tripId = tripId,
+                reason = LiveSignal.EVENT,
+                eventType = finalEvent.stopType,
+                eventId = finalEvent.eventId,
+                waypointId = finalEvent.waypointStopId,
+                timestampMs = finalEvent.timestamp
+            )
+        )
     }
 
     private fun normalizeCoord(lat: Double, lon: Double): Pair<Double, Double> {
@@ -485,7 +506,7 @@ class AsdRepository(private val db: AppDatabase) {
         )
         val insertedId = stopDao.insert(event)
         val finalEvent = event.copy(eventId = insertedId)
-        
+
         // Cloud Sync Enqueue
         try {
             val context = AsdGraph.appContext
@@ -493,7 +514,7 @@ class AsdRepository(private val db: AppDatabase) {
             val workspace = UrbanRuntime.workspace(context)
             val cloudTripId = "${identity.installationId}_$tripId"
             val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
-            
+
             val cloudEvent = AsdCloudMapper.toCloudDto(context, finalEvent, cloudTripId, mOnBoard, wOnBoard)
             enqueueSync(
                 type = "EVENT",
@@ -507,6 +528,16 @@ class AsdRepository(private val db: AppDatabase) {
         }
 
         AsdOnlineBackup.backupStopEvent(finalEvent)
+        LiveEventBus.tryEmit(
+            LiveSignal(
+                tripId = tripId,
+                reason = LiveSignal.EVENT,
+                eventType = "DELAY_START",
+                eventId = finalEvent.eventId,
+                waypointId = finalEvent.waypointStopId,
+                timestampMs = finalEvent.timestamp
+            )
+        )
         return true
     }
 
@@ -533,7 +564,7 @@ class AsdRepository(private val db: AppDatabase) {
                 val workspace = UrbanRuntime.workspace(context)
                 val cloudTripId = "${identity.installationId}_$tripId"
                 val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
-                
+
                 val cloudEvent = AsdCloudMapper.toCloudDto(context, updated, cloudTripId, mOnBoard, wOnBoard)
                 enqueueSync(
                     type = "EVENT",
@@ -545,6 +576,16 @@ class AsdRepository(private val db: AppDatabase) {
             } catch (e: Exception) {
                 Log.w("AsdRepository", "Failed to enqueue delay end for sync", e)
             }
+            LiveEventBus.tryEmit(
+                LiveSignal(
+                    tripId = tripId,
+                    reason = LiveSignal.EVENT,
+                    eventType = "DELAY_END",
+                    eventId = updated.eventId,
+                    waypointId = updated.waypointStartId,
+                    timestampMs = now
+                )
+            )
         }
         AsdOnlineBackup.backupStopEvent(updated)
         return ok
@@ -603,7 +644,7 @@ class AsdRepository(private val db: AppDatabase) {
             val context = AsdGraph.appContext
             val workspace = UrbanRuntime.workspace(context)
             val identity = UrbanRuntime.identity(context)
-            
+
             val effectivePath = cloudPath ?: when(type) {
                 "TRIP" -> UrbanCloudPaths.tripPath(workspace, "${identity.installationId}_$localId")
                 "EVENT" -> {
@@ -665,9 +706,9 @@ class AsdRepository(private val db: AppDatabase) {
     fun getTripSyncStatusFlow(tripId: Long): Flow<AsdTripSyncStatus> {
         return syncQueueDao.getTripSyncItemStatusesFlow(tripId).map { statuses ->
             if (statuses.isEmpty()) return@map AsdTripSyncStatus.NOT_QUEUED
-            
+
             val distinct = statuses.distinct()
-            
+
             return@map when {
                 distinct.all { it == "SYNCED" } -> AsdTripSyncStatus.SYNCED
                 distinct.any { it == "IN_PROGRESS" } -> AsdTripSyncStatus.IN_PROGRESS
@@ -712,10 +753,10 @@ class AsdRepository(private val db: AppDatabase) {
             )
             return
         }
-        
+
         val chunkSize = UrbanRuntime.configuration(context).trackChunkSize.coerceAtLeast(10)
         val chunks = points.chunked(chunkSize)
-        
+
         chunks.forEachIndexed { index, chunk ->
             val chunkId = "${cloudTripId}_chunk_$index"
             val dto = AsdTrackChunkCloudDto(
@@ -730,7 +771,7 @@ class AsdRepository(private val db: AppDatabase) {
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis()
             )
-            
+
             enqueueSync(
                 type = "TRACK_CHUNK",
                 operation = "UPSERT",

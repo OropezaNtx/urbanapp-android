@@ -157,7 +157,12 @@ function garminMetadata(time, bounds = '') {
     '  </metadata>',
   ].filter(Boolean).join('\n');
 }
-function waypointName(idx) { return String(idx + 1).padStart(3, '0'); }
+function waypointName(idx, event = null) {
+  const wp = event?.waypointStopId ?? event?.waypointStartId ?? event?.wpStop ?? event?.wpStart;
+  const n = Number(wp);
+  if (Number.isFinite(n) && n > 0) return String(n).padStart(3, '0');
+  return String(idx + 1).padStart(3, '0');
+}
 function garminWaypoint(e, idx, withDisplayMode = false) {
   const time = iso(eventTime(e)) || nowIso();
   const ele = formatNum(eventAlt(e), 6) || '0';
@@ -165,7 +170,7 @@ function garminWaypoint(e, idx, withDisplayMode = false) {
     `  <wpt lat="${formatNum(eventLat(e), 15)}" lon="${formatNum(eventLon(e), 15)}">`,
     `    <ele>${ele}</ele>`,
     `    <time>${xmlEscape(time)}</time>`,
-    `    <name>${waypointName(idx)}</name>`,
+    `    <name>${waypointName(idx, e)}</name>`,
     '    <sym>Flag, Blue</sym>',
     withDisplayMode ? '    <extensions>' : '',
     withDisplayMode ? `      <gpxx:WaypointExtension xmlns:gpxx="${GPXX_NS}">` : '',
@@ -226,7 +231,7 @@ export function buildGpx(trip, events = [], chunks = []) { return buildMapSource
 function kmlWaypointPlacemark(e, idx) {
   return [
     '      <Placemark>',
-    `        <name><![CDATA[${waypointName(idx)}]]></name>`,
+    `        <name><![CDATA[${waypointName(idx, e)}]]></name>`,
     '        <Snippet></Snippet>',
     '        <description><![CDATA[&nbsp;]]></description>',
     '        <Style>',
@@ -297,7 +302,7 @@ export function buildGeoJson(trip, events = [], chunks = []) {
   }
   eventPoints.forEach((e, idx) => features.push({
     type: 'Feature',
-    properties: { kind: 'event', index: idx + 1, name: waypointName(idx), label: eventLabel(e), eventType: eventType(e), delayCodes: eventDelay(e), time: iso(eventTime(e)), waypointStartId: e.waypointStartId ?? null, waypointStopId: e.waypointStopId ?? null, menUp: menUp(e), womenUp: womenUp(e), menDown: menDown(e), womenDown: womenDown(e), totalUp: totalUp(e), totalDown: totalDown(e), gpsStatus: e.locationStatus ?? null, accuracy: e.stopAccM ?? e.accuracy ?? e.startAccM ?? null, notes: e.notes ?? null },
+    properties: { kind: 'event', index: idx + 1, name: waypointName(idx, e), label: eventLabel(e), eventType: eventType(e), delayCodes: eventDelay(e), time: iso(eventTime(e)), waypointStartId: e.waypointStartId ?? null, waypointStopId: e.waypointStopId ?? null, menUp: menUp(e), womenUp: womenUp(e), menDown: menDown(e), womenDown: womenDown(e), totalUp: totalUp(e), totalDown: totalDown(e), gpsStatus: e.locationStatus ?? null, accuracy: e.stopAccM ?? e.accuracy ?? e.startAccM ?? null, notes: e.notes ?? null },
     geometry: { type: 'Point', coordinates: [Number(eventLon(e)), Number(eventLat(e)), Number(eventAlt(e) || 0)] },
   }));
   return JSON.stringify({ type: 'FeatureCollection', name: exportBaseName(trip), features }, null, 2);

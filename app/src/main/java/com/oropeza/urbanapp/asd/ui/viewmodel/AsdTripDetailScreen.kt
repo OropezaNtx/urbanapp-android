@@ -1,5 +1,6 @@
 package com.oropeza.urbanapp.asd.ui.viewmodel
 
+import android.util.Log
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -325,6 +326,19 @@ fun AsdTripDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val isDelayActive = activeDelayStartMs > 0L
 
+    fun gpsLog(msg: String) {
+        Log.d("ASD_GPS_CAPTURE", msg)
+    }
+
+    fun LocationFix.isUsableForEvent(): Boolean {
+        return lat != 0.0 &&
+                lon != 0.0 &&
+                accM > 0.0 &&
+                accM <= 45.0 &&
+                status != "GPS_PENDING"
+    }
+
+
     val bgApp = Color(0xFF07110F)
     val greenAcc = Color(0xFF35D36B)
 
@@ -388,14 +402,42 @@ fun AsdTripDetailScreen(
 
     fun currentFix(now: Long): LocationFix {
         val p = lastPoint
-        val isRecent = p != null && (now - p.timeMs) <= 10_000L
-        val isAccurate = p != null && p.accM <= 25.0
+        val ageMs = p?.let { now - it.timeMs } ?: Long.MAX_VALUE
+
+        val isRecent = p != null && ageMs <= 15_000L
+        val isAccurate = p != null && p.accM <= 45.0
         val isValid = p != null && p.lat != 0.0 && p.lon != 0.0
 
+        gpsLog(
+            "currentFix() lastPoint=" +
+                    "exists=${p != null}, " +
+                    "valid=$isValid, " +
+                    "recent=$isRecent, " +
+                    "ageMs=$ageMs, " +
+                    "acc=${p?.accM}, " +
+                    "lat=${p?.lat}, lon=${p?.lon}"
+        )
+
         return if (p != null && isValid && isRecent && isAccurate) {
-            LocationFix(p.lat, p.lon, p.accM, p.altM, p.provider, p.timeMs, "FIX_USABLE")
+            LocationFix(
+                lat = p.lat,
+                lon = p.lon,
+                altM = p.altM,
+                accM = p.accM,
+                provider = p.provider,
+                fixTime = p.timeMs,
+                status = "FIX_USABLE"
+            )
         } else {
-            LocationFix(0.0, 0.0, 0.0, 0.0, "pending", now, "GPS_PENDING")
+            LocationFix(
+                lat = 0.0,
+                lon = 0.0,
+                altM = 0.0,
+                accM = 0.0,
+                provider = "pending",
+                fixTime = now,
+                status = "GPS_PENDING"
+            )
         }
     }
 
@@ -414,6 +456,12 @@ fun AsdTripDetailScreen(
         if (!requestPermsIfNeeded()) return
         val now = System.currentTimeMillis()
         val fix = currentFix(now)
+        gpsLog(
+            "ensureActiveDelayFromInput() " +
+                    "fixStatus=${fix.status}, " +
+                    "lat=${fix.lat}, lon=${fix.lon}, acc=${fix.accM}, " +
+                    "provider=${fix.provider}"
+        )
         activeDelayStartMs = now
         activeDelayLat = fix.lat
         activeDelayLon = fix.lon
@@ -462,9 +510,33 @@ fun AsdTripDetailScreen(
             return
         }
         val now = System.currentTimeMillis()
-        val endFix = currentFix(now)
+        var endFix = currentFix(now)
+        
         scope.launch {
             try {
+                if (endFix.status == "GPS_PENDING") {
+                    loadingGps = true
+                    gpsMsg = "Obteniendo ubicación final…"
+                    endFix = gps.getBestFixForEvent(targetAccM = 15.0, fallbackAccM = 45.0, timeoutMs = 2_500L)
+                }
+
+                // BACKFILL: Si el inicio estaba pendiente pero tenemos fin usable, usamos el fin para el inicio
+                val effectiveStartFix = if (activeDelayStatus == "GPS_PENDING" && endFix.status != "GPS_PENDING") {
+                    endFix.copy(status = "FIX_BACKFILLED_FROM_END")
+                } else {
+                    activeStartFix()
+                }
+
+                gpsLog(
+                    "closeActiveDelay() BEFORE_SAVE " +
+                            "startStatus=${effectiveStartFix.status}, " +
+                            "startLat=${effectiveStartFix.lat}, startLon=${effectiveStartFix.lon}, startAcc=${effectiveStartFix.accM}, " +
+                            "endStatus=${endFix.status}, " +
+                            "endLat=${endFix.lat}, endLon=${endFix.lon}, endAcc=${endFix.accM}, " +
+                            "type=${inferredStopType()}, " +
+                            "delayCodes=${selectedDelayText()}"
+                )
+
                 vm.addStopDetailed(
                     tripId,
                     inferredStopType(),
@@ -479,18 +551,20 @@ fun AsdTripDetailScreen(
                     hasLuggage,
                     selectedDelayText(),
                     otherDelayDesc.trim().ifBlank { null },
-                    activeStartFix(),
+                    effectiveStartFix,
                     endFix
                 )
                 clearActiveDelay()
                 resetCaptureForm()
-                snackbarText = if (activeDelayStatus == "GPS_PENDING") {
+                snackbarText = if (endFix.status == "GPS_PENDING") {
                     "Registro guardado ✅ · GPS pendiente, se completará automáticamente"
                 } else {
-                    "Registro guardado ✅ · GPS $activeDelayStatus"
+                    "Registro guardado ✅"
                 }
             } catch (e: Exception) {
                 snackbarText = e.message ?: "Error al cerrar registro."
+            } finally {
+                loadingGps = false
             }
         }
     }
