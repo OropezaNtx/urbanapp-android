@@ -341,25 +341,49 @@ class TrackingService : Service() {
         }
     }
 
-    private fun shouldSaveTrackPoint(lat: Double, lon: Double, accM: Double, timeMs: Long): Boolean {
-        val savedTime = lastSavedTimeMs
-        val savedLat = lastSavedLat
-        val savedLon = lastSavedLon
-        if (savedTime == null || savedLat == null || savedLon == null) return true
+    private fun shouldSaveTrackPoint(
+        lat: Double,
+        lon: Double,
+        accM: Double,
+        timeMs: Long
+    ): Boolean {
+        val lastLat = lastSavedLat
+        val lastLon = lastSavedLon
+        val lastTime = lastSavedTimeMs
 
-        val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
-        val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
-
-        val jitterRadius = kotlin.math.max(12.0, accM * 1.5)
-        if (distanceM < jitterRadius) return false
-
-        if (distanceM >= minSaveDistanceM) return true
-
-        return if (elapsedMs >= maxSaveIntervalMs) {
-            currentMode != Mode.STILL
-        } else {
-            false
+        if (lastLat == null || lastLon == null || lastTime == null) {
+            return true
         }
+
+        val elapsedMs = timeMs - lastTime
+        val results = FloatArray(1)
+        android.location.Location.distanceBetween(
+            lastLat,
+            lastLon,
+            lat,
+            lon,
+            results
+        )
+        val distanceM = results[0].toDouble()
+
+        val minTimeMovingMs = 5_000L
+        val minDistanceMovingM = 5.0
+        val maxStillIntervalMs = 30_000L
+        val maxForceIntervalMs = 15_000L
+
+        if (elapsedMs >= maxForceIntervalMs) {
+            return true
+        }
+
+        if (currentMode == Mode.STILL) {
+            return elapsedMs >= maxStillIntervalMs
+        }
+
+        if (elapsedMs >= minTimeMovingMs && distanceM >= minDistanceMovingM) {
+            return true
+        }
+
+        return false
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

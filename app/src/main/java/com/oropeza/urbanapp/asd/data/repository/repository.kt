@@ -685,9 +685,33 @@ class AsdRepository(private val db: AppDatabase) {
         val workspace = UrbanRuntime.workspace(context)
         val identity = UrbanRuntime.identity(context)
         val cloudTripId = "${identity.installationId}_$tripId"
-        
+
         val points = trackDao.getByTripOnce(tripId)
-        if (points.isEmpty()) return
+
+        UrbanRuntime.publishEvent(
+            UrbanEventFactory.asd(
+                "ASD_TRACK_CHUNK_DEBUG",
+                mapOf(
+                    "tripId" to tripId,
+                    "cloudTripId" to cloudTripId,
+                    "pointCount" to points.size
+                )
+            )
+        )
+
+        if (points.isEmpty()) {
+            UrbanRuntime.publishEvent(
+                UrbanEventFactory.asd(
+                    "ASD_TRACK_CHUNK_SKIPPED_EMPTY",
+                    mapOf(
+                        "tripId" to tripId,
+                        "cloudTripId" to cloudTripId,
+                        "reason" to "NO_TRACK_POINTS_IN_ROOM"
+                    )
+                )
+            )
+            return
+        }
         
         val chunkSize = UrbanRuntime.configuration(context).trackChunkSize.coerceAtLeast(10)
         val chunks = points.chunked(chunkSize)
@@ -714,7 +738,17 @@ class AsdRepository(private val db: AppDatabase) {
                 payload = dto,
                 cloudPath = UrbanCloudPaths.trackChunkPath(workspace, cloudTripId, chunkId)
             )
-            UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRACK_CHUNK_ENQUEUED, mapOf("tripId" to tripId, "index" to index)))
+            UrbanRuntime.publishEvent(
+                UrbanEventFactory.asd(
+                    UrbanEventTypes.ASD_TRACK_CHUNK_ENQUEUED,
+                    mapOf(
+                        "tripId" to tripId,
+                        "index" to index,
+                        "pointCount" to chunk.size,
+                        "cloudPath" to UrbanCloudPaths.trackChunkPath(workspace, cloudTripId, chunkId)
+                    )
+                )
+            )
         }
     }
 }
