@@ -1,6 +1,14 @@
 import React from 'react';
-import { Download, FileJson, Globe2, Map, Table2 } from 'lucide-react';
-import { buildExportStats, downloadGeoJson, downloadGpx, downloadKml, downloadTrackCsv } from '../exporters/geo';
+import { Download, FileJson, Globe2, Map, MapPin, Table2 } from 'lucide-react';
+import {
+  buildExportStats,
+  downloadGarminTrackGpx,
+  downloadGarminWaypointsGpx,
+  downloadGeoJson,
+  downloadKmz,
+  downloadMapSourceCombinedGpx,
+  downloadTrackCsv,
+} from '../exporters/geo';
 
 const fmtDuration = (ms) => {
   if (!Number.isFinite(Number(ms))) return '—';
@@ -13,8 +21,8 @@ const fmtDuration = (ms) => {
   return `${s}s`;
 };
 
-function ExportButton({ icon, title, text, disabled, onClick }) {
-  return <button className="export-button" disabled={disabled} onClick={onClick}>
+function ExportButton({ icon, title, text, disabled, onClick, primary = false }) {
+  return <button className={`export-button ${primary ? 'export-primary' : ''}`} disabled={disabled} onClick={onClick}>
     {icon}
     <span>
       <b>{title}</b>
@@ -32,36 +40,59 @@ export default function TripExportPanel({ trip, events = [], chunks = [] }) {
   return <div className="export-panel">
     <div className="export-head">
       <div>
-        <b>Paquete geoespacial</b>
-        <span>Archivos listos para Google Earth, QGIS, ArcGIS y auditoría externa.</span>
+        <b>Paquete geoespacial Garmin</b>
+        <span>Formatos compatibles con el flujo actual: WP Garmin, Track Garmin, GPX juntos y KMZ.</span>
       </div>
       <div className="export-badges">
         <span>{stats.pointCount} puntos GPS</span>
-        <span>{stats.eventPointCount} eventos georreferenciados</span>
+        <span>{stats.eventPointCount} WP georreferenciados</span>
         <span>{stats.distanceKm.toFixed(3)} km</span>
         <span>{fmtDuration(stats.durationMs)}</span>
       </div>
     </div>
 
+    <div className="export-group-title">Formatos principales de operación</div>
     <div className="export-actions">
       <ExportButton
-        icon={<Globe2 size={18} />}
-        title="GPX"
-        text="Track + waypoints para GPS/QGIS"
-        disabled={!canExport}
-        onClick={() => downloadGpx(trip, events, chunks)}
+        primary
+        icon={<MapPin size={18} />}
+        title="WP Garmin GPX"
+        text="Waypoints 001, 002... con Flag, Blue"
+        disabled={!hasEvents}
+        onClick={() => downloadGarminWaypointsGpx(trip, events)}
       />
       <ExportButton
-        icon={<Map size={18} />}
-        title="KML"
-        text="Google Earth / Google My Maps"
-        disabled={!canExport}
-        onClick={() => downloadKml(trip, events, chunks)}
+        primary
+        icon={<Globe2 size={18} />}
+        title="Track Garmin GPX"
+        text="Track eTrex/MapSource con DisplayColor"
+        disabled={!hasTrack}
+        onClick={() => downloadGarminTrackGpx(trip, events, chunks)}
       />
+      <ExportButton
+        primary
+        icon={<Map size={18} />}
+        title="GPX Juntos"
+        text="WP + track estilo MapSource 6.16.3"
+        disabled={!canExport}
+        onClick={() => downloadMapSourceCombinedGpx(trip, events, chunks)}
+      />
+      <ExportButton
+        primary
+        icon={<Map size={18} />}
+        title="KMZ"
+        text="Google Earth / entrega visual"
+        disabled={!canExport}
+        onClick={() => downloadKmz(trip, events, chunks)}
+      />
+    </div>
+
+    <div className="export-group-title">Formatos auxiliares</div>
+    <div className="export-actions secondary">
       <ExportButton
         icon={<FileJson size={18} />}
         title="GeoJSON"
-        text="GIS web, QGIS y pipelines"
+        text="QGIS, web GIS y pipelines"
         disabled={!canExport}
         onClick={() => downloadGeoJson(trip, events, chunks)}
       />
@@ -76,7 +107,7 @@ export default function TripExportPanel({ trip, events = [], chunks = [] }) {
 
     {!canExport && <div className="empty">Este viaje todavía no tiene puntos GPS ni eventos con coordenada para exportar.</div>}
     <div className="export-note">
-      <Download size={15} /> El GPX/KML incluye la línea del recorrido y los eventos como puntos con metadatos de pasajeros, WP, precisión y notas.
+      <Download size={15} /> Los GPX principales replican la estructura Garmin: metadata Garmin, WP numerados, símbolo Flag Blue, track con extensiones Garmin y GPX combinado estilo MapSource.
     </div>
   </div>;
 }
