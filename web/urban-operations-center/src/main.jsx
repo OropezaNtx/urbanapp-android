@@ -2,17 +2,29 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RefreshCw, Download, ArrowLeft, Bus, Users, MapPin, Activity } from 'lucide-react';
 import { fetchDevices, fetchTripDetail, fetchTrips } from './services/firestore';
+import { subscribeLiveDevices } from './services/liveDevices';
 import { downloadTripEventsCsv } from './exporters/csv';
 import TrackSummary, { buildTrackMetrics } from './components/TrackSummary';
 import TripMap from './components/TripMap';
 import TripInsights from './components/TripInsights';
 import TripExportPanel from './components/TripExportPanel';
 import TripPlayback from './components/TripPlayback';
+import LiveDevicesPanel from './components/LiveDevicesPanel';
 import './styles.css';
 
+const toMillis = (v) => {
+  if (!v) return 0;
+  if (typeof v === 'number') return v;
+  if (v.toMillis) return v.toMillis();
+  if (v.seconds) return v.seconds * 1000;
+  const parsed = new Date(v).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const fmt = (v) => {
-  if (!v) return '—';
-  const d = new Date(Number(v));
+  const ms = toMillis(v);
+  if (!ms) return '—';
+  const d = new Date(ms);
   return isNaN(d.getTime()) ? String(v) : d.toLocaleString('es-MX');
 };
 
@@ -59,10 +71,16 @@ function Field({ label, value }) {
   return <div className="field"><span>{label}</span><b>{val(value)}</b></div>;
 }
 
+function liveIsActive(d) {
+  const status = String(d?.tripStatus || '').toUpperCase();
+  return status === 'ACTIVE';
+}
+
 function App() {
   const [view, setView] = useState('dashboard');
   const [trips, setTrips] = useState([]);
   const [devices, setDevices] = useState([]);
+  const [liveDevices, setLiveDevices] = useState([]);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
   const [err, setErr] = useState('');
@@ -84,6 +102,13 @@ function App() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    return subscribeLiveDevices(
+      setLiveDevices,
+      (e) => setErr(e.message || String(e))
+    );
+  }, []);
+
   async function openTrip(t) {
     setSelected(t);
     setView('detail');
@@ -103,7 +128,9 @@ function App() {
     active: trips.filter(t => !closed(t)).length,
     closed: trips.filter(closed).length,
     devices: devices.length,
-  }), [trips, devices]);
+    live: liveDevices.length,
+    liveActive: liveDevices.filter(liveIsActive).length,
+  }), [trips, devices, liveDevices]);
 
   const allEvents = detail?.events || [];
   const trackChunks = detail?.trackChunks || detail?.trackSummary || [];
@@ -118,7 +145,7 @@ function App() {
     <header>
       <div>
         <h1>Urban Operations Center</h1>
-        <p>Firestore: cloud trips · events · track_chunks · installations</p>
+        <p>Firestore: cloud trips · events · track_chunks · installations · live_devices</p>
       </div>
       <button onClick={load}><RefreshCw size={16} />Actualizar</button>
     </header>
@@ -135,8 +162,8 @@ function App() {
       <section className="grid stats">
         <Stat label="Viajes" value={stats.total} />
         <Stat label="Activos" value={stats.active} />
-        <Stat label="Cerrados" value={stats.closed} />
-        <Stat label="Dispositivos" value={stats.devices} />
+        <Stat label="Live activos" value={stats.liveActive} />
+        <Stat label="Dispositivos live" value={stats.live} />
       </section>
       <h2>Últimos viajes</h2>
       <TripsTable trips={trips.slice(0, 10)} onOpen={openTrip} />
@@ -149,7 +176,11 @@ function App() {
 
     {view === 'devices' && <main>
       <h2>Live Devices</h2>
-      <DevicesTable devices={devices} />
+      <LiveDevicesPanel devices={liveDevices} />
+      <section className="card">
+        <h3><SmartphoneFallback /> Instalaciones registradas</h3>
+        <DevicesTable devices={devices} />
+      </section>
     </main>}
 
     {view === 'detail' && <main>
@@ -225,6 +256,10 @@ function App() {
 
     {loading && <div className="loading">Cargando...</div>}
   </div>;
+}
+
+function SmartphoneFallback() {
+  return <Activity size={18} />;
 }
 
 function TripsTable({ trips, onOpen }) {
