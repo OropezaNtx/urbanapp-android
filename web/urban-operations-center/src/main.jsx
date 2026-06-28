@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { RefreshCw, Download, ArrowLeft, Bus, Users, MapPin, Activity } from 'lucide-react';
 import { fetchDevices, fetchTripDetail, fetchTrips } from './services/firestore';
 import { subscribeLiveDevices } from './services/liveDevices';
+import { subscribeInstallationsHealth } from './services/installations';
 import { downloadTripEventsCsv } from './exporters/csv';
 import TrackSummary, { buildTrackMetrics } from './components/TrackSummary';
 import TripMap from './components/TripMap';
@@ -11,6 +12,7 @@ import TripExportPanel from './components/TripExportPanel';
 import TripPlayback from './components/TripPlayback';
 import LiveDevicesPanel from './components/LiveDevicesPanel';
 import LiveDevicesMap from './components/LiveDevicesMap';
+import FleetHealthPanel from './components/FleetHealthPanel';
 import './styles.css';
 
 const toMillis = (v) => {
@@ -80,6 +82,7 @@ function App() {
   const [trips, setTrips] = useState([]);
   const [devices, setDevices] = useState([]);
   const [liveDevices, setLiveDevices] = useState([]);
+  const [installationsHealth, setInstallationsHealth] = useState([]);
   const [selectedLiveId, setSelectedLiveId] = useState(null);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -109,6 +112,13 @@ function App() {
     );
   }, []);
 
+  useEffect(() => {
+    return subscribeInstallationsHealth(
+      setInstallationsHealth,
+      (e) => setErr(e.message || String(e))
+    );
+  }, []);
+
   async function openTrip(t) {
     setSelected(t);
     setView('detail');
@@ -130,7 +140,8 @@ function App() {
     devices: devices.length,
     live: liveDevices.length,
     liveActive: liveDevices.filter(liveIsActive).length,
-  }), [trips, devices, liveDevices]);
+    installations: installationsHealth.length,
+  }), [trips, devices, liveDevices, installationsHealth]);
 
   const allEvents = detail?.events || [];
   const trackChunks = detail?.trackChunks || detail?.trackSummary || [];
@@ -156,6 +167,7 @@ function App() {
       <button onClick={() => setView('dashboard')}>Dashboard</button>
       <button onClick={() => setView('trips')}>Trips</button>
       <button onClick={() => setView('devices')}>Live Devices</button>
+      <button onClick={() => setView('fleet')}>Fleet Health</button>
     </nav>
 
     {view === 'dashboard' && <main>
@@ -163,7 +175,7 @@ function App() {
         <Stat label="Viajes" value={stats.total} />
         <Stat label="Activos" value={stats.active} />
         <Stat label="Live activos" value={stats.liveActive} />
-        <Stat label="Dispositivos live" value={stats.live} />
+        <Stat label="Instalaciones" value={stats.installations} />
       </section>
       <h2>Últimos viajes</h2>
       <TripsTable trips={trips.slice(0, 10)} onOpen={openTrip} />
@@ -182,6 +194,11 @@ function App() {
         <h3><Activity size={18} /> Instalaciones registradas</h3>
         <DevicesTable devices={devices} />
       </section>
+    </main>}
+
+    {view === 'fleet' && <main>
+      <h2>Fleet Health</h2>
+      <FleetHealthPanel installations={installationsHealth} />
     </main>}
 
     {view === 'detail' && <main>
