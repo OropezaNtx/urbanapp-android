@@ -9,8 +9,8 @@ class UrbanPlatformRepository(private val context: Context) {
 
     private val db = FirebaseFirestore.getInstance()
 
-    fun getActiveOrganizationId(): String {
-        return UrbanPlatformSettings.getOrganizationId(context)
+    fun getActiveWorkspaceId(): String {
+        return UrbanPlatformSettings.getWorkspaceId(context)
     }
 
     fun getActiveProjectId(): String {
@@ -20,10 +20,10 @@ class UrbanPlatformRepository(private val context: Context) {
     // Note: Authentication and User management will be implemented later.
     // For now, we provide placeholders to obtain "active" elements.
     
-    suspend fun getActiveOrganization(): UrbanOrganization? {
-        val orgId = getActiveOrganizationId()
+    suspend fun getActiveWorkspace(): UrbanOrganization? {
+        val workspaceId = getActiveWorkspaceId()
         return try {
-            val snapshot = db.collection("organizations").document(orgId).get().await()
+            val snapshot = db.collection("organizations").document(workspaceId).get().await()
             val dto = snapshot.toObject(UrbanOrganizationDto::class.java)
             dto?.let { UrbanPlatformCloudMapper.toDomain(it) }
         } catch (e: Exception) {

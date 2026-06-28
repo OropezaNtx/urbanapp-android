@@ -2,7 +2,7 @@ package com.oropeza.urbanapp.core.auth
 
 data class UrbanRole(
     val roleId: String,
-    val organizationId: String,
+    val workspaceId: String, // standardized to workspaceId
     val name: String,
     val description: String?,
     val permissionIds: List<String>,

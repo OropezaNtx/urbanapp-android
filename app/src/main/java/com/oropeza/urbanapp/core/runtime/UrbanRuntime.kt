@@ -157,7 +157,7 @@ object UrbanRuntime {
         return UrbanRuntimeStatus(
             installationId = identity.installationId,
             shortInstallationId = getShortInstallationId(context),
-            organizationId = workspace.organization.organizationId,
+            workspaceId = workspace.organization.workspaceId,
             projectId = workspace.project.projectId,
             environment = workspace.environment,
             appVersionName = identity.appVersionName,

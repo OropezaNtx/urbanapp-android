@@ -74,7 +74,7 @@ object UrbanDiagnosticsProvider {
             appVersionCode = identity.appVersionCode,
             buildType = if (BuildConfig.DEBUG) "debug" else "release",
             isDebug = BuildConfig.DEBUG,
-            organizationId = runtimeStatus.organizationId,
+            workspaceId = runtimeStatus.workspaceId,
             projectId = runtimeStatus.projectId,
             environment = runtimeStatus.environment,
             configurationSource = UrbanRuntime.configurationSource(context),

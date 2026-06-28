@@ -2,7 +2,7 @@ package com.oropeza.urbanapp.core.platform
 
 data class UrbanHeartbeat(
     val installationId: String,
-    val organizationId: String?,
+    val workspaceId: String?, // standardized to workspaceId
     val projectId: String?,
     val activeTripId: String?,
     val gpsStatus: String?,

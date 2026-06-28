@@ -3,7 +3,7 @@ package com.oropeza.urbanapp.asd.sync.cloud
 data class AsdTripCloudDto(
     val cloudTripId: String,
     val localTripId: Long,
-    val organizationId: String,
+    val workspaceId: String, // standardized to workspaceId
     val projectId: String,
     val workspaceEnvironment: String,
     val routeId: String,

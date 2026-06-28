@@ -2,6 +2,7 @@ package com.oropeza.urbanapp.core.platform.cloud
 
 data class UrbanRole(
     val roleId: String,
+    val workspaceId: String, // standardized to workspaceId
     val name: String,
     val description: String?,
     val permissionIds: List<String>,

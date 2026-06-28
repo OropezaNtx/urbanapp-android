@@ -44,7 +44,7 @@ object UrbanLicenseValidator {
 }
 
 data class LicenseValidationContext(
-    val organizationId: String,
+    val workspaceId: String, // standardized to workspaceId
     val projectId: String,
     val moduleId: String? = null,
     val featureId: String? = null,

@@ -2,7 +2,7 @@ package com.oropeza.urbanapp.core.platform
 
 data class UrbanLicense(
     val licenseId: String,
-    val organizationId: String?,
+    val workspaceId: String?, // standardized to workspaceId
     val projectId: String?,
     val type: String,
     val status: String,

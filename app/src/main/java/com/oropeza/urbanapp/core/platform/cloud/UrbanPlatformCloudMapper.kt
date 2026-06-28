@@ -4,7 +4,7 @@ object UrbanPlatformCloudMapper {
 
     fun toDomain(dto: UrbanOrganizationDto): UrbanOrganization {
         return UrbanOrganization(
-            organizationId = dto.organizationId,
+            workspaceId = dto.workspaceId,
             name = dto.name,
             status = dto.status,
             createdAt = dto.createdAt,
@@ -14,7 +14,7 @@ object UrbanPlatformCloudMapper {
 
     fun toDto(domain: UrbanOrganization): UrbanOrganizationDto {
         return UrbanOrganizationDto(
-            organizationId = domain.organizationId,
+            workspaceId = domain.workspaceId,
             name = domain.name,
             status = domain.status,
             createdAt = domain.createdAt,
@@ -25,7 +25,7 @@ object UrbanPlatformCloudMapper {
     fun toDomain(dto: UrbanProjectDto): UrbanProject {
         return UrbanProject(
             projectId = dto.projectId,
-            organizationId = dto.organizationId,
+            workspaceId = dto.workspaceId,
             name = dto.name,
             description = dto.description,
             status = dto.status,
@@ -37,7 +37,7 @@ object UrbanPlatformCloudMapper {
     fun toDto(domain: UrbanProject): UrbanProjectDto {
         return UrbanProjectDto(
             projectId = domain.projectId,
-            organizationId = domain.organizationId,
+            workspaceId = domain.workspaceId,
             name = domain.name,
             description = domain.description,
             status = domain.status,
@@ -52,7 +52,7 @@ object UrbanPlatformCloudMapper {
             email = dto.email,
             firstName = dto.firstName,
             lastName = dto.lastName,
-            organizationId = dto.organizationId,
+            workspaceId = dto.workspaceId,
             roleId = dto.roleId,
             status = dto.status,
             createdAt = dto.createdAt,
@@ -66,7 +66,7 @@ object UrbanPlatformCloudMapper {
             email = domain.email,
             firstName = domain.firstName,
             lastName = domain.lastName,
-            organizationId = domain.organizationId,
+            workspaceId = domain.workspaceId,
             roleId = domain.roleId,
             status = domain.status,
             createdAt = domain.createdAt,
@@ -77,6 +77,7 @@ object UrbanPlatformCloudMapper {
     fun toDomain(dto: UrbanRoleDto): UrbanRole {
         return UrbanRole(
             roleId = dto.roleId,
+            workspaceId = dto.workspaceId,
             name = dto.name,
             description = dto.description,
             permissionIds = dto.permissionIds,
@@ -89,6 +90,7 @@ object UrbanPlatformCloudMapper {
     fun toDto(domain: UrbanRole): UrbanRoleDto {
         return UrbanRoleDto(
             roleId = domain.roleId,
+            workspaceId = domain.workspaceId,
             name = domain.name,
             description = domain.description,
             permissionIds = domain.permissionIds,

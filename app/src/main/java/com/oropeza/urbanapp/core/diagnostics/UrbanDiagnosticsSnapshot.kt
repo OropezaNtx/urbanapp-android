@@ -25,7 +25,7 @@ data class UrbanDiagnosticsSnapshot(
     val isDebug: Boolean,
     
     // Platform
-    val organizationId: String,
+    val workspaceId: String,
     val projectId: String,
     val environment: String,
     val configurationSource: String,

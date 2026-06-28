@@ -16,7 +16,7 @@ class UrbanConfigurationCloudDatasource {
 
     suspend fun fetchConfiguration(workspace: UrbanWorkspace): UrbanConfiguration? {
         val path = UrbanCloudPaths.configurationPath(
-            workspace.organization.organizationId,
+            workspace.organization.workspaceId,
             workspace.project.projectId
         )
 

@@ -31,7 +31,7 @@ object UrbanPlatformCloudMapper {
     fun heartbeatToMap(heartbeat: UrbanHeartbeat): Map<String, Any?> {
         return mapOf(
             "installationId" to heartbeat.installationId,
-            "organizationId" to heartbeat.organizationId,
+            "workspaceId" to heartbeat.workspaceId,
             "projectId" to heartbeat.projectId,
             "activeTripId" to heartbeat.activeTripId,
             "gpsStatus" to heartbeat.gpsStatus,

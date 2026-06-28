@@ -52,7 +52,7 @@ object UrbanPlatformService {
         
         return UrbanHeartbeat(
             installationId = identity.installationId,
-            organizationId = orgId,
+            workspaceId = orgId,
             projectId = projectId,
             activeTripId = activeTripId,
             gpsStatus = "UNKNOWN", // To be filled by caller if needed

@@ -5,19 +5,22 @@ import android.content.Context
 object UrbanPlatformSettings {
 
     private const val PREFS_NAME = "urban_platform_settings"
-    private const val KEY_ORG_ID = "organization_id"
+    private const val KEY_WORKSPACE_ID = "workspace_id" // Standardized
+    private const val KEY_ORG_ID = "organization_id"   // Legacy support
     private const val KEY_PROJECT_ID = "project_id"
     private const val KEY_LICENSE_ID = "license_id"
     private const val KEY_ENVIRONMENT = "environment"
 
-    fun getOrganizationId(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_ORG_ID, "demo_org") ?: "demo_org"
+    fun getWorkspaceId(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_WORKSPACE_ID, null) 
+            ?: prefs.getString(KEY_ORG_ID, "") 
+            ?: ""
     }
 
     fun getProjectId(context: Context): String {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_PROJECT_ID, "demo_project") ?: "demo_project"
+            .getString(KEY_PROJECT_ID, "") ?: ""
     }
 
     fun getLicenseId(context: Context): String? {
@@ -30,12 +33,16 @@ object UrbanPlatformSettings {
             .getString(KEY_ENVIRONMENT, "pilot") ?: "pilot"
     }
 
-    fun saveSettings(context: Context, orgId: String, projectId: String, licenseId: String, env: String = "pilot") {
+    fun saveSettings(context: Context, workspaceId: String, projectId: String, licenseId: String, env: String = "pilot") {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString(KEY_ORG_ID, orgId)
+            .putString(KEY_WORKSPACE_ID, workspaceId)
+            .putString(KEY_ORG_ID, workspaceId) // Support both during migration
             .putString(KEY_PROJECT_ID, projectId)
             .putString(KEY_LICENSE_ID, licenseId)
             .putString(KEY_ENVIRONMENT, env)
             .apply()
     }
+
+    // Deprecated alias for backward compatibility in some modules
+    fun getOrganizationId(context: Context): String = getWorkspaceId(context)
 }

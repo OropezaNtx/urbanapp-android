@@ -3,7 +3,7 @@ package com.oropeza.urbanapp.core.runtime
 data class UrbanRuntimeStatus(
     val installationId: String,
     val shortInstallationId: String,
-    val organizationId: String,
+    val workspaceId: String, // standardized to workspaceId
     val projectId: String,
     val environment: String,
     val appVersionName: String,

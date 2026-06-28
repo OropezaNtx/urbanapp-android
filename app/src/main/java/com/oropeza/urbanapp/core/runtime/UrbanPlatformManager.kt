@@ -4,8 +4,8 @@ import android.content.Context
 import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 
 object UrbanPlatformManager {
-    fun getOrganizationId(context: Context): String {
-        return UrbanRuntime.workspace(context).organization.organizationId
+    fun getWorkspaceId(context: Context): String {
+        return UrbanRuntime.workspace(context).organization.workspaceId
     }
 
     fun getProjectId(context: Context): String {

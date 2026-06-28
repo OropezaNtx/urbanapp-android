@@ -30,7 +30,7 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val identity = remember { UrbanRuntime.identity(context) }
-    val orgId = remember { UrbanRuntime.platformSettings().getOrganizationId(context) }
+    val workspaceId = remember { UrbanRuntime.platformSettings().getWorkspaceId(context) }
     val projId = remember { UrbanRuntime.platformSettings().getProjectId(context) }
     val env = remember { UrbanRuntime.platformSettings().getEnvironment(context) }
     
@@ -132,7 +132,7 @@ fun HomeScreen(
                     
                     Spacer(Modifier.height(4.dp))
                     Text("Device ID: ${identity.installationId.take(8).uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
-                    Text("Org: $orgId · Proj: $projId", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                    Text("WS: $workspaceId · Proj: $projId", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                     Text("Env: ${env.uppercase()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                     
                     if (pendingSyncCount > 0) {

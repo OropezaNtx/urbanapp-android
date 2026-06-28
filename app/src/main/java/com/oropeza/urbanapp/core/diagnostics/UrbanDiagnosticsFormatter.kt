@@ -43,7 +43,7 @@ object UrbanDiagnosticsFormatter {
             Type: ${snapshot.buildType}
             
             PLATFORM
-            Org: ${snapshot.organizationId}
+            WS: ${snapshot.workspaceId}
             Proj: ${snapshot.projectId}
             Env: ${snapshot.environment}
             Config: ${snapshot.configurationSource} (Updated: ${dateFmt.format(Date(snapshot.configurationUpdatedAt))})

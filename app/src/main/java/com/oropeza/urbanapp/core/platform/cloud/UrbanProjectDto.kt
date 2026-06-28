@@ -2,7 +2,7 @@ package com.oropeza.urbanapp.core.platform.cloud
 
 data class UrbanProjectDto(
     val projectId: String = "",
-    val organizationId: String = "",
+    val workspaceId: String = "", // standardized to workspaceId
     val name: String = "",
     val description: String? = null,
     val status: String = "ACTIVE",

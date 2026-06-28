@@ -1,7 +1,7 @@
 package com.oropeza.urbanapp.core.platform
 
 data class UrbanOrganization(
-    val organizationId: String,
+    val workspaceId: String, // standardized to workspaceId
     val name: String,
     val status: String,
     val createdAt: Long,

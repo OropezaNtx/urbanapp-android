@@ -1,34 +1,32 @@
 package com.oropeza.urbanapp.core.platform
 
 import android.content.Context
-import com.oropeza.urbanapp.core.config.UrbanConfigurationManager
-import com.oropeza.urbanapp.core.license.UrbanLicenseStatus
 import com.oropeza.urbanapp.core.auth.UrbanAccessRepository
-
 import com.oropeza.urbanapp.core.license.UrbanLicenseRepository
+import com.oropeza.urbanapp.core.config.UrbanConfigurationManager
 
 class UrbanWorkspaceRepository(private val context: Context) {
 
     fun loadWorkspace(): UrbanWorkspace {
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
         val projId = UrbanPlatformSettings.getProjectId(context)
         val env = UrbanPlatformSettings.getEnvironment(context)
         
         val accessRepo = UrbanAccessRepository(context)
         val licenseRepo = UrbanLicenseRepository(context)
         
-        // Initial implementation using SharedPreferences defaults
+        // Initial implementation using standardized workspaceId
         return UrbanWorkspace(
             organization = UrbanOrganization(
-                organizationId = orgId,
-                name = "Organization $orgId",
+                workspaceId = workspaceId,
+                name = "Workspace $workspaceId",
                 status = "ACTIVE",
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis()
             ),
             project = UrbanProject(
                 projectId = projId,
-                organizationId = orgId,
+                workspaceId = workspaceId,
                 name = "Project $projId",
                 description = null,
                 status = "ACTIVE",
@@ -41,7 +39,7 @@ class UrbanWorkspaceRepository(private val context: Context) {
             currentUser = accessRepo.getCurrentUser(),
             roles = accessRepo.getDefaultRoles(),
             permissions = accessRepo.getDefaultPermissions(),
-            modulesEnabled = listOf("ASD", "FOV", "CC"),
+            modulesEnabled = listOf("ASD", "DIAGNOSTICS"),
             createdAt = System.currentTimeMillis(),
             updatedAt = System.currentTimeMillis()
         )
@@ -50,8 +48,9 @@ class UrbanWorkspaceRepository(private val context: Context) {
     fun saveWorkspace(workspace: UrbanWorkspace) {
         UrbanPlatformSettings.saveSettings(
             context,
-            workspace.organization.organizationId,
+            workspace.organization.workspaceId,
             workspace.project.projectId,
+            workspace.license.licenseId,
             workspace.environment
         )
     }
@@ -61,6 +60,6 @@ class UrbanWorkspaceRepository(private val context: Context) {
     }
 
     fun resetWorkspace() {
-        UrbanPlatformSettings.saveSettings(context, "demo_org", "demo_project", "pilot")
+        UrbanPlatformSettings.saveSettings(context, "", "", "", "pilot")
     }
 }

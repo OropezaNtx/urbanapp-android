@@ -1,6 +1,7 @@
 package com.oropeza.urbanapp.core.license
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.gson.Gson
 import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
@@ -10,7 +11,7 @@ import kotlinx.coroutines.tasks.await
 class UrbanLicenseRepository(private val context: Context) {
     private val db = FirebaseFirestore.getInstance()
     private val gson = Gson()
-    private val prefs = context.getSharedPreferences("urban_license_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences? = context.getSharedPreferences("urban_license_prefs", Context.MODE_PRIVATE)
 
     companion object {
         private const val KEY_CACHED_LICENSE = "cached_license"
@@ -25,7 +26,7 @@ class UrbanLicenseRepository(private val context: Context) {
                 val data = snapshot.data ?: return null
                 val license = UrbanLicense(
                     licenseId = snapshot.id,
-                    organizationId = data["organizationId"] as? String ?: "",
+                    workspaceId = data["organizationId"] as? String ?: data["workspaceId"] as? String ?: "",
                     projectId = data["projectId"] as? String ?: "",
                     status = try { 
                         UrbanLicenseStatus.valueOf(data["status"] as? String ?: "UNKNOWN") 
@@ -41,14 +42,14 @@ class UrbanLicenseRepository(private val context: Context) {
                     enabledFeatures = (data["enabledFeatures"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
                     maxUsers = (data["maxUsers"] as? Long)?.toInt() ?: 0,
                     maxDevices = (data["maxDevices"] as? Long)?.toInt() ?: 0,
-                    expirationAt = data["expirationAt"] as? Long ?: 0L,
+                    expirationAt = data["expiresAt"] as? Long ?: 0L,
                     gracePeriodDays = (data["gracePeriodDays"] as? Long)?.toInt() ?: 0,
                     createdAt = data["createdAt"] as? Long ?: 0L,
                     updatedAt = data["updatedAt"] as? Long ?: 0L
                 )
                 
                 // Update telemetry in Firestore
-                updateLicenseTelemetry(licenseId)
+                updateLicenseTelemetry()
                 
                 saveLocalLicense(license)
                 license
@@ -60,7 +61,7 @@ class UrbanLicenseRepository(private val context: Context) {
         }
     }
 
-    private suspend fun updateLicenseTelemetry(licenseId: String) {
+    private suspend fun updateLicenseTelemetry() {
         try {
             val identity = UrbanIdentityProvider.getIdentity(context)
             db.collection("installations").document(identity.installationId).update(
@@ -73,11 +74,11 @@ class UrbanLicenseRepository(private val context: Context) {
 
     private fun saveLocalLicense(license: UrbanLicense) {
         val json = gson.toJson(license)
-        prefs.edit().putString(KEY_CACHED_LICENSE, json).apply()
+        prefs?.edit()?.putString(KEY_CACHED_LICENSE, json)?.apply()
     }
 
     fun getCurrentLicense(): UrbanLicense {
-        val json = prefs.getString(KEY_CACHED_LICENSE, null)
+        val json = prefs?.getString(KEY_CACHED_LICENSE, null)
         if (json != null) {
             try {
                 return gson.fromJson(json, UrbanLicense::class.java)
@@ -85,15 +86,15 @@ class UrbanLicenseRepository(private val context: Context) {
                 // Ignore and fall back to default
             }
         }
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
         val projId = UrbanPlatformSettings.getProjectId(context)
-        return getDefaultLicense(orgId, projId)
+        return getDefaultLicense(workspaceId, projId)
     }
 
-    fun getDefaultLicense(orgId: String, projId: String): UrbanLicense {
+    fun getDefaultLicense(workspaceId: String, projId: String): UrbanLicense {
         return UrbanLicense(
             licenseId = "lic_default_pilot",
-            organizationId = orgId,
+            workspaceId = workspaceId,
             projectId = projId,
             status = UrbanLicenseStatus.ACTIVE,
             type = UrbanLicenseType.PILOT,

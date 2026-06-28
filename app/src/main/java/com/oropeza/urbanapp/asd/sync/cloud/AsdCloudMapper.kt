@@ -15,7 +15,7 @@ object AsdCloudMapper {
         return AsdTripCloudDto(
             cloudTripId = identity.installationId + "_" + trip.tripId,
             localTripId = trip.tripId,
-            organizationId = workspace.organization.organizationId,
+            workspaceId = workspace.organization.workspaceId,
             projectId = workspace.project.projectId,
             workspaceEnvironment = workspace.environment,
             routeId = trip.planningRouteId,

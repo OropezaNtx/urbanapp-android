@@ -6,13 +6,13 @@ import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
 class UrbanAccessRepository(private val context: Context) {
 
     fun getCurrentUser(): UrbanUser {
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
         val projId = UrbanPlatformSettings.getProjectId(context)
         
         // Default local user for now (no login yet)
         return UrbanUser(
             userId = "user_default_1",
-            organizationId = orgId,
+            workspaceId = workspaceId,
             projectId = projId,
             name = "Urban Operator",
             email = "operator@urbanapp.com",
@@ -24,17 +24,17 @@ class UrbanAccessRepository(private val context: Context) {
     }
 
     fun getDefaultRoles(): List<UrbanRole> {
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
         return listOf(
-            UrbanRole("ADMIN", orgId, "Administrator", "Full system access", 
+            UrbanRole("ADMIN", workspaceId, "Administrator", "Full system access", 
                 getDefaultPermissions().map { it.code }, "ACTIVE", 0L, 0L),
-            UrbanRole("SUPERVISOR", orgId, "Supervisor", "Monitor and edit access", 
+            UrbanRole("SUPERVISOR", workspaceId, "Supervisor", "Monitor and edit access", 
                 listOf("ASD_VIEW", "ASD_EXPORT", "ASD_SYNC", "CATALOG_SYNC", "CLOUD_SYNC", "DIAGNOSTICS_VIEW"), 
                 "ACTIVE", 0L, 0L),
-            UrbanRole("OPERATOR", orgId, "Operator", "Field operation access", 
+            UrbanRole("OPERATOR", workspaceId, "Operator", "Field operation access", 
                 listOf("ASD_CREATE_TRIP", "ASD_EDIT_TRIP", "ASD_CLOSE_TRIP", "ASD_VIEW", "ASD_SYNC", "CATALOG_SYNC", "CLOUD_SYNC"), 
                 "ACTIVE", 0L, 0L),
-            UrbanRole("VIEWER", orgId, "Viewer", "Read-only access", 
+            UrbanRole("VIEWER", workspaceId, "Viewer", "Read-only access",
                 listOf("ASD_VIEW", "DIAGNOSTICS_VIEW"), 
                 "ACTIVE", 0L, 0L)
         )

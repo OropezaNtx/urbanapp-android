@@ -5,7 +5,7 @@ data class UrbanUserDto(
     val email: String = "",
     val firstName: String = "",
     val lastName: String = "",
-    val organizationId: String = "",
+    val workspaceId: String = "", // standardized to workspaceId
     val roleId: String = "",
     val status: String = "ACTIVE",
     val createdAt: Long = 0,

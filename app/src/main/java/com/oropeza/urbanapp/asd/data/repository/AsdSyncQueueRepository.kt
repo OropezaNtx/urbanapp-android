@@ -29,8 +29,8 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     suspend fun enqueueInstallationRegister(context: android.content.Context) {
         val installation = UrbanPlatformService.buildCurrentInstallation(context)
         val path = UrbanCloudPaths.installationPath(
-            installation.organizationId ?: "demo_org",
-            installation.projectId ?: "demo_project",
+            workspaceId = installation.workspaceId ?: "demo_workspace",
+            projectId = installation.projectId ?: "demo_project",
             installation.installationId
         )
         enqueue(
@@ -46,9 +46,9 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     suspend fun enqueueHeartbeat(context: android.content.Context, activeTripId: Long? = null) {
         val heartbeat = UrbanPlatformService.buildHeartbeat(context, activeTripId?.toString())
         val path = UrbanCloudPaths.heartbeatPath(
-            heartbeat.organizationId ?: "demo_org",
-            heartbeat.projectId ?: "demo_project",
-            heartbeat.installationId
+            workspaceId = heartbeat.workspaceId ?: "demo_workspace",
+            projectId = heartbeat.projectId ?: "demo_project",
+            installationId = heartbeat.installationId
         )
         enqueue(
             type = "HEARTBEAT",
@@ -65,20 +65,20 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     }
 
     suspend fun enqueueTripUpsert(context: android.content.Context, operation: String, trip: Trip) {
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
         val projId = UrbanPlatformSettings.getProjectId(context)
         val cloudTripId = getCloudTripId(context, trip.tripId)
-        val path = UrbanCloudPaths.tripPath(orgId, projId, cloudTripId)
+        val path = UrbanCloudPaths.tripPath(workspaceId, projId, cloudTripId)
 
         enqueue("TRIP", operation, trip.tripId, trip, cloudPath = path, priority = 0)
     }
 
     suspend fun enqueueEventUpsert(context: android.content.Context, event: StopEvent) {
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
         val projId = UrbanPlatformSettings.getProjectId(context)
         val cloudTripId = getCloudTripId(context, event.tripId)
         val cloudEventId = getCloudEventId(context, event.eventId)
-        val path = "${UrbanCloudPaths.tripPath(orgId, projId, cloudTripId)}/events/$cloudEventId"
+        val path = "${UrbanCloudPaths.tripPath(workspaceId, projId, cloudTripId)}/events/$cloudEventId"
 
         enqueue("EVENT", "UPSERT", event.eventId, event, cloudPath = path, priority = 0)
     }

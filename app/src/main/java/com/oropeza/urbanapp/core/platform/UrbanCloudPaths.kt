@@ -2,16 +2,16 @@ package com.oropeza.urbanapp.core.platform
 
 object UrbanCloudPaths {
 
-    fun organizationPath(orgId: String) = "asd_organizations/$orgId"
+    fun workspacePath(workspaceId: String) = "asd_organizations/$workspaceId"
     
-    fun projectPath(orgId: String, projectId: String) = 
-        "${organizationPath(orgId)}/projects/$projectId"
+    fun projectPath(workspaceId: String, projectId: String) = 
+        "${workspacePath(workspaceId)}/projects/$projectId"
 
-    fun organizationPath(workspace: UrbanWorkspace) = 
-        organizationPath(workspace.organization.organizationId)
+    fun workspacePath(workspace: UrbanWorkspace) = 
+        workspacePath(workspace.organization.workspaceId)
 
     fun projectPath(workspace: UrbanWorkspace) = 
-        projectPath(workspace.organization.organizationId, workspace.project.projectId)
+        projectPath(workspace.organization.workspaceId, workspace.project.projectId)
     
     fun installationPath(workspace: UrbanWorkspace, installationId: String) =
         "${projectPath(workspace)}/installations/$installationId"
@@ -28,34 +28,34 @@ object UrbanCloudPaths {
     fun trackChunkPath(workspace: UrbanWorkspace, cloudTripId: String, chunkId: String) =
         "${tripPath(workspace, cloudTripId)}/track_chunks/$chunkId"
 
-    fun configurationPath(orgId: String, projectId: String) =
-        "asd_organizations/$orgId/projects/$projectId/configuration/current"
+    fun configurationPath(workspaceId: String, projectId: String) =
+        "asd_organizations/$workspaceId/projects/$projectId/configuration/current"
 
-    fun licensePath(orgId: String, licenseId: String) = 
-        "asd_organizations/$orgId/licenses/$licenseId"
+    fun licensePath(workspaceId: String, licenseId: String) = 
+        "asd_organizations/$workspaceId/licenses/$licenseId"
 
-    fun projectLicensePath(orgId: String, projectId: String, licenseId: String) =
-        "asd_organizations/$orgId/projects/$projectId/licenses/$licenseId"
+    fun projectLicensePath(workspaceId: String, projectId: String, licenseId: String) =
+        "asd_organizations/$workspaceId/projects/$projectId/licenses/$licenseId"
 
-    fun userPath(orgId: String, userId: String) = 
-        "asd_organizations/$orgId/users/$userId"
+    fun userPath(workspaceId: String, userId: String) = 
+        "asd_organizations/$workspaceId/users/$userId"
 
-    fun rolePath(orgId: String, roleId: String) = 
-        "asd_organizations/$orgId/roles/$roleId"
+    fun rolePath(workspaceId: String, roleId: String) = 
+        "asd_organizations/$workspaceId/roles/$roleId"
 
-    fun permissionPath(orgId: String, permissionId: String) = 
-        "asd_organizations/$orgId/permissions/$permissionId"
+    fun permissionPath(workspaceId: String, permissionId: String) = 
+        "asd_organizations/$workspaceId/permissions/$permissionId"
 
-    fun projectUserPath(orgId: String, projectId: String, userId: String) =
-        "asd_organizations/$orgId/projects/$projectId/users/$userId"
+    fun projectUserPath(workspaceId: String, projectId: String, userId: String) =
+        "asd_organizations/$workspaceId/projects/$projectId/users/$userId"
 
-    // Backward compatibility (to be removed in next sprint)
-    fun installationPath(orgId: String, projectId: String, installationId: String) =
-        "${projectPath(orgId, projectId)}/installations/$installationId"
+    // Backward compatibility (standardized to workspaceId)
+    fun installationPath(workspaceId: String, projectId: String, installationId: String) =
+        "${projectPath(workspaceId, projectId)}/installations/$installationId"
         
-    fun heartbeatPath(orgId: String, projectId: String, installationId: String) =
-        "${projectPath(orgId, projectId)}/heartbeats/$installationId"
+    fun heartbeatPath(workspaceId: String, projectId: String, installationId: String) =
+        "${projectPath(workspaceId, projectId)}/heartbeats/$installationId"
         
-    fun tripPath(orgId: String, projectId: String, cloudTripId: String) =
-        "${projectPath(orgId, projectId)}/trips/$cloudTripId"
+    fun tripPath(workspaceId: String, projectId: String, cloudTripId: String) =
+        "${projectPath(workspaceId, projectId)}/trips/$cloudTripId"
 }

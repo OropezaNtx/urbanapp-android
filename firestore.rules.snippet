@@ -15,20 +15,21 @@ service cloud.firestore {
     // - status, licenseId, workspaceId are READ-ONLY for Android
     match /installations/{installationId} {
       // Scoped read: allows fetching specific doc if you know the ID.
-      // In Phase 1 without Auth, we allow "get" but not "list".
+      // We allow "get" but not generic "list" for unauthorized devices.
       allow get: if true; 
       allow list: if isAdmin();
       
+      // Initial registration: Must be PENDING and cannot self-assign workspace/license
       allow create: if request.resource.data.status == 'PENDING'
-        && !('licenseId' in request.resource.data)
-        && !('workspaceId' in request.resource.data)
+        && !request.resource.data.keys().hasAny(['licenseId', 'workspaceId'])
         && request.resource.data.installationId == installationId;
       
+      // Telemetry update: Strictly limit fields that Android can change
       allow update: if request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['lastSeen', 'lastSeenClient', 'lastHeartbeatAt', 'lastSyncAt', 'lastLicenseCheckAt', 'activeTripId', 'battery', 'device', 'config', 'installationVersion'])
         && request.resource.data.status == resource.data.status
-        && request.resource.data.licenseId == resource.data.licenseId
-        && request.resource.data.workspaceId == resource.data.workspaceId;
+        && request.resource.data.get('licenseId', null) == resource.data.get('licenseId', null)
+        && request.resource.data.get('workspaceId', null) == resource.data.get('workspaceId', null);
 
       allow write: if isAdmin();
     }
