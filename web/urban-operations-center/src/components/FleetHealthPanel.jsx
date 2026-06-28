@@ -77,7 +77,7 @@ export default function FleetHealthPanel({ installations }) {
       <div className="fleet-head">
         <div>
           <h3><Wifi size={18} /> Fleet Health</h3>
-          <p>Heartbeat enriquecido desde <b>installations/{{installationId}}</b>.</p>
+          <p>Heartbeat enriquecido desde <b>{"installations/{installationId}"}</b>.</p>
         </div>
       </div>
 
