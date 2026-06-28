@@ -33,7 +33,7 @@ class UrbanInstallationManager(private val context: Context) {
             if (snapshot.exists()) {
                 val status = snapshot.getString("status") ?: InstallationStatus.PENDING.name
                 val licenseId = snapshot.getString("licenseId")
-                val workspaceId = snapshot.getString("organizationId") 
+                val workspaceId = snapshot.getString("workspaceId")
                 val projectId = snapshot.getString("projectId") ?: "default_project"
                 
                 // Update local status with fields derived from Firestore
@@ -61,6 +61,8 @@ class UrbanInstallationManager(private val context: Context) {
 
     private suspend fun registerInstallation(installationId: String) {
         val installation = UrbanPlatformService.buildCurrentInstallation(context).copy(
+            workspaceId = null,
+            licenseId = null,
             status = InstallationStatus.PENDING.name,
             registeredAt = null,
         )

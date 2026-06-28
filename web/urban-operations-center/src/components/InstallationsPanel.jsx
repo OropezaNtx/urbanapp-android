@@ -82,7 +82,7 @@ export default function InstallationsPanel({ installations }) {
                   </span>
                 </td>
                 <td>
-                    <div><Briefcase size={12} /> {i.organizationId || '—'}</div>
+                    <div><Briefcase size={12} /> {i.workspaceId || '—'}</div>
                     <div><Shield size={12} /> {i.licenseId || '—'}</div>
                 </td>
                 <td>

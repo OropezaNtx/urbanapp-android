@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.BatteryManager
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.oropeza.urbanapp.BuildConfig
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import com.oropeza.urbanapp.license.LicenseCache
@@ -23,14 +22,11 @@ class UrbanHeartbeatPublisher(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
     private val appContext = context.applicationContext
-    private val licenseCache = LicenseCache(appContext)
 
     suspend fun publish(activeTripId: Long? = null): Result<Unit> {
         return runCatching {
             val identity = UrbanRuntime.identity(appContext)
-            val workspace = UrbanRuntime.workspace(appContext)
             val config = UrbanRuntime.configuration(appContext)
-            val licenseState = licenseCache.load()
             val battery = readBattery(appContext)
             val now = System.currentTimeMillis()
 
@@ -41,9 +37,10 @@ class UrbanHeartbeatPublisher(
                 "lastHeartbeatAt" to now,
                 "installationVersion" to identity.appVersionName,
                 "activeTripId" to activeTripId,
-                "organizationId" to workspace.organization.organizationId,
-                "projectId" to workspace.project.projectId,
-                "environment" to workspace.environment,
+                "battery" to mapOf(
+                    "level" to battery.level,
+                    "charging" to battery.charging
+                ),
                 "device" to mapOf(
                     "manufacturer" to android.os.Build.MANUFACTURER,
                     "model" to android.os.Build.MODEL,
@@ -51,10 +48,6 @@ class UrbanHeartbeatPublisher(
                     "sdkInt" to android.os.Build.VERSION.SDK_INT,
                     "appVersionName" to BuildConfig.VERSION_NAME,
                     "appVersionCode" to BuildConfig.VERSION_CODE
-                ),
-                "battery" to mapOf(
-                    "level" to battery.level,
-                    "charging" to battery.charging
                 ),
                 "config" to mapOf(
                     "source" to UrbanRuntime.configurationSource(appContext),
@@ -65,24 +58,12 @@ class UrbanHeartbeatPublisher(
                     "gpsProfile" to config.gpsProfile,
                     "enabledModules" to config.enabledModules,
                     "featureFlags" to config.featureFlags
-                ),
-                "license" to mapOf(
-                    "licenseId" to licenseState?.license?.licenseId,
-                    "customerId" to licenseState?.license?.customerId,
-                    "projectId" to licenseState?.license?.projectId,
-                    "licenseStatus" to licenseState?.license?.status,
-                    "installationStatus" to licenseState?.installationStatus,
-                    "plan" to licenseState?.license?.plan,
-                    "source" to licenseState?.license?.source,
-                    "lastCheckedAt" to licenseState?.license?.lastCheckedAt,
-                    "canUseApp" to licenseState?.canUseApp,
-                    "canUseOffline" to licenseState?.canUseOffline
                 )
             )
 
             firestore.collection("installations")
                 .document(identity.installationId)
-                .set(payload, SetOptions.merge())
+                .update(payload)
                 .await()
         }
     }

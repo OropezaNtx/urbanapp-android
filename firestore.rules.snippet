@@ -10,20 +10,25 @@ service cloud.firestore {
 
     // Installations: 
     // - Android can only read its OWN document
-    // - Android can create its own (PENDING)
+    // - Android can create its own (PENDING, no license/workspace)
     // - Android can only update telemetry fields
-    // - status, licenseId, organizationId, workspaceId are READ-ONLY for Android
+    // - status, licenseId, workspaceId are READ-ONLY for Android
     match /installations/{installationId} {
-      allow get: if true; // In Phase 1, we don't have per-device auth, but we should enforce ID match if possible
-                         // For now, "get" is allowed but limited to the specific ID the device knows.
+      // Scoped read: allows fetching specific doc if you know the ID.
+      // In Phase 1 without Auth, we allow "get" but not "list".
+      allow get: if true; 
+      allow list: if isAdmin();
       
-      allow create: if request.resource.data.status == 'PENDING';
+      allow create: if request.resource.data.status == 'PENDING'
+        && !('licenseId' in request.resource.data)
+        && !('workspaceId' in request.resource.data)
+        && request.resource.data.installationId == installationId;
       
       allow update: if request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['lastSeen', 'lastSeenClient', 'lastHeartbeatAt', 'lastSyncAt', 'lastLicenseCheckAt', 'activeTripId', 'battery', 'device', 'config', 'installationVersion'])
         && request.resource.data.status == resource.data.status
         && request.resource.data.licenseId == resource.data.licenseId
-        && request.resource.data.organizationId == resource.data.organizationId;
+        && request.resource.data.workspaceId == resource.data.workspaceId;
 
       allow write: if isAdmin();
     }

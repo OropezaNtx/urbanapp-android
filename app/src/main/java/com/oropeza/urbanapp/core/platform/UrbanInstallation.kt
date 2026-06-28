@@ -2,7 +2,7 @@ package com.oropeza.urbanapp.core.platform
 
 data class UrbanInstallation(
     val installationId: String,
-    val organizationId: String?,
+    val workspaceId: String?, // Maps to organizationId internally
     val projectId: String?,
     val licenseId: String?,
     val androidId: String?,

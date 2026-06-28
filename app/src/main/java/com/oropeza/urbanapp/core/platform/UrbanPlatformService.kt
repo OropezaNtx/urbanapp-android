@@ -16,7 +16,7 @@ object UrbanPlatformService {
 
         return UrbanInstallation(
             installationId = identity.installationId,
-            organizationId = orgId,
+            workspaceId = orgId,
             projectId = projectId,
             licenseId = licenseId,
             androidId = identity.androidId,

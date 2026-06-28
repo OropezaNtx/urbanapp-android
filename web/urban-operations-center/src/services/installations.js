@@ -39,11 +39,11 @@ export function subscribeInstallationsHealth(onInstallations, onError) {
   );
 }
 
-export async function updateInstallationStatus(installationId, status, organizationId, licenseId) {
+export async function updateInstallationStatus(installationId, status, workspaceId, licenseId) {
   const ref = doc(db, "installations", installationId);
   await updateDoc(ref, {
     status,
-    organizationId,
+    workspaceId,
     licenseId,
     updatedAt: Date.now()
   });

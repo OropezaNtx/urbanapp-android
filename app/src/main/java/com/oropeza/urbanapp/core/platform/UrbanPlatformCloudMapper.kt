@@ -5,7 +5,7 @@ object UrbanPlatformCloudMapper {
     fun installationToMap(installation: UrbanInstallation): Map<String, Any?> {
         return mapOf(
             "installationId" to installation.installationId,
-            "organizationId" to installation.organizationId,
+            "workspaceId" to installation.workspaceId,
             "projectId" to installation.projectId,
             "licenseId" to installation.licenseId,
             "androidId" to installation.androidId,
