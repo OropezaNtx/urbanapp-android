@@ -2,6 +2,8 @@ package com.oropeza.urbanapp.core.platform.cloud
 
 import android.content.Context
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldPath
+import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
 import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
 import kotlinx.coroutines.tasks.await
 
@@ -17,15 +19,23 @@ class UrbanPlatformRepository(private val context: Context) {
         return UrbanPlatformSettings.getProjectId(context)
     }
 
-    // Note: Authentication and User management will be implemented later.
-    // For now, we provide placeholders to obtain "active" elements.
-    
     suspend fun getActiveWorkspace(): UrbanOrganization? {
         val workspaceId = getActiveWorkspaceId()
+        val installationId = UrbanIdentityProvider.getIdentity(context).installationId
+        
         return try {
-            val snapshot = db.collection("organizations").document(workspaceId).get().await()
-            val dto = snapshot.toObject(UrbanOrganizationDto::class.java)
-            dto?.let { UrbanPlatformCloudMapper.toDomain(it) }
+            // Using a query to pass installationId to security rules
+            val querySnapshot = db.collection("organizations")
+                .whereEqualTo(FieldPath.documentId(), workspaceId)
+                .whereEqualTo("installationId", installationId)
+                .limit(1)
+                .get()
+                .await()
+                
+            if (!querySnapshot.isEmpty) {
+                val dto = querySnapshot.documents[0].toObject(UrbanOrganizationDto::class.java)
+                dto?.let { UrbanPlatformCloudMapper.toDomain(it) }
+            } else null
         } catch (e: Exception) {
             null
         }

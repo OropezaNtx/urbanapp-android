@@ -42,7 +42,4 @@ object UrbanPlatformSettings {
             .putString(KEY_ENVIRONMENT, env)
             .apply()
     }
-
-    // Deprecated alias for backward compatibility in some modules
-    fun getOrganizationId(context: Context): String = getWorkspaceId(context)
 }

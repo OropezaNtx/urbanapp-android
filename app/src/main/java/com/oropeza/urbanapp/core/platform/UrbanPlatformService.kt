@@ -3,6 +3,7 @@ package com.oropeza.urbanapp.core.platform
 import android.content.Context
 import android.os.BatteryManager
 import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
+import com.oropeza.urbanapp.core.identity.UrbanIdentityManager
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.flow.firstOrNull
 
@@ -10,13 +11,14 @@ object UrbanPlatformService {
 
     fun buildCurrentInstallation(context: Context): UrbanInstallation {
         val identity = UrbanIdentityProvider.getIdentity(context)
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
         val projectId = UrbanPlatformSettings.getProjectId(context)
         val licenseId = UrbanPlatformSettings.getLicenseId(context)
 
         return UrbanInstallation(
             installationId = identity.installationId,
-            workspaceId = orgId,
+            ownerUid = UrbanIdentityManager.getUid(),
+            workspaceId = workspaceId,
             projectId = projectId,
             licenseId = licenseId,
             androidId = identity.androidId,
@@ -41,7 +43,7 @@ object UrbanPlatformService {
 
     suspend fun buildHeartbeat(context: Context, activeTripId: String? = null): UrbanHeartbeat {
         val identity = UrbanIdentityProvider.getIdentity(context)
-        val orgId = UrbanPlatformSettings.getOrganizationId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
         val projectId = UrbanPlatformSettings.getProjectId(context)
         
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
@@ -52,7 +54,7 @@ object UrbanPlatformService {
         
         return UrbanHeartbeat(
             installationId = identity.installationId,
-            workspaceId = orgId,
+            workspaceId = workspaceId,
             projectId = projectId,
             activeTripId = activeTripId,
             gpsStatus = "UNKNOWN", // To be filled by caller if needed

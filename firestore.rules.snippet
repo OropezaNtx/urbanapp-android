@@ -2,51 +2,69 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check if the user is an admin
     function isAdmin() {
       return request.auth != null && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
     }
 
-    // Installations: 
-    // - Android can only read its OWN document
-    // - Android can create its own (PENDING, no license/workspace)
-    // - Android can only update telemetry fields
-    // - status, licenseId, workspaceId are READ-ONLY for Android
     match /installations/{installationId} {
-      // Scoped read: allows fetching specific doc if you know the ID.
-      // We allow "get" but not generic "list" for unauthorized devices.
-      allow get: if true; 
+      allow get: if request.auth != null && (
+        isAdmin() || 
+        resource.data.ownerUid == request.auth.uid
+      );
+      
       allow list: if isAdmin();
       
-      // Initial registration: Must be PENDING and cannot self-assign workspace/license
-      allow create: if request.resource.data.status == 'PENDING'
+      allow create: if request.auth != null
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.ownerUid == request.auth.uid
         && !request.resource.data.keys().hasAny(['licenseId', 'workspaceId'])
         && request.resource.data.installationId == installationId;
       
-      // Telemetry update: Strictly limit fields that Android can change
-      allow update: if request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['lastSeen', 'lastSeenClient', 'lastHeartbeatAt', 'lastSyncAt', 'lastLicenseCheckAt', 'activeTripId', 'battery', 'device', 'config', 'installationVersion'])
+      allow update: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['lastSeen', 'lastSeenClient', 'lastHeartbeatAt', 'lastSyncAt', 'lastLicenseCheckAt', 'activeTripId', 'battery', 'device', 'config', 'installationVersion'])
         && request.resource.data.status == resource.data.status
+        && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.get('licenseId', null) == resource.data.get('licenseId', null)
         && request.resource.data.get('workspaceId', null) == resource.data.get('workspaceId', null);
-
+        
       allow write: if isAdmin();
     }
 
-    // Licenses:
-    // - Android can only read
-    // - Admin can manage
+    // Secure Licenses: 
+    // Android can read a license ONLY if they own an ACTIVE installation linked to it.
+    // The installationId MUST be passed in the query filters.
     match /licenses/{licenseId} {
-      allow read: if true;
+      allow list: if request.auth != null && (
+        isAdmin() || 
+        (
+          exists(/databases/$(database)/documents/installations/$(request.query.installationId)) &&
+          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.ownerUid == request.auth.uid &&
+          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.licenseId == licenseId &&
+          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.status == 'ACTIVE'
+        )
+      );
+      
+      allow get: if isAdmin();
       allow write: if isAdmin();
     }
 
-    // Workspaces:
-    // - Android can only read
-    // - Admin can manage
+    // Secure Workspaces:
+    // Android can read the workspace ONLY if they own an ACTIVE installation linked to it.
     match /workspaces/{workspaceId} {
-      allow read: if true;
+      allow list: if request.auth != null && (
+        isAdmin() || 
+        (
+          exists(/databases/$(database)/documents/installations/$(request.query.installationId)) &&
+          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.ownerUid == request.auth.uid &&
+          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.workspaceId == workspaceId &&
+          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.status == 'ACTIVE'
+        )
+      );
+      
+      allow get: if isAdmin();
       allow write: if isAdmin();
     }
   }

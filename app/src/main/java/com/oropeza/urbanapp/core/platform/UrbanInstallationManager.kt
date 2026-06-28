@@ -3,6 +3,7 @@ package com.oropeza.urbanapp.core.platform
 import android.content.Context
 import com.google.firebase.firestore.FirebaseFirestore
 import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
+import com.oropeza.urbanapp.core.identity.UrbanIdentityManager
 import kotlinx.coroutines.tasks.await
 
 class UrbanInstallationManager(private val context: Context) {
@@ -61,6 +62,7 @@ class UrbanInstallationManager(private val context: Context) {
 
     private suspend fun registerInstallation(installationId: String) {
         val installation = UrbanPlatformService.buildCurrentInstallation(context).copy(
+            ownerUid = UrbanIdentityManager.getUid(),
             workspaceId = null,
             licenseId = null,
             status = InstallationStatus.PENDING.name,

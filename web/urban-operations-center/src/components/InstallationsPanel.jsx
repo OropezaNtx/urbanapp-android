@@ -20,14 +20,14 @@ export default function InstallationsPanel({ installations }) {
   const [loading, setLoading] = useState(false);
 
   async function handleApprove(id) {
-    const orgId = prompt("Ingrese ID de Organización (Workspace):", "demo_org");
-    const licId = prompt("Ingrese ID de Licencia:", "lic_default_pilot");
+    const workspaceId = prompt("Ingrese ID de Workspace:", "demo_workspace");
+    const licenseId = prompt("Ingrese ID de Licencia:", "lic_default_pilot");
 
-    if (!orgId || !licId) return;
+    if (!workspaceId || !licenseId) return;
 
     setLoading(true);
     try {
-      await updateInstallationStatus(id, 'ACTIVE', orgId, licId);
+      await updateInstallationStatus(id, 'ACTIVE', { workspaceId, licenseId });
     } catch (e) {
       alert("Error: " + e.message);
     } finally {
@@ -40,7 +40,7 @@ export default function InstallationsPanel({ installations }) {
 
     setLoading(true);
     try {
-      await updateInstallationStatus(id, 'REVOKED', null, null);
+      await updateInstallationStatus(id, 'REVOKED');
     } catch (e) {
       alert("Error: " + e.message);
     } finally {

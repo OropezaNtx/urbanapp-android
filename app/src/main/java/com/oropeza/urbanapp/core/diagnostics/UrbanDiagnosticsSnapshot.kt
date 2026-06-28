@@ -10,6 +10,7 @@ data class UrbanDiagnosticsSnapshot(
 
     // Identity
     val installationId: String,
+    val ownerUid: String?,
     val shortInstallationId: String,
     val androidId: String?,
     val manufacturer: String,

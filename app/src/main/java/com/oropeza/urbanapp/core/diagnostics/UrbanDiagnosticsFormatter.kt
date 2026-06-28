@@ -33,6 +33,7 @@ object UrbanDiagnosticsFormatter {
 
             IDENTITY
             Installation ID: ${snapshot.installationId}
+            Owner UID: ${snapshot.ownerUid ?: "Not Authenticated"}
             Short ID: ${snapshot.shortInstallationId}
             Android ID: ${snapshot.androidId}
             Device: ${snapshot.manufacturer} ${snapshot.model} (Android ${snapshot.androidVersion}, API ${snapshot.sdkInt})

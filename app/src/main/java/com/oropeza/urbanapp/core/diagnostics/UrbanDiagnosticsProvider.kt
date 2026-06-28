@@ -10,6 +10,7 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import androidx.core.content.ContextCompat
 import com.oropeza.urbanapp.BuildConfig
+import com.oropeza.urbanapp.core.identity.UrbanIdentityManager
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.flow.firstOrNull
 
@@ -63,6 +64,7 @@ object UrbanDiagnosticsProvider {
             generatedAt = System.currentTimeMillis(),
             bootstrapStatus = bootstrap,
             installationId = identity.installationId,
+            ownerUid = UrbanIdentityManager.getUid(),
             shortInstallationId = runtimeStatus.shortInstallationId,
             androidId = identity.androidId,
             manufacturer = identity.manufacturer,

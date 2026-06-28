@@ -2,6 +2,7 @@ package com.oropeza.urbanapp.core.platform
 
 data class UrbanInstallation(
     val installationId: String,
+    val ownerUid: String?,   // Firebase Authentication UID
     val workspaceId: String?, // Maps to organizationId internally
     val projectId: String?,
     val licenseId: String?,

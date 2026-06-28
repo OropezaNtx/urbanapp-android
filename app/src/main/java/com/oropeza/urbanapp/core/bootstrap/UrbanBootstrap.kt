@@ -3,6 +3,7 @@ package com.oropeza.urbanapp.core.bootstrap
 import android.content.Context
 import android.util.Log
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
+import com.oropeza.urbanapp.core.identity.UrbanIdentityManager
 import com.oropeza.urbanapp.core.events.UrbanEventFactory
 import com.oropeza.urbanapp.core.events.UrbanEventTypes
 import com.oropeza.urbanapp.core.config.UrbanConfigurationCloudDatasource
@@ -33,6 +34,26 @@ object UrbanBootstrap {
         UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.PLATFORM_BOOTSTRAP_STARTED))
 
         try {
+            // 0. Authentication (Critical for Sync/Security)
+            try {
+                UrbanIdentityManager.ensureAuthenticated().getOrThrow()
+                Log.d(TAG, "Authenticated with UID: ${UrbanIdentityManager.getUid()}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Authentication initialization failed", e)
+                // If we have a valid offline license, we might continue
+                val isLicenseActive = try { 
+                    UrbanRuntime.licenseStatus(context) == com.oropeza.urbanapp.core.license.UrbanLicenseStatus.ACTIVE 
+                } catch (e: Exception) { false }
+                
+                if (isLicenseActive) {
+                    currentStatus = currentStatus.addWarning("Offline: Auth failed but using cached license")
+                } else {
+                    val res = failure("Critical failure: Authentication could not be established")
+                    UrbanRuntime.publishEvent(UrbanEventFactory.error(UrbanEventTypes.PLATFORM_BOOTSTRAP_FAILED, "BOOTSTRAP", "AUTH", mapOf("error" to e.message)))
+                    return@withContext res
+                }
+            }
+
             // 1. Identity (Critical)
             try {
                 UrbanRuntime.identity(context)

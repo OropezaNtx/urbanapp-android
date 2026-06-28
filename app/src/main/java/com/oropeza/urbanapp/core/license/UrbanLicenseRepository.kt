@@ -3,6 +3,7 @@ package com.oropeza.urbanapp.core.license
 import android.content.Context
 import android.content.SharedPreferences
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldPath
 import com.google.gson.Gson
 import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
 import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
@@ -19,10 +20,20 @@ class UrbanLicenseRepository(private val context: Context) {
 
     suspend fun syncRemoteLicense(): UrbanLicense? {
         val licenseId = UrbanPlatformSettings.getLicenseId(context) ?: return null
+        val installationId = UrbanIdentityProvider.getIdentity(context).installationId
         
         return try {
-            val snapshot = db.collection("licenses").document(licenseId).get().await()
-            if (snapshot.exists()) {
+            // Using a query instead of direct document fetch allows passing installationId 
+            // via security rules context (request.query)
+            val querySnapshot = db.collection("licenses")
+                .whereEqualTo(FieldPath.documentId(), licenseId)
+                .whereEqualTo("installationId", installationId) // Used by security rules
+                .limit(1)
+                .get()
+                .await()
+
+            if (!querySnapshot.isEmpty) {
+                val snapshot = querySnapshot.documents[0]
                 val data = snapshot.data ?: return null
                 val license = UrbanLicense(
                     licenseId = snapshot.id,
@@ -48,9 +59,7 @@ class UrbanLicenseRepository(private val context: Context) {
                     updatedAt = data["updatedAt"] as? Long ?: 0L
                 )
                 
-                // Update telemetry in Firestore
                 updateLicenseTelemetry()
-                
                 saveLocalLicense(license)
                 license
             } else {
