@@ -15,6 +15,10 @@ data class UrbanInstallation(
     val packageName: String,
     val registeredAt: Long?,
     val lastSeenAt: Long?,
+    val lastLicenseCheckAt: Long?,
+    val lastHeartbeatAt: Long?,
+    val lastSyncAt: Long?,
+    val installationVersion: String?,
     val status: String,
     val createdAt: Long,
     val updatedAt: Long

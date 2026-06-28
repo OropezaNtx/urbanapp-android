@@ -20,4 +20,8 @@ object UrbanLicenseManager {
     fun status(context: Context): UrbanLicenseStatus {
         return UrbanLicenseRepository(context).licenseStatus()
     }
+
+    suspend fun syncRemoteLicense(context: Context): UrbanLicense? {
+        return UrbanLicenseRepository(context).syncRemoteLicense()
+    }
 }

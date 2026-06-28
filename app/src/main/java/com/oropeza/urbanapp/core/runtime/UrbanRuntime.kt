@@ -101,6 +101,8 @@ object UrbanRuntime {
 
     fun licenseStatus(context: Context): UrbanLicenseStatus = UrbanLicenseManager.status(context)
 
+    suspend fun syncRemoteLicense(context: Context): UrbanLicense? = UrbanLicenseManager.syncRemoteLicense(context)
+
     fun currentUser(context: Context): UrbanUser = UrbanAccessManager.currentUser(context)
 
     fun permissions(context: Context): UrbanPermissionSet = UrbanAccessManager.permissions(context)
@@ -108,6 +110,14 @@ object UrbanRuntime {
     fun hasPermission(context: Context, code: String): Boolean = UrbanAccessManager.hasPermission(context, code)
 
     fun can(context: Context, module: String, action: String): Boolean = UrbanAccessManager.can(context, module, action)
+
+    fun installationStatus(context: Context): com.oropeza.urbanapp.core.platform.InstallationStatus {
+        return com.oropeza.urbanapp.core.platform.UrbanInstallationManager(context).getLocalStatus()
+    }
+
+    suspend fun syncInstallationStatus(context: Context): com.oropeza.urbanapp.core.platform.InstallationStatus {
+        return com.oropeza.urbanapp.core.platform.UrbanInstallationManager(context).syncInstallationStatus()
+    }
 
     suspend fun syncNow(context: Context): Result<Unit> = UrbanSyncManager.syncNow(context)
 

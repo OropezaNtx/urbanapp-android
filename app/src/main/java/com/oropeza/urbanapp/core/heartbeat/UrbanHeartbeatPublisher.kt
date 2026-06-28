@@ -36,9 +36,10 @@ class UrbanHeartbeatPublisher(
 
             val payload = mapOf(
                 "installationId" to identity.installationId,
-                "status" to "ACTIVE",
                 "lastSeen" to FieldValue.serverTimestamp(),
                 "lastSeenClient" to now,
+                "lastHeartbeatAt" to now,
+                "installationVersion" to identity.appVersionName,
                 "activeTripId" to activeTripId,
                 "organizationId" to workspace.organization.organizationId,
                 "projectId" to workspace.project.projectId,

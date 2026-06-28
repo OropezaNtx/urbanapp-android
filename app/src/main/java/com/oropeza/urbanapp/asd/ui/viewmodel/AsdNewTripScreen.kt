@@ -334,6 +334,10 @@ fun AsdNewTripScreen(
         }
     }
 
+    val licenseStatus = remember { UrbanRuntime.licenseStatus(context) }
+    val isLicenseActive = licenseStatus == com.oropeza.urbanapp.core.license.UrbanLicenseStatus.ACTIVE
+    val canCreateTrip = !loading && isLicenseActive
+
     Scaffold(
         containerColor = bgApp,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -358,6 +362,21 @@ fun AsdNewTripScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (!isLicenseActive) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Text(
+                        text = "Acción bloqueada: Licencia no válida (${licenseStatus.name}). Por favor contacte a soporte para activar su dispositivo.",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
             // 1. CATÁLOGO
             NewTripSection("CATÁLOGO") {
                 syncState?.let { state ->
@@ -807,7 +826,7 @@ fun AsdNewTripScreen(
             Spacer(Modifier.height(8.dp))
 
             Button(
-                enabled = !loading,
+                enabled = canCreateTrip,
                 onClick = {
                     focusManager.clearFocus()
                     error = null

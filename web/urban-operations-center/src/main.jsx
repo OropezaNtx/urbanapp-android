@@ -13,6 +13,7 @@ import TripPlayback from './components/TripPlayback';
 import LiveDevicesPanel from './components/LiveDevicesPanel';
 import LiveDevicesMap from './components/LiveDevicesMap';
 import FleetHealthPanel from './components/FleetHealthPanel';
+import InstallationsPanel from './components/InstallationsPanel';
 import './styles.css';
 
 const toMillis = (v) => {
@@ -167,6 +168,7 @@ function App() {
       <button onClick={() => setView('dashboard')}>Dashboard</button>
       <button onClick={() => setView('trips')}>Trips</button>
       <button onClick={() => setView('devices')}>Live Devices</button>
+      <button onClick={() => setView('installations')}>Installations</button>
       <button onClick={() => setView('fleet')}>Fleet Health</button>
     </nav>
 
@@ -194,6 +196,11 @@ function App() {
         <h3><Activity size={18} /> Instalaciones registradas</h3>
         <DevicesTable devices={devices} />
       </section>
+    </main>}
+
+    {view === 'installations' && <main>
+      <h2>Afora Enterprise Installations</h2>
+      <InstallationsPanel installations={installationsHealth} />
     </main>}
 
     {view === 'fleet' && <main>

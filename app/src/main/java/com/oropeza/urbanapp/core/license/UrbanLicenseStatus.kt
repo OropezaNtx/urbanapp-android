@@ -5,6 +5,7 @@ enum class UrbanLicenseStatus {
     TRIAL,
     EXPIRED,
     SUSPENDED,
+    REVOKED,
     INVALID,
     UNKNOWN
 }

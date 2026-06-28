@@ -15,9 +15,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.oropeza.urbanapp.BuildConfig
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
-import com.oropeza.urbanapp.license.InstallationLicenseState
-import com.oropeza.urbanapp.license.LicenseManager
-import com.oropeza.urbanapp.license.LicensePolicy
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -36,25 +33,21 @@ fun HomeScreen(
     val orgId = remember { UrbanRuntime.platformSettings().getOrganizationId(context) }
     val projId = remember { UrbanRuntime.platformSettings().getProjectId(context) }
     val env = remember { UrbanRuntime.platformSettings().getEnvironment(context) }
-    val licenseManager = remember { LicenseManager(context) }
-    var licenseState by remember { mutableStateOf<InstallationLicenseState?>(licenseManager.getCachedState()) }
     
     val pendingSyncCount by UrbanRuntime.syncStatus().pendingSyncCountFlow().collectAsState(initial = 0)
     val lastSyncTime by UrbanRuntime.syncStatus().lastSyncTimeFlow().collectAsState(initial = null)
 
-    LaunchedEffect(Unit) {
-        runCatching { licenseManager.checkLicense() }
-            .onSuccess { licenseState = it }
-    }
+    val licenseStatus = remember { UrbanRuntime.licenseStatus(context) }
+    val isLicenseActive = licenseStatus == com.oropeza.urbanapp.core.license.UrbanLicenseStatus.ACTIVE
 
-    val canOpenDashboard = LicensePolicy.canUseModule(licenseState, LicensePolicy.Module.DASHBOARD)
-    val canOpenAsd = LicensePolicy.canUseModule(licenseState, LicensePolicy.Module.ASD)
-    val canOpenCc = LicensePolicy.canUseModule(licenseState, LicensePolicy.Module.CC)
-    val canOpenFov = LicensePolicy.canUseModule(licenseState, LicensePolicy.Module.FOV)
+    val canOpenDashboard = isLicenseActive
+    val canOpenAsd = isLicenseActive
+    val canOpenCc = isLicenseActive
+    val canOpenFov = isLicenseActive
+
     val licenseStatusColor = when {
-        !LicensePolicy.enforcementEnabled -> MaterialTheme.colorScheme.primary
-        licenseState?.canUseApp == true -> Color(0xFF16A34A)
-        licenseState?.canUseOffline == true -> Color(0xFFEAB308)
+        isLicenseActive -> Color(0xFF16A34A)
+        licenseStatus == com.oropeza.urbanapp.core.license.UrbanLicenseStatus.TRIAL -> Color(0xFFEAB308)
         else -> MaterialTheme.colorScheme.error
     }
 
@@ -77,14 +70,9 @@ fun HomeScreen(
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Estado de licencia", style = MaterialTheme.typography.labelMedium)
                     Text(
-                        LicensePolicy.statusMessage(licenseState),
+                        licenseStatus.name,
                         color = licenseStatusColor,
                         style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        "Enforcement: ${if (LicensePolicy.enforcementEnabled) "ACTIVO" else "DIAGNÓSTICO"}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

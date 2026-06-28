@@ -45,6 +45,19 @@ object UrbanBootstrap {
                 return@withContext res
             }
 
+            // 1.1 Installation (Critical)
+            try {
+                UrbanRuntime.syncInstallationStatus(context)
+                currentStatus = currentStatus.copy(installationReady = true)
+            } catch (e: Exception) {
+                Log.e(TAG, "Installation sync failed", e)
+                // If we have local status, we can proceed, otherwise failure
+                if (UrbanRuntime.installationStatus(context) == com.oropeza.urbanapp.core.platform.InstallationStatus.PENDING) {
+                     // Still pending, maybe not a critical failure yet but we should warn
+                     currentStatus = currentStatus.addWarning("Installation pending activation")
+                }
+            }
+
             // 2. Workspace (Critical)
             try {
                 UrbanRuntime.workspace(context)
@@ -68,6 +81,10 @@ object UrbanBootstrap {
 
             // 4. License
             try {
+                // If installation is ACTIVE, try to sync remote license
+                if (UrbanRuntime.installationStatus(context) == com.oropeza.urbanapp.core.platform.InstallationStatus.ACTIVE) {
+                    UrbanRuntime.syncRemoteLicense(context)
+                }
                 UrbanRuntime.license(context)
                 currentStatus = currentStatus.copy(licenseReady = true)
             } catch (e: Exception) {

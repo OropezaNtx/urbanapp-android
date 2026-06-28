@@ -18,6 +18,10 @@ object UrbanPlatformCloudMapper {
             "packageName" to installation.packageName,
             "registeredAt" to installation.registeredAt,
             "lastSeenAt" to installation.lastSeenAt,
+            "lastLicenseCheckAt" to installation.lastLicenseCheckAt,
+            "lastHeartbeatAt" to installation.lastHeartbeatAt,
+            "lastSyncAt" to installation.lastSyncAt,
+            "installationVersion" to installation.installationVersion,
             "status" to installation.status,
             "createdAt" to installation.createdAt,
             "updatedAt" to installation.updatedAt

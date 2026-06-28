@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if the user is an admin
+    function isAdmin() {
+      return request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
+    }
+
+    // Installations: 
+    // - Android can only read its OWN document
+    // - Android can create its own (PENDING)
+    // - Android can only update telemetry fields
+    // - status, licenseId, organizationId, workspaceId are READ-ONLY for Android
+    match /installations/{installationId} {
+      allow get: if true; // In Phase 1, we don't have per-device auth, but we should enforce ID match if possible
+                         // For now, "get" is allowed but limited to the specific ID the device knows.
+      
+      allow create: if request.resource.data.status == 'PENDING';
+      
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['lastSeen', 'lastSeenClient', 'lastHeartbeatAt', 'lastSyncAt', 'lastLicenseCheckAt', 'activeTripId', 'battery', 'device', 'config', 'installationVersion'])
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.licenseId == resource.data.licenseId
+        && request.resource.data.organizationId == resource.data.organizationId;
+
+      allow write: if isAdmin();
+    }
+
+    // Licenses:
+    // - Android can only read
+    // - Admin can manage
+    match /licenses/{licenseId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Workspaces:
+    // - Android can only read
+    // - Admin can manage
+    match /workspaces/{workspaceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

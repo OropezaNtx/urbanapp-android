@@ -29,6 +29,10 @@ object UrbanPlatformService {
             packageName = identity.packageName,
             registeredAt = identity.createdAt,
             lastSeenAt = System.currentTimeMillis(),
+            lastLicenseCheckAt = null,
+            lastHeartbeatAt = System.currentTimeMillis(),
+            lastSyncAt = null,
+            installationVersion = identity.appVersionName,
             status = "ACTIVE",
             createdAt = identity.createdAt,
             updatedAt = System.currentTimeMillis()

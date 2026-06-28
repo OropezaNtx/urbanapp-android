@@ -5,6 +5,7 @@ data class UrbanBootstrapStatus(
     val finishedAt: Long? = null,
     val status: String = "NOT_STARTED", // NOT_STARTED, RUNNING, SUCCESS, WARNING, FAILED
     val identityReady: Boolean = false,
+    val installationReady: Boolean = false,
     val workspaceReady: Boolean = false,
     val permissionsReady: Boolean = false,
     val licenseReady: Boolean = false,

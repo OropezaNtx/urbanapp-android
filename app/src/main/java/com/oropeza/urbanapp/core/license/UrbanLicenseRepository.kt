@@ -1,11 +1,90 @@
 package com.oropeza.urbanapp.core.license
 
 import android.content.Context
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.gson.Gson
+import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
 import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
+import kotlinx.coroutines.tasks.await
 
 class UrbanLicenseRepository(private val context: Context) {
+    private val db = FirebaseFirestore.getInstance()
+    private val gson = Gson()
+    private val prefs = context.getSharedPreferences("urban_license_prefs", Context.MODE_PRIVATE)
+
+    companion object {
+        private const val KEY_CACHED_LICENSE = "cached_license"
+    }
+
+    suspend fun syncRemoteLicense(): UrbanLicense? {
+        val licenseId = UrbanPlatformSettings.getLicenseId(context) ?: return null
+        
+        return try {
+            val snapshot = db.collection("licenses").document(licenseId).get().await()
+            if (snapshot.exists()) {
+                val data = snapshot.data ?: return null
+                val license = UrbanLicense(
+                    licenseId = snapshot.id,
+                    organizationId = data["organizationId"] as? String ?: "",
+                    projectId = data["projectId"] as? String ?: "",
+                    status = try { 
+                        UrbanLicenseStatus.valueOf(data["status"] as? String ?: "UNKNOWN") 
+                    } catch (e: Exception) { 
+                        UrbanLicenseStatus.UNKNOWN 
+                    },
+                    type = try { 
+                        UrbanLicenseType.valueOf(data["type"] as? String ?: "PILOT") 
+                    } catch (e: Exception) { 
+                        UrbanLicenseType.PILOT 
+                    },
+                    enabledModules = (data["enabledModules"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                    enabledFeatures = (data["enabledFeatures"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                    maxUsers = (data["maxUsers"] as? Long)?.toInt() ?: 0,
+                    maxDevices = (data["maxDevices"] as? Long)?.toInt() ?: 0,
+                    expirationAt = data["expirationAt"] as? Long ?: 0L,
+                    gracePeriodDays = (data["gracePeriodDays"] as? Long)?.toInt() ?: 0,
+                    createdAt = data["createdAt"] as? Long ?: 0L,
+                    updatedAt = data["updatedAt"] as? Long ?: 0L
+                )
+                
+                // Update telemetry in Firestore
+                updateLicenseTelemetry(licenseId)
+                
+                saveLocalLicense(license)
+                license
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun updateLicenseTelemetry(licenseId: String) {
+        try {
+            val identity = UrbanIdentityProvider.getIdentity(context)
+            db.collection("installations").document(identity.installationId).update(
+                "lastLicenseCheckAt", System.currentTimeMillis()
+            ).await()
+        } catch (e: Exception) {
+            // Non-critical
+        }
+    }
+
+    private fun saveLocalLicense(license: UrbanLicense) {
+        val json = gson.toJson(license)
+        prefs.edit().putString(KEY_CACHED_LICENSE, json).apply()
+    }
 
     fun getCurrentLicense(): UrbanLicense {
+        val json = prefs.getString(KEY_CACHED_LICENSE, null)
+        if (json != null) {
+            try {
+                return gson.fromJson(json, UrbanLicense::class.java)
+            } catch (e: Exception) {
+                // Ignore and fall back to default
+            }
+        }
         val orgId = UrbanPlatformSettings.getOrganizationId(context)
         val projId = UrbanPlatformSettings.getProjectId(context)
         return getDefaultLicense(orgId, projId)

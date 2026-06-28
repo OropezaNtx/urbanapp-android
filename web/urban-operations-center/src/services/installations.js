@@ -1,4 +1,4 @@
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 function mapDocs(snapshot) {
@@ -18,8 +18,8 @@ function toMillis(value) {
 }
 
 function sortByLastSeenDesc(a, b) {
-  const aMs = toMillis(a.lastSeenClient || a.lastSeen);
-  const bMs = toMillis(b.lastSeenClient || b.lastSeen);
+  const aMs = toMillis(a.lastSeenAt || a.lastSeenClient || a.lastSeen);
+  const bMs = toMillis(b.lastSeenAt || b.lastSeenClient || b.lastSeen);
   return bMs - aMs;
 }
 
@@ -37,4 +37,14 @@ export function subscribeInstallationsHealth(onInstallations, onError) {
       if (onError) onError(error);
     }
   );
+}
+
+export async function updateInstallationStatus(installationId, status, organizationId, licenseId) {
+  const ref = doc(db, "installations", installationId);
+  await updateDoc(ref, {
+    status,
+    organizationId,
+    licenseId,
+    updatedAt: Date.now()
+  });
 }
