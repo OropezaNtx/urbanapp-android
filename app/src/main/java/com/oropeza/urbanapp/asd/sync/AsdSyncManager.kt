@@ -31,8 +31,9 @@ object AsdSyncManager {
             lastFixTime = lastPoint?.timeMs,
             appVersion = BuildConfig.VERSION_NAME
         )
-        AsdGraph.repo.enqueueSync("DEVICE_STATUS", "CREATE", 0L, status)
-        AsdCloudSyncWorker.enqueue(context)
+        // TODO: Migrar DEVICE_STATUS a paths Enterprise con cloudPath obligatorio.
+        // AsdGraph.repo.enqueueSync("DEVICE_STATUS", "CREATE", 0L, status)
+        // AsdCloudSyncWorker.enqueue(context)
     }
 
     suspend fun enqueueTrackSummary(context: Context, tripId: Long) {
@@ -50,8 +51,9 @@ object AsdSyncManager {
             lastLon = last.lon,
             lastTime = last.timeMs
         )
-        AsdGraph.repo.enqueueSync("TRACK_SUMMARY", "UPDATE", tripId, summary)
-        AsdCloudSyncWorker.enqueue(context)
+        // TODO: Migrar TRACK_SUMMARY a paths Enterprise con cloudPath obligatorio.
+        // AsdGraph.repo.enqueueSync("TRACK_SUMMARY", "UPDATE", tripId, summary)
+        // AsdCloudSyncWorker.enqueue(context)
     }
 
     private fun distanceMeters(points: List<TrackPoint>): Double {
