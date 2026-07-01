@@ -9,7 +9,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 
-const ORG_ID = import.meta.env.VITE_URBAN_ORG_ID || "demo_org";
+const ORG_ID = import.meta.env.VITE_URBAN_ORG_ID || "demo_workspace";
 const PROJECT_ID = import.meta.env.VITE_URBAN_PROJECT_ID || "demo_project";
 const USE_LEGACY = import.meta.env.VITE_URBAN_USE_LEGACY === "true";
 
