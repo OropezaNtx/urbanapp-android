@@ -8,8 +8,8 @@ import com.oropeza.urbanapp.core.config.UrbanConfigurationManager
 class UrbanWorkspaceRepository(private val context: Context) {
 
     fun loadWorkspace(): UrbanWorkspace {
-        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
-        val projId = UrbanPlatformSettings.getProjectId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context).ifBlank { "demo_workspace" }
+        val projId = UrbanPlatformSettings.getProjectId(context).ifBlank { "demo_project" }
         val env = UrbanPlatformSettings.getEnvironment(context)
         
         val accessRepo = UrbanAccessRepository(context)
