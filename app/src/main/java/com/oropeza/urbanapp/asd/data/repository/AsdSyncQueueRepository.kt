@@ -65,8 +65,8 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     }
 
     suspend fun enqueueTripUpsert(context: android.content.Context, operation: String, trip: Trip) {
-        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
-        val projId = UrbanPlatformSettings.getProjectId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context).ifBlank { "demo_workspace" }
+        val projId = UrbanPlatformSettings.getProjectId(context).ifBlank { "demo_project" }
         val cloudTripId = getCloudTripId(context, trip.tripId)
         val path = UrbanCloudPaths.tripPath(workspaceId, projId, cloudTripId)
 
@@ -74,8 +74,8 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     }
 
     suspend fun enqueueEventUpsert(context: android.content.Context, event: StopEvent) {
-        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
-        val projId = UrbanPlatformSettings.getProjectId(context)
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context).ifBlank { "demo_workspace" }
+        val projId = UrbanPlatformSettings.getProjectId(context).ifBlank { "demo_project" }
         val cloudTripId = getCloudTripId(context, event.tripId)
         val cloudEventId = getCloudEventId(context, event.eventId)
         val path = "${UrbanCloudPaths.tripPath(workspaceId, projId, cloudTripId)}/events/$cloudEventId"
