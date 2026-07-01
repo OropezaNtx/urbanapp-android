@@ -4,15 +4,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
-import com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker
-import com.oropeza.urbanapp.asd.sync.AsdSyncManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,8 +21,6 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
-import com.oropeza.urbanapp.asd.live.LiveDevicePublisher
-import com.oropeza.urbanapp.asd.live.LiveEventBus
 
 class TrackingService : Service() {
 
@@ -37,7 +31,7 @@ class TrackingService : Service() {
         const val ACTION_START = "TRACK_START"
         const val ACTION_STOP = "TRACK_STOP"
         const val EXTRA_TRIP_ID = "trip_id"
-        const val TAG = "TrackingService"
+        private const val TAG = "TrackingService"
         var isRunning = false
             private set
     }
@@ -45,13 +39,14 @@ class TrackingService : Service() {
     private val requiredAccM = 25.0
     private val usableAccM = 45.0
     private val kalmanUseAccM = 45.0
-    private val goodFixNeeded = 3
+    private val goodFixNeeded = 1
 
     private val maxSpeedMs = 45.0
     private val jumpM = 45.0
     private val jumpAccM = 25.0
 
-    private val minSaveDistanceM = 8.0
+    private val minSaveDistanceM = 4.0
+    private val stationaryBaseRadiusM = 14.0
     private val maxSaveIntervalMs = 2_000L
 
     private enum class Mode { ACQUIRE, TRACK, STILL }
@@ -62,8 +57,7 @@ class TrackingService : Service() {
 
     private lateinit var gps: LocationProvider
     private lateinit var headingProvider: HeadingProvider
-    private lateinit var livePublisher: LiveDevicePublisher
-    private var liveEventsJob: Job? = null
+
     private var goodFixStreak = 0
     private var recordingArmed = false
 
@@ -88,15 +82,8 @@ class TrackingService : Service() {
         gps = LocationProvider(this)
         headingProvider = HeadingProvider(this)
         headingProvider.start()
-        livePublisher = LiveDevicePublisher(this)
         createNotificationChannel()
-
-        val notification = buildNotification("Rastreo ASD activo")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-        } else {
-            startForeground(NOTIF_ID, notification)
-        }
+        startForeground(NOTIF_ID, buildNotification("Tracking ASD activo"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -137,41 +124,10 @@ class TrackingService : Service() {
         updatesJob = null
 
         job = scope.launch {
-            val trip = AsdGraph.db.tripDao().getByIdOnce(tripId)
-            if (trip != null) livePublisher.publishTripStart(trip)
-
-            liveEventsJob?.cancel()
-            liveEventsJob = launch {
-                LiveEventBus.events.collect { signal ->
-                    if (signal.tripId == tripId) {
-                        val currentTrip = AsdGraph.db.tripDao().getByIdOnce(tripId) ?: return@collect
-                        livePublisher.publishEvent(currentTrip, signal)
-                    }
-                }
-            }
             if (!gps.hasPermission()) {
                 Log.w(TAG, "Sin permisos de ubicación. No se inicia tracking.")
                 return@launch
             }
-
-            // ✅ Sync loops
-            launch {
-                while (true) {
-                    delay(30_000L)
-                    val lastP = lastSavedLat?.let { lat -> lastSavedLon?.let { lon -> lastSavedTimeMs?.let { t ->
-                        TrackPoint(tripId = tripId, timeMs = t, lat = lat, lon = lon, accM = 0.0, provider = "SNAPSHOT")
-                    } } }
-                    AsdSyncManager.enqueueDeviceStatus(applicationContext, tripId, lastP)
-                }
-            }
-
-            launch {
-                while (true) {
-                    delay(60_000L)
-                    AsdSyncManager.enqueueTrackSummary(applicationContext, tripId)
-                }
-            }
-
             switchMode(Mode.ACQUIRE)
             while (true) delay(1000L)
         }
@@ -184,15 +140,6 @@ class TrackingService : Service() {
     }
 
     private fun stopTracking() {
-        currentTripId?.let { tripId ->
-            scope.launch {
-                val trip = AsdGraph.db.tripDao().getByIdOnce(tripId)
-                if (trip != null) livePublisher.publishTripEnd(trip)
-            }
-        }
-
-        liveEventsJob?.cancel()
-        liveEventsJob = null
         updatesJob?.cancel()
         updatesJob = null
         job?.cancel()
@@ -244,16 +191,15 @@ class TrackingService : Service() {
             )
                 .catch { e -> Log.e(TAG, "Error en locationUpdates()", e) }
                 .collect { loc ->
-                        handleLocation(
-                            tripId = tripId,
-                            lat = loc.latitude,
-                            lon = loc.longitude,
-                            accM = loc.accuracy.toDouble(),
-                            altM = if (loc.hasAltitude()) loc.altitude else 0.0,
-                            timeFromLoc = loc.time,
-                            elapsedNanos = loc.elapsedRealtimeNanos,
-                            provider = loc.provider
-                        )
+                    handleLocation(
+                        tripId = tripId,
+                        lat = loc.latitude,
+                        lon = loc.longitude,
+                        accM = loc.accuracy.toDouble(),
+                        timeFromLoc = loc.time,
+                        elapsedNanos = loc.elapsedRealtimeNanos,
+                        provider = loc.provider
+                    )
                 }
         }
 
@@ -273,7 +219,6 @@ class TrackingService : Service() {
         lat: Double,
         lon: Double,
         accM: Double,
-        altM: Double,
         timeFromLoc: Long,
         elapsedNanos: Long,
         provider: String?
@@ -311,7 +256,6 @@ class TrackingService : Service() {
         val lastLat = lastAcceptedLat
         val lastLon = lastAcceptedLon
         val isFirst = (lastT == null || lastLat == null || lastLon == null)
-        var currentSpeedMs: Double? = null
 
         if (!isFirst) {
             val dtSec = if (elapsedNanos > 0L && lastAcceptedElapsedNanos != null) {
@@ -322,18 +266,17 @@ class TrackingService : Service() {
 
             val distM = haversineMeters(lastLat!!, lastLon!!, lat, lon)
             val speedMs = distM / dtSec
-            currentSpeedMs = speedMs
 
             if (speedMs > maxSpeedMs) return
             if (distM > jumpM && accM > jumpAccM) return
 
-            val stillRadius = kotlin.math.max(12.0, accM * 1.5)
-            if (distM < stillRadius && speedMs < 1.2) {
+            val stationaryRadiusM = maxOf(stationaryBaseRadiusM, accM * 1.4)
+
+            if (distM < stationaryRadiusM && speedMs < 1.2 && accM <= usableAccM) {
                 stillCounter++
-            } else if (distM > kotlin.math.max(20.0, accM * 2.0) || speedMs > 2.5) {
+            } else {
                 stillCounter = 0
             }
-
             if (stillCounter >= 8 && currentMode != Mode.STILL) switchMode(Mode.STILL)
             if (stillCounter == 0 && currentMode == Mode.STILL) switchMode(Mode.TRACK)
         }
@@ -351,19 +294,17 @@ class TrackingService : Service() {
         lastAcceptedLat = latF
         lastAcceptedLon = lonF
 
-        val canSave = accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, accM, timeMs)
+        val canSave = accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, timeMs, accM)
         if (canSave) {
             val modeTag = currentMode?.name ?: "NA"
             val qualityTag = if (recordingArmed) "ARMED" else "QUICK"
-            val eval = GpsQualityEvaluator.evaluate(latF, lonF, accM, provider)
             val p = TrackPoint(
                 tripId = tripId,
                 timeMs = timeMs,
                 lat = latF,
                 lon = lonF,
-                altM = altM,
                 accM = accM,
-                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag+${eval.quality.name}"
+                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag"
             )
             lastSavedTimeMs = timeMs
             lastSavedLat = latF
@@ -371,16 +312,6 @@ class TrackingService : Service() {
             scope.launch {
                 try {
                     AsdGraph.db.trackDao().insert(p)
-                    val trip = AsdGraph.db.tripDao().getByIdOnce(tripId)
-                    if (trip != null) {
-                        livePublisher.maybePublishLocation(
-                            trip = trip,
-                            point = p,
-                            heading = headingProvider.getHeadingDeg(timeMs),
-                            speedMs = currentSpeedMs,
-                            gpsStatus = gpsStatusFromAccuracy(accM)
-                        )
-                    }
                     val completed = AsdGraph.repo.completePendingGpsEvents(tripId, p)
                     if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
                 } catch (e: Exception) {
@@ -393,52 +324,25 @@ class TrackingService : Service() {
     private fun shouldSaveTrackPoint(
         lat: Double,
         lon: Double,
-        accM: Double,
-        timeMs: Long
+        timeMs: Long,
+        accM: Double
     ): Boolean {
-        val lastLat = lastSavedLat
-        val lastLon = lastSavedLon
-        val lastTime = lastSavedTimeMs
+        val savedTime = lastSavedTimeMs
+        val savedLat = lastSavedLat
+        val savedLon = lastSavedLon
+        if (savedTime == null || savedLat == null || savedLon == null) return true
 
-        if (lastLat == null || lastLon == null || lastTime == null) {
-            return true
+        val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
+        val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
+
+        val noiseRadiusM = maxOf(stationaryBaseRadiusM, accM * 1.4)
+        val isStill = currentMode == Mode.STILL || stillCounter >= 3
+
+        if (isStill && distanceM < noiseRadiusM) {
+            return false
         }
 
-        val elapsedMs = timeMs - lastTime
-        val results = FloatArray(1)
-        android.location.Location.distanceBetween(
-            lastLat,
-            lastLon,
-            lat,
-            lon,
-            results
-        )
-        val distanceM = results[0].toDouble()
-
-        val minTimeMovingMs = 5_000L
-        val minDistanceMovingM = 5.0
-        val maxStillIntervalMs = 30_000L
-        val maxForceIntervalMs = 15_000L
-
-        if (elapsedMs >= maxForceIntervalMs) {
-            return true
-        }
-
-        if (currentMode == Mode.STILL) {
-            return elapsedMs >= maxStillIntervalMs
-        }
-
-        if (elapsedMs >= minTimeMovingMs && distanceM >= minDistanceMovingM) {
-            return true
-        }
-
-        return false
-    }
-
-    private fun gpsStatusFromAccuracy(accM: Double): String = when {
-        accM <= 25.0 -> "OK"
-        accM <= 45.0 -> "WEAK"
-        else -> "POOR"
+        return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

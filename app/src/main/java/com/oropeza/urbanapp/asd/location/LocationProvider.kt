@@ -51,16 +51,14 @@ class LocationProvider(private val context: Context) {
     suspend fun getQuickFix(highAccuracy: Boolean = true): android.location.Location? {
         if (!hasPermission()) return null
 
-        val now = System.currentTimeMillis()
-
-        // 1) lastLocation (cache) con validaciones estrictas
+        // 1) lastLocation (cache)
         val last = try { client.lastLocation.await() } catch (_: Exception) { null }
-        if (last != null && last.time > 0L && (now - last.time) <= 10_000L && last.accuracy <= 20f) {
-            return last
-        }
+        if (last != null) return last
 
-        // 2) getCurrentLocation (fresco) si el cache no es confiable o no existe
-        val prio = Priority.PRIORITY_HIGH_ACCURACY
+        // 2) getCurrentLocation (fresco)
+        val prio = if (highAccuracy) Priority.PRIORITY_HIGH_ACCURACY
+        else Priority.PRIORITY_BALANCED_POWER_ACCURACY
+
         val cts = CancellationTokenSource()
         return try {
             client.getCurrentLocation(prio, cts.token).await()
@@ -387,7 +385,6 @@ class LocationProvider(private val context: Context) {
             lat = loc.latitude,
             lon = loc.longitude,
             accM = acc,
-            altM = if (loc.hasAltitude()) loc.altitude else 0.0,
             provider = loc.provider ?: "fused",
             fixTime = if (loc.time > 0L) loc.time else System.currentTimeMillis(),
             status = status
@@ -406,7 +403,6 @@ class LocationProvider(private val context: Context) {
             lat = latitude,
             lon = longitude,
             accM = accuracy.toDouble(),
-            altM = if (hasAltitude()) altitude else 0.0,
             provider = provider ?: "fused",
             fixTime = if (time > 0L) time else System.currentTimeMillis(),
             status = status
