@@ -27,17 +27,21 @@ class UrbanInstallationManager(private val context: Context) {
 
     suspend fun syncInstallationStatus(): InstallationStatus {
         val identity = UrbanIdentityProvider.getIdentity(context)
-        val docRef = db.collection("installations").document(identity.installationId)
+        val installationId = identity.installationId
+        val ownerUid = UrbanIdentityManager.getUid() ?: return InstallationStatus.PENDING
         
         return try {
-            val snapshot = docRef.get().await()
-            if (snapshot.exists()) {
-                val status = snapshot.getString("status") ?: InstallationStatus.PENDING.name
-                val licenseId = snapshot.getString("licenseId")
-                val workspaceId = snapshot.getString("workspaceId")
-                val projectId = snapshot.getString("projectId") ?: "default_project"
+            // Step 1: Read derived access document (Primary truth for authorization)
+            // Keyed by ownerUid to satisfy direct document rules without query params
+            val accessRef = db.collection("installation_access").document(ownerUid)
+            val accessSnapshot = accessRef.get().await()
+
+            if (accessSnapshot.exists()) {
+                val status = accessSnapshot.getString("status") ?: InstallationStatus.PENDING.name
+                val licenseId = accessSnapshot.getString("licenseId")
+                val workspaceId = accessSnapshot.getString("workspaceId")
+                val projectId = accessSnapshot.getString("projectId") ?: "default_project"
                 
-                // Update local status with fields derived from Firestore
                 val currentStatus = try { 
                     InstallationStatus.valueOf(status) 
                 } catch (e: Exception) { 
@@ -46,17 +50,21 @@ class UrbanInstallationManager(private val context: Context) {
                 
                 saveLocalStatus(currentStatus, licenseId, workspaceId, projectId)
                 
-                // Update lastSyncAt in Firestore (Telemetry only)
-                docRef.update("lastSyncAt", System.currentTimeMillis()).await()
+                // Step 2: Update telemetry in main installations doc
+                db.collection("installations").document(installationId)
+                    .update("lastSyncAt", System.currentTimeMillis()).await()
 
                 currentStatus
             } else {
-                // Not registered yet, register as PENDING
-                registerInstallation(identity.installationId)
+                // If installation_access doesn't exist, check if installation exists
+                val instSnapshot = db.collection("installations").document(installationId).get().await()
+                if (!instSnapshot.exists()) {
+                    registerInstallation(installationId)
+                }
                 InstallationStatus.PENDING
             }
         } catch (e: Exception) {
-            getLocalStatus() // Fallback to local if offline
+            getLocalStatus() // Offline fallback
         }
     }
 

@@ -35,7 +35,9 @@ class TrackingService : Service() {
         const val ACTION_START = "TRACK_START"
         const val ACTION_STOP = "TRACK_STOP"
         const val EXTRA_TRIP_ID = "trip_id"
-        private const val TAG = "TrackingService"
+        const val TAG = "TrackingService"
+        var isRunning = false
+            private set
     }
 
     private val requiredAccM = 25.0
@@ -80,6 +82,7 @@ class TrackingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         gps = LocationProvider(this)
         headingProvider = HeadingProvider(this)
         headingProvider.start()
@@ -203,6 +206,7 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         stopTracking()
         scope.cancel()
         super.onDestroy()

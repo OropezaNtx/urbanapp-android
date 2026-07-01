@@ -1,4 +1,4 @@
-import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 
 function mapDocs(snapshot) {
@@ -39,11 +39,26 @@ export function subscribeInstallationsHealth(onInstallations, onError) {
   );
 }
 
-export async function updateInstallationStatus(installationId, status, extraFields = {}) {
-  const ref = doc(db, "installations", installationId);
-  await updateDoc(ref, {
+export async function updateInstallationStatus(installationId, status, extraFields = {}, ownerUid = null) {
+  const batch = writeBatch(db);
+
+  const instRef = doc(db, "installations", installationId);
+  batch.update(instRef, {
     status,
     ...extraFields,
     updatedAt: Date.now()
   });
+
+  const accessRef = doc(db, "installation_access", ownerUid); // Keyed by UID for direct secure rules
+  // On approval/revocation, we sync the core fields to installation_access
+  batch.set(accessRef, {
+    installationId,
+    ownerUid,
+    status,
+    workspaceId: extraFields.workspaceId || null,
+    licenseId: extraFields.licenseId || null,
+    updatedAt: Date.now()
+  });
+
+  await batch.commit();
 }

@@ -1,39 +1,43 @@
 package com.oropeza.urbanapp.core.events
 
 object UrbanEventTypes {
-    const val PLATFORM_BOOTSTRAP_STARTED = "PLATFORM_BOOTSTRAP_STARTED"
-    const val PLATFORM_BOOTSTRAP_SUCCESS = "PLATFORM_BOOTSTRAP_SUCCESS"
-    const val PLATFORM_BOOTSTRAP_WARNING = "PLATFORM_BOOTSTRAP_WARNING"
-    const val PLATFORM_BOOTSTRAP_FAILED = "PLATFORM_BOOTSTRAP_FAILED"
-    
-    const val IDENTITY_READY = "IDENTITY_READY"
-    const val WORKSPACE_READY = "WORKSPACE_READY"
-    
-    const val LICENSE_STATUS_CHANGED = "LICENSE_STATUS_CHANGED"
-    const val PERMISSION_CHECKED = "PERMISSION_CHECKED"
-    
-    const val SYNC_REQUESTED = "SYNC_REQUESTED"
-    const val SYNC_COMPLETED = "SYNC_COMPLETED"
-    const val SYNC_FAILED = "SYNC_FAILED"
-    
-    const val CONFIGURATION_FETCH_STARTED = "CONFIGURATION_FETCH_STARTED"
-    const val CONFIGURATION_FETCH_SUCCESS = "CONFIGURATION_FETCH_SUCCESS"
-    const val CONFIGURATION_FETCH_FAILED = "CONFIGURATION_FETCH_FAILED"
-    const val CONFIGURATION_LOADED = "CONFIGURATION_LOADED"
-    const val CONFIGURATION_WARNING = "CONFIGURATION_WARNING"
-    
-    const val HEARTBEAT_ENQUEUED = "HEARTBEAT_ENQUEUED"
-    const val DIAGNOSTICS_REQUESTED = "DIAGNOSTICS_REQUESTED"
-    
-    const val ASD_TRIP_CREATED = "ASD_TRIP_CREATED"
-    const val ASD_TRIP_CLOSED = "ASD_TRIP_CLOSED"
-    const val ASD_EVENT_CREATED = "ASD_EVENT_CREATED"
+    const val PLATFORM_BOOTSTRAP_STARTED = "platform.bootstrap.started"
+    const val PLATFORM_BOOTSTRAP_SUCCESS = "platform.bootstrap.success"
+    const val PLATFORM_BOOTSTRAP_WARNING = "platform.bootstrap.warning"
+    const val PLATFORM_BOOTSTRAP_FAILED = "platform.bootstrap.failed"
 
-    const val ASD_TRIP_ENQUEUED_FOR_SYNC = "ASD_TRIP_ENQUEUED_FOR_SYNC"
-    const val ASD_EVENT_ENQUEUED_FOR_SYNC = "ASD_EVENT_ENQUEUED_FOR_SYNC"
-    const val ASD_TRACK_CHUNK_ENQUEUED = "ASD_TRACK_CHUNK_ENQUEUED"
-    const val ASD_TRIP_SYNC_READY = "ASD_TRIP_SYNC_READY"
-    
-    const val ASD_TRIP_SYNC_REQUESTED = "ASD_TRIP_SYNC_REQUESTED"
-    const val ASD_TRIP_SYNC_STATUS_VIEWED = "ASD_TRIP_SYNC_STATUS_VIEWED"
+    const val IDENTITY_READY = "identity.ready"
+    const val WORKSPACE_READY = "workspace.ready"
+
+    const val LICENSE_STATUS_CHANGED = "license.status.changed"
+    const val PERMISSION_CHECKED = "permission.checked"
+
+    const val SYNC_REQUESTED = "sync.requested"
+    const val SYNC_COMPLETED = "sync.completed"
+    const val SYNC_FAILED = "sync.failed"
+
+    const val CONFIGURATION_FETCH_STARTED = "configuration.fetch.started"
+    const val CONFIGURATION_FETCH_SUCCESS = "configuration.fetch.success"
+    const val CONFIGURATION_FETCH_FAILED = "configuration.fetch.failed"
+    const val CONFIGURATION_LOADED = "configuration.loaded"
+    const val CONFIGURATION_WARNING = "configuration.warning"
+
+    const val HEARTBEAT_ENQUEUED = "heartbeat.enqueued"
+    const val DIAGNOSTICS_REQUESTED = "diagnostics.requested"
+
+    const val ASD_TRIP_CREATED = "asd.trip.created"
+    const val ASD_TRIP_CLOSED = "asd.trip.closed"
+    const val ASD_EVENT_CREATED = "asd.event.created"
+
+    const val ASD_TRIP_ENQUEUED_FOR_SYNC = "asd.trip.sync.enqueued"
+    const val ASD_EVENT_ENQUEUED_FOR_SYNC = "asd.event.sync.enqueued"
+    const val ASD_TRACK_CHUNK_ENQUEUED = "asd.track.chunk.enqueued"
+    const val ASD_TRIP_SYNC_READY = "asd.trip.sync.ready"
+
+    const val ASD_TRIP_SYNC_REQUESTED = "asd.trip.sync.requested"
+    const val ASD_TRIP_SYNC_STATUS_VIEWED = "asd.trip.sync.status.viewed"
+
+    // Operational Recovery Events
+    const val RECOVERY_REQUIRED = "operational.recovery.required"
+    const val RECOVERY_RESUMED = "operational.recovery.resumed"
 }

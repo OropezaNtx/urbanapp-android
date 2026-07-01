@@ -485,12 +485,12 @@ fun AsdTripDetailScreen(
         val maxW = (summary.womenOnBoard + womenUp - protectedWomen).coerceAtLeast(0)
 
         if (menDown > maxM) {
-            return if (protectedMen > 0 && summary.menOnBoard + menUp <= 1) "No puedes bajar al observador durante el recorrido."
-            else "No puedes bajar $menDown hombres si solo hay $maxM disponibles (protegiendo observador)."
+            return if (protectedMen > 0 && summary.menOnBoard + menUp <= 1) "No puedes bajar al operador durante el levantamiento."
+            else "No puedes bajar $menDown hombres si solo hay $maxM disponibles (protegiendo operador)."
         }
         if (womenDown > maxW) {
-            return if (protectedWomen > 0 && summary.womenOnBoard + womenUp <= 1) "No puedes bajar a la observadora durante el recorrido."
-            else "No puedes bajar $womenDown mujeres si solo hay $maxW disponibles (protegiendo observador)."
+            return if (protectedWomen > 0 && summary.womenOnBoard + womenUp <= 1) "No puedes bajar a la operadora durante el levantamiento."
+            else "No puedes bajar $womenDown mujeres si solo hay $maxW disponibles (protegiendo operador)."
         }
         return null
     }
@@ -681,7 +681,7 @@ fun AsdTripDetailScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     val warningText = when {
                         totalOnBoard > 0 -> "QUEDAN $totalOnBoard PASAJEROS A BORDO QUE SERÁN BAJADOS AUTOMÁTICAMENTE EN AD/FINAL."
-                        else -> "ESTA ACCIÓN CERRARÁ DEFINITIVAMENTE EL RECORRIDO Y GENERARÁ EL EVENTO AD/FINAL."
+                        else -> "ESTA ACCIÓN CERRARÁ DEFINITIVAMENTE EL LEVANTAMIENTO Y GENERARÁ EL EVENTO AD/FINAL."
                     }
                     Text(warningText)
                     Text("No podrá modificarse desde la captura operativa.", fontWeight = FontWeight.Bold, color = Color.Red)
@@ -845,7 +845,7 @@ fun AsdTripDetailScreen(
                 )
             }
 
-            // 2. TIEMPO DE RECORRIDO
+            // 2. TIEMPO DE LEVANTAMIENTO
             item {
                 val start = t.startTime
                 val end = t.endTime ?: tickMs
@@ -858,7 +858,7 @@ fun AsdTripDetailScreen(
                 ) {
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("TIEMPO DE RECORRIDO", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                            Text("TIEMPO DEL LEVANTAMIENTO", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
                             Text(formatElapsed(durationSec), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color.White)
                         }
                         if (isEnded) {
@@ -874,7 +874,7 @@ fun AsdTripDetailScreen(
                 }
             }
 
-            // 3. DATOS DEL RECORRIDO
+            // 3. DATOS DEL LEVANTAMIENTO
             item {
                 TripHeaderCard(
                     routeName = t.routeName.uppercase(Locale("es", "MX")),
@@ -892,10 +892,10 @@ fun AsdTripDetailScreen(
                 )
             }
 
-            // 4. GPS / TRACKING
+            // 4. RASTREO GPS
             item { TrackingStatusCard(trackingAlive, lastAgeMs, lastPoint, pointCount, qualitySummary) }
 
-            // 4.5 ESTADO NUBE
+            // 4.5 RESPALDO EN LA NUBE
             item {
                 CloudSyncStatusCard(
                     status = syncStatus,
@@ -906,11 +906,11 @@ fun AsdTripDetailScreen(
                             UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_SYNC_REQUESTED, mapOf("tripId" to tripId)))
                             val isOnline = UrbanRuntime.diagnostics(context).isNetworkAvailable
                             if (!isOnline) {
-                                snackbarText = "Sin conexión, queda pendiente"
+                                snackbarText = "Sin conexión, el respaldo queda pendiente"
                                 return@launch
                             }
                             val res = UrbanRuntime.syncNow(context)
-                            snackbarText = if (res.isSuccess) "Sincronización finalizada ✅" else "Error al sincronizar"
+                            snackbarText = if (res.isSuccess) "Sincronización finalizada ✅" else "Error al sincronizar con la nube"
                         }
                     }
                 )
@@ -1376,7 +1376,7 @@ private fun InlineAsdCaptureCard(
                     border = BorderStroke(1.dp, Color(0xFFFF4B4B).copy(alpha = 0.5f)),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
                 ) {
-                    Text("🏁 FINALIZAR RECORRIDO", color = Color(0xFFFF4B4B), fontWeight = FontWeight.Bold)
+                    Text("🏁 FINALIZAR LEVANTAMIENTO", color = Color(0xFFFF4B4B), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1770,7 +1770,7 @@ private fun EditTripHeaderDialog(
                                 Box(Modifier.weight(1f)) { NextField(label = "PLACA", value = plateNumber, change = { plateNumber = it }) }
                             }
                         }
-                        item { NextField(label = "NO. RECORRIDO", value = routeNumber, change = { routeNumber = it }, number = true) }
+                        item { NextField(label = "FOLIO / NO. ECONÓMICO", value = routeNumber, change = { routeNumber = it }, number = true) }
                         item { NextField(label = "OBSERVACIONES", value = headerNotes, change = { headerNotes = it }) }
                     }
                 }
@@ -1839,7 +1839,7 @@ private fun TripHeaderCard(
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
                     ) {
                         Text(
-                            if (isEnded) "VIAJE CERRADO" else "EN CURSO",
+                            if (isEnded) "LEVANTAMIENTO CERRADO" else "LEVANTAMIENTO ACTIVO",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
@@ -1874,10 +1874,10 @@ private fun TripHeaderCard(
 
             HorizontalDivider(color = Color(0xFF223A36))
 
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("AFORADOR: ${aforador ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("OPERADOR: ${aforador ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
                 Text("SUPERVISOR: ${supervisor ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
-                Text("DISPOSITIVO: ${deviceNumber ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                Text("ID DEL EQUIPO: ${deviceNumber ?: "-"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
             }
         }
     }
@@ -1909,7 +1909,7 @@ private fun CloudSyncStatusCard(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("SINCRONIZACIÓN NUBE", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+                Text("RESPALDO EN LA NUBE", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
                 SyncStatusChip(status)
             }
 
@@ -1919,7 +1919,7 @@ private fun CloudSyncStatusCard(
                     Text(pendingCount.toString(), style = MaterialTheme.typography.bodyLarge, color = if (pendingCount > 0) Color(0xFFFFB300) else Color.White, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("Último sync", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f))
+                    Text("Último envío", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.4f))
                     Text(lastSyncText, style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
@@ -1977,7 +1977,7 @@ private fun DemoSummaryCard(summary: AsdDemoSummary) {
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716))
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("RESUMEN OPERATIVO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("RESUMEN DEL LEVANTAMIENTO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
             
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 SummaryMetricBox("EVENTOS", summary.events.toString(), Modifier.weight(1f))
@@ -2041,11 +2041,11 @@ private fun TrackingStatusCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("GPS / TRACKING", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("RASTREO GPS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(Modifier.weight(1f))
                 if (trackingAlive) {
                     Surface(color = Color(0xFF35D36B).copy(alpha = 0.1f), shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)) {
-                        Text("LIVE", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFF35D36B), fontWeight = FontWeight.Bold)
+                        Text("EN VIVO", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFF35D36B), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -2085,7 +2085,7 @@ private fun TrackingStatusCard(
 
             HorizontalDivider(color = Color(0xFF223A36))
             
-            Text("CALIDAD RECORRIDO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.4f))
+            Text("CALIDAD DEL LEVANTAMIENTO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.4f))
             Text(qualitySummary, style = MaterialTheme.typography.bodySmall, color = Color.White)
         }
     }
@@ -2119,7 +2119,7 @@ private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalcul
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716))
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("TIEMPO DE RECORRIDO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("DISTANCIA DEL LEVANTAMIENTO", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
             
             Surface(
                 color = Color(0xFF101C1A),

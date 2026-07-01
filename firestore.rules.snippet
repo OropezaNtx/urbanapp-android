@@ -7,6 +7,7 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
     }
 
+    // Device Metadata (Read-only for users, scoped by ownerUid)
     match /installations/{installationId} {
       allow get: if request.auth != null && (
         isAdmin() || 
@@ -25,46 +26,43 @@ service cloud.firestore {
         && resource.data.ownerUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys()
            .hasOnly(['lastSeen', 'lastSeenClient', 'lastHeartbeatAt', 'lastSyncAt', 'lastLicenseCheckAt', 'activeTripId', 'battery', 'device', 'config', 'installationVersion'])
-        && request.resource.data.status == resource.data.status
-        && request.resource.data.ownerUid == resource.data.ownerUid
-        && request.resource.data.get('licenseId', null) == resource.data.get('licenseId', null)
-        && request.resource.data.get('workspaceId', null) == resource.data.get('workspaceId', null);
+        && request.resource.data.status == resource.data.status;
         
       allow write: if isAdmin();
     }
 
-    // Secure Licenses: 
-    // Android can read a license ONLY if they own an ACTIVE installation linked to it.
-    // The installationId MUST be passed in the query filters.
-    match /licenses/{licenseId} {
-      allow list: if request.auth != null && (
-        isAdmin() || 
-        (
-          exists(/databases/$(database)/documents/installations/$(request.query.installationId)) &&
-          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.ownerUid == request.auth.uid &&
-          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.licenseId == licenseId &&
-          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.status == 'ACTIVE'
-        )
-      );
-      
-      allow get: if isAdmin();
+    // PRIMARY AUTHORIZATION GATE (Keyed by ownerUid)
+    match /installation_access/{uid} {
+      allow get: if request.auth != null && (isAdmin() || request.auth.uid == uid);
+      allow list: if isAdmin();
       allow write: if isAdmin();
     }
 
-    // Secure Workspaces:
-    // Android can read the workspace ONLY if they own an ACTIVE installation linked to it.
-    match /workspaces/{workspaceId} {
-      allow list: if request.auth != null && (
+    // Secure Licenses: Gated by the installation_access document
+    match /licenses/{licenseId} {
+      allow get: if request.auth != null && (
         isAdmin() || 
         (
-          exists(/databases/$(database)/documents/installations/$(request.query.installationId)) &&
-          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.ownerUid == request.auth.uid &&
-          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.workspaceId == workspaceId &&
-          get(/databases/$(database)/documents/installations/$(request.query.installationId)).data.status == 'ACTIVE'
+          get(/databases/$(database)/documents/installation_access/$(request.auth.uid)).data.licenseId == licenseId &&
+          get(/databases/$(database)/documents/installation_access/$(request.auth.uid)).data.status == 'ACTIVE'
         )
       );
       
-      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Secure Workspaces: Gated by the installation_access document
+    match /workspaces/{workspaceId} {
+      allow get: if request.auth != null && (
+        isAdmin() || 
+        (
+          get(/databases/$(database)/documents/installation_access/$(request.auth.uid)).data.workspaceId == workspaceId &&
+          get(/databases/$(database)/documents/installation_access/$(request.auth.uid)).data.status == 'ACTIVE'
+        )
+      );
+
+      allow list: if isAdmin();
       allow write: if isAdmin();
     }
   }

@@ -20,7 +20,7 @@ function minutesSince(v) {
 
 function age(v) {
   const m = minutesSince(v);
-  if (m === null) return "Sin reporte";
+  if (m === null) return "Sin conexión";
   if (m < 1) return "Ahora";
   if (m < 60) return `Hace ${m} min`;
   return `Hace ${Math.floor(m / 60)} h ${m % 60} min`;
@@ -42,10 +42,10 @@ function healthState(device) {
     return { label: "Bloqueado", cls: "fleet-danger" };
   }
   if (minutes === null) return { label: "Sin reporte", cls: "fleet-muted" };
-  if (minutes > 30) return { label: "Offline", cls: "fleet-danger" };
+  if (minutes > 30) return { label: "Desconectado", cls: "fleet-danger" };
   if (battery > 0 && battery < 20) return { label: "Batería baja", cls: "fleet-late" };
-  if (minutes > 10) return { label: "Atrasado", cls: "fleet-warn" };
-  return { label: "Online", cls: "fleet-ok" };
+  if (minutes > 10) return { label: "Inactivo", cls: "fleet-warn" };
+  return { label: "En línea", cls: "fleet-ok" };
 }
 
 function getBattery(device) {
@@ -67,30 +67,30 @@ export default function FleetHealthPanel({ installations }) {
 
   return <div className="fleet-wrap">
     <section className="grid stats fleet-stats">
-      <div className="stat"><b>{installations.length}</b><span>Instalaciones</span></div>
-      <div className="stat"><b>{counters.Online || 0}</b><span>Online</span></div>
-      <div className="stat"><b>{(counters.Atrasado || 0) + (counters.Offline || 0)}</b><span>Sin señal</span></div>
-      <div className="stat"><b>{(counters.Bloqueado || 0) + (counters["Batería baja"] || 0)}</b><span>Atención</span></div>
+      <div className="stat"><b>{installations.length}</b><span>Equipos</span></div>
+      <div className="stat"><b>{counters["En línea"] || 0}</b><span>Activos</span></div>
+      <div className="stat"><b>{(counters.Inactivo || 0) + (counters.Desconectado || 0)}</b><span>Sin reporte</span></div>
+      <div className="stat"><b>{(counters.Bloqueado || 0) + (counters["Batería baja"] || 0)}</b><span>Requieren atención</span></div>
     </section>
 
     <section className="card fleet-card">
       <div className="fleet-head">
         <div>
-          <h3><Wifi size={18} /> Fleet Health</h3>
-          <p>Heartbeat enriquecido desde <b>{"installations/{installationId}"}</b>.</p>
+          <h3><Wifi size={18} /> Estado de la Flota</h3>
+          <p>Monitoreo técnico de los equipos autorizados en campo.</p>
         </div>
       </div>
 
-      {installations.length === 0 ? <div className="empty">Aún no hay heartbeats de plataforma.</div> : <div className="table fleet-table"><table>
+      {installations.length === 0 ? <div className="empty">Esperando reportes de equipos...</div> : <div className="table fleet-table"><table>
         <thead><tr>
           <th>Estado</th>
-          <th>Dispositivo</th>
-          <th>Proyecto</th>
+          <th>Equipo</th>
+          <th>Proyecto / Cliente</th>
           <th>Licencia</th>
-          <th>Config</th>
+          <th>Rastreo GPS</th>
           <th>Batería</th>
-          <th>Último heartbeat</th>
-          <th>Trip activo</th>
+          <th>Último Reporte</th>
+          <th>Levantamiento Activo</th>
         </tr></thead>
         <tbody>{installations.map((device) => {
           const st = healthState(device);
@@ -99,23 +99,20 @@ export default function FleetHealthPanel({ installations }) {
             <td><span className={`fleet-badge ${st.cls}`}>{st.label}</span></td>
             <td>
               <b><Smartphone size={13} /> {val(getDeviceName(device))}</b>
-              <span>{val(device.id)}</span>
-              <small>App {val(device.device?.appVersionName)} · Android {val(device.device?.androidVersion)}</small>
+              <span>{val(device.id.substring(0, 8))}</span>
+              <small>v{val(device.device?.appVersionName)}</small>
             </td>
             <td>
               <b>{val(device.projectId)}</b>
-              <span>{val(device.organizationId)}</span>
-              <small>{val(device.environment)}</small>
+              <span>{val(device.workspaceId)}</span>
             </td>
             <td>
-              <b><ShieldCheck size={13} /> {val(device.license?.licenseStatus)}</b>
-              <span>{val(device.license?.licenseId)}</span>
-              <small>{val(device.license?.plan)} · {val(device.license?.source)}</small>
+              <b><ShieldCheck size={13} /> {val(device.license?.licenseStatus === 'ACTIVE' ? 'ACTIVA' : 'VERIFICAR')}</b>
+              <small>{val(device.license?.plan)}</small>
             </td>
             <td>
               <b><Cpu size={13} /> {val(device.config?.gpsProfile)}</b>
-              <span>HB {val(device.config?.heartbeatIntervalSeconds)}s · Sync {val(device.config?.syncIntervalSeconds)}s</span>
-              <small>{val(device.config?.source)}</small>
+              <span>Auto-envío {val(device.config?.heartbeatIntervalSeconds)}s</span>
             </td>
             <td><Battery size={13} /> {val(b)}{b !== undefined && b !== null ? "%" : ""}</td>
             <td>

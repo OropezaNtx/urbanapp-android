@@ -12,10 +12,10 @@ object UrbanDiagnosticsFormatter {
 
     fun toShortText(snapshot: UrbanDiagnosticsSnapshot): String {
         return """
-            ID: ${snapshot.shortInstallationId}
-            Versión: ${snapshot.appVersionName} (${snapshot.appVersionCode})
-            Sincronización: P:${snapshot.pendingSyncCount} / F:${snapshot.failedSyncCount}
-            Red: ${snapshot.networkType} (${if (snapshot.isNetworkAvailable) "ON" else "OFF"})
+            ID: ${snapshot.installationId.take(8).uppercase()}
+            Versión: ${snapshot.appVersionName}
+            Sincronización: ${snapshot.pendingSyncCount} pendientes
+            Red: ${snapshot.networkType} (${if (snapshot.isNetworkAvailable) "ACTIVA" else "DESCONECTADA"})
             Batería: ${snapshot.batteryLevel}% ${if (snapshot.isCharging == true) "⚡" else ""}
         """.trimIndent()
     }
@@ -23,47 +23,43 @@ object UrbanDiagnosticsFormatter {
     fun toDebugText(snapshot: UrbanDiagnosticsSnapshot): String {
         val boot = snapshot.bootstrapStatus
         return """
-            URBAN DIAGNOSTICS REPORT
-            Generated: ${dateFmt.format(Date(snapshot.generatedAt))}
+            REPORTE DE ESTADO DEL SISTEMA
+            Generado: ${dateFmt.format(Date(snapshot.generatedAt))}
             -------------------------
-            BOOTSTRAP
-            Status: ${boot.status}
-            Ready: ID:${if (boot.identityReady) "✅" else "❌"} WS:${if (boot.workspaceReady) "✅" else "❌"} PERM:${if (boot.permissionsReady) "✅" else "❌"} LIC:${if (boot.licenseReady) "✅" else "❌"}
-            Errors: ${boot.errors.size} / Warnings: ${boot.warnings.size}
+            INICIO DE PLATAFORMA
+            Estado: ${boot.status}
+            Preparado: ID:${if (boot.identityReady) "✅" else "❌"} Cliente:${if (boot.workspaceReady) "✅" else "❌"} Permisos:${if (boot.permissionsReady) "✅" else "❌"} Licencia:${if (boot.licenseReady) "✅" else "❌"}
 
-            IDENTITY
-            Installation ID: ${snapshot.installationId}
-            Owner UID: ${snapshot.ownerUid ?: "Not Authenticated"}
-            Short ID: ${snapshot.shortInstallationId}
-            Android ID: ${snapshot.androidId}
-            Device: ${snapshot.manufacturer} ${snapshot.model} (Android ${snapshot.androidVersion}, API ${snapshot.sdkInt})
+            IDENTIFICACIÓN DEL EQUIPO
+            ID de Equipo: ${snapshot.installationId}
+            UID de Usuario: ${snapshot.ownerUid ?: "No Autenticado"}
+            Dispositivo: ${snapshot.manufacturer} ${snapshot.model} (Android ${snapshot.androidVersion})
             
-            APP
-            Package: ${snapshot.packageName}
-            Version: ${snapshot.appVersionName} (Build ${snapshot.appVersionCode})
-            Type: ${snapshot.buildType}
+            APLICACIÓN
+            Paquete: ${snapshot.packageName}
+            Versión: ${snapshot.appVersionName} (Build ${snapshot.appVersionCode})
+            Tipo: ${snapshot.buildType}
             
-            PLATFORM
-            WS: ${snapshot.workspaceId}
-            Proj: ${snapshot.projectId}
-            Env: ${snapshot.environment}
-            Config: ${snapshot.configurationSource} (Updated: ${dateFmt.format(Date(snapshot.configurationUpdatedAt))})
+            PROYECTO Y CLIENTE
+            Cliente: ${snapshot.workspaceId}
+            Estudio: ${snapshot.projectId}
+            Ambiente: ${snapshot.environment}
+            Ajustes: ${snapshot.configurationSource} (Actualizado: ${dateFmt.format(Date(snapshot.configurationUpdatedAt))})
             
-            SYNC
-            Pending: ${snapshot.pendingSyncCount}
-            Failed: ${snapshot.failedSyncCount}
-            Last Sync: ${snapshot.lastSyncAt?.let { dateFmt.format(Date(it)) } ?: "Never"}
-            Last Error: ${snapshot.lastSyncError ?: "None"}
-            Failed Path: ${snapshot.lastSyncFailedPath ?: "None"}
+            COPIA DE SEGURIDAD (SYNC)
+            Pendientes: ${snapshot.pendingSyncCount}
+            Con error: ${snapshot.failedSyncCount}
+            Último envío: ${snapshot.lastSyncAt?.let { dateFmt.format(Date(it)) } ?: "Nunca"}
+            Último fallo: ${snapshot.lastSyncError ?: "Ninguno"}
             
-            HEALTH & STATUS
-            Runtime: ${snapshot.runtimeStatus}
-            DB: ${snapshot.databaseName} (${snapshot.localDataStatus})
-            Perms: Loc:${if (snapshot.locationPermissionGranted) "YES" else "NO"} / BGLoc:${if (snapshot.backgroundLocationPermissionGranted == true) "YES" else "NO"}
+            SALUD DEL SISTEMA
+            Estado Operativo: ${snapshot.runtimeStatus}
+            Base de datos: ${snapshot.databaseName} (${snapshot.localDataStatus})
+            Permisos: Ubicación:${if (snapshot.locationPermissionGranted) "SÍ" else "NO"} / Rastreo GPS:${if (snapshot.backgroundLocationPermissionGranted == true) "SÍ" else "NO"}
             
-            ENVIRONMENT
-            Network: ${snapshot.networkType} (${if (snapshot.isNetworkAvailable) "Available" else "Disconnected"})
-            Battery: ${snapshot.batteryLevel}% (Charging: ${snapshot.isCharging})
+            ENTORNO
+            Red: ${snapshot.networkType} (${if (snapshot.isNetworkAvailable) "Disponible" else "Desconectado"})
+            Batería: ${snapshot.batteryLevel}% (Cargando: ${snapshot.isCharging})
         """.trimIndent()
     }
 

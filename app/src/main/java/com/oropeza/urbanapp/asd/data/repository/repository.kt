@@ -602,6 +602,7 @@ class AsdRepository(private val db: AppDatabase) {
     suspend fun getStopsOnce(tripId: Long) = stopDao.getByTripOnce(tripId)
     suspend fun getDelaysOnce(tripId: Long) = delayDao.getByTripOnce(tripId)
     suspend fun getTrackPointsOnce(tripId: Long) = trackDao.getByTripOnce(tripId)
+    suspend fun getActiveTripOnce() = tripDao.getActiveTripOnce()
     suspend fun endCcSession(sessionId: Long) { ccSessionDao.endSession(sessionId, System.currentTimeMillis()) }
 
     fun activeAsdRoutesFlow() = asdRouteCatalogDao.getActiveRoutes()

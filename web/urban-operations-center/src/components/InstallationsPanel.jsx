@@ -19,15 +19,15 @@ const fmt = (v) => {
 export default function InstallationsPanel({ installations }) {
   const [loading, setLoading] = useState(false);
 
-  async function handleApprove(id) {
-    const workspaceId = prompt("Ingrese ID de Workspace:", "demo_workspace");
-    const licenseId = prompt("Ingrese ID de Licencia:", "lic_default_pilot");
+  async function handleApprove(i) {
+    const workspaceId = prompt("Ingrese ID de Cliente / Empresa:", "cliente_nuevo");
+    const licenseId = prompt("Ingrese Plan de Licencia:", "plan_piloto_7dias");
 
     if (!workspaceId || !licenseId) return;
 
     setLoading(true);
     try {
-      await updateInstallationStatus(id, 'ACTIVE', { workspaceId, licenseId });
+      await updateInstallationStatus(i.id, 'ACTIVE', { workspaceId, licenseId }, i.ownerUid);
     } catch (e) {
       alert("Error: " + e.message);
     } finally {
@@ -35,12 +35,12 @@ export default function InstallationsPanel({ installations }) {
     }
   }
 
-  async function handleRevoke(id) {
-    if (!confirm("¿Está seguro de REVOCAR esta instalación? El dispositivo no podrá iniciar nuevos levantamientos.")) return;
+  async function handleRevoke(i) {
+    if (!confirm("¿Está seguro de REVOCAR el acceso a este equipo? No podrá iniciar nuevos levantamientos.")) return;
 
     setLoading(true);
     try {
-      await updateInstallationStatus(id, 'REVOKED');
+      await updateInstallationStatus(i.id, 'REVOKED', { workspaceId: null, licenseId: null }, i.ownerUid);
     } catch (e) {
       alert("Error: " + e.message);
     } finally {
@@ -54,51 +54,52 @@ export default function InstallationsPanel({ installations }) {
         <table>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Dispositivo / OS</th>
-              <th>Versión</th>
-              <th>Status</th>
-              <th>Workspace / Licencia</th>
-              <th>Telemetría (Check / Sync / HB)</th>
+              <th>ID Equipo</th>
+              <th>Modelo / OS</th>
+              <th>Versión App</th>
+              <th>Estado</th>
+              <th>Cliente</th>
+              <th>Licencia</th>
+              <th>Último Reporte</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {installations.map(i => (
               <tr key={i.id}>
-                <td><code>{i.id.substring(0, 8)}...</code></td>
+                <td title={i.id}><code>{i.id.substring(0, 8)}</code></td>
                 <td>
                   <div><b>{i.manufacturer} {i.model}</b></div>
-                  <small>Android {i.androidVersion} (SDK {i.sdkInt})</small>
-                  <small>{i.packageName}</small>
+                  <small>Android {i.androidVersion}</small>
                 </td>
-                <td>{i.appVersionName} ({i.appVersionCode})</td>
+                <td>{i.appVersionName}</td>
                 <td>
                   <span className={`badge status-${(i.status || 'unknown').toLowerCase()}`}>
                     {i.status === 'PENDING' && <Clock size={12} />}
                     {i.status === 'ACTIVE' && <CheckCircle size={12} />}
                     {i.status === 'REVOKED' && <XCircle size={12} />}
-                    {i.status || 'UNKNOWN'}
+                    {i.status === 'PENDING' ? 'ESPERANDO ACTIVACIÓN' : (i.status === 'ACTIVE' ? 'OPERATIVO' : 'ACCESO REVOCADO')}
                   </span>
                 </td>
                 <td>
                     <div><Briefcase size={12} /> {i.workspaceId || '—'}</div>
+                </td>
+                <td>
                     <div><Shield size={12} /> {i.licenseId || '—'}</div>
                 </td>
                 <td>
-                    <div title="Last License Check"><Shield size={12} /> {fmt(i.lastLicenseCheckAt)}</div>
-                    <div title="Last Data Sync"><RefreshCw size={12} /> {fmt(i.lastSyncAt)}</div>
-                    <div title="Last Heartbeat"><Activity size={12} /> {fmt(i.lastHeartbeatAt || i.lastSeenAt)}</div>
+                    <div title="Último respaldo de datos"><RefreshCw size={12} /> {fmt(i.lastSyncAt)}</div>
+                    <div title="Última actividad"><Activity size={12} /> {fmt(i.lastHeartbeatAt || i.lastSeenAt)}</div>
                 </td>
                 <td>
                   <div className="row" style={{ gap: '8px' }}>
                     {i.status === 'PENDING' && (
-                        <button className="btn-success" onClick={() => handleApprove(i.id)} disabled={loading}>
+                        <button className="btn-success" onClick={() => handleApprove(i)} disabled={loading}>
                         <CheckCircle size={14} /> Aprobar
                         </button>
                     )}
                     {i.status === 'ACTIVE' && (
-                        <button className="btn-revoke" onClick={() => handleRevoke(i.id)} disabled={loading} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '600' }}>
+                        <button className="btn-revoke" onClick={() => handleRevoke(i)} disabled={loading} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '600' }}>
                         <ShieldAlert size={14} /> Revocar
                         </button>
                     )}

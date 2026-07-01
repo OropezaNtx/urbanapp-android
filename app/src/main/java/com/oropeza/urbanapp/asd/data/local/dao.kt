@@ -27,6 +27,9 @@ interface TripDao {
     @Query("SELECT nextWaypointId FROM Trip ORDER BY tripId DESC LIMIT 1")
     suspend fun getLastTripNextWaypoint(): Int?
 
+    @Query("SELECT * FROM Trip WHERE endTime IS NULL ORDER BY startTime DESC LIMIT 1")
+    suspend fun getActiveTripOnce(): Trip?
+
     @Transaction
     suspend fun reserveWaypointPair(tripId: Long): WaypointPair {
         val base = getNextWaypoint(tripId)

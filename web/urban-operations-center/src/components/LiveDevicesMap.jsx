@@ -49,15 +49,15 @@ function heading(d) { return Number(d.position?.heading ?? d.heading ?? 0) || 0;
 
 function state(d) {
   const trip = String(d.tripStatus || "").toUpperCase();
-  if (trip === "FINISHED" || trip === "IDLE") return { label: "Finalizado", cls: "s-muted", priority: 4 };
+  if (trip === "FINISHED" || trip === "IDLE" || trip === "CLOSED") return { label: "Completado", cls: "s-muted", priority: 4 };
   const gps = String(d.gpsStatus || "").toUpperCase();
-  if (["LOST", "OFF", "POOR"].includes(gps)) return { label: "GPS bajo", cls: "s-danger", priority: 1 };
+  if (["LOST", "OFF", "POOR"].includes(gps)) return { label: "GPS débil", cls: "s-danger", priority: 1 };
   const m = minutes(d.lastUpdateClient || d.lastUpdateServer);
-  if (m === null) return { label: "Sin reporte", cls: "s-muted", priority: 4 };
-  if (m <= 2) return { label: "Vivo", cls: "s-ok", priority: 5 };
+  if (m === null) return { label: "Sin conexión", cls: "s-muted", priority: 4 };
+  if (m <= 2) return { label: "Transmitiendo", cls: "s-ok", priority: 5 };
   if (m <= 10) return { label: "Reciente", cls: "s-warn", priority: 3 };
-  if (m <= 30) return { label: "Atrasado", cls: "s-late", priority: 2 };
-  return { label: "Perdido", cls: "s-danger", priority: 1 };
+  if (m <= 30) return { label: "Demorado", cls: "s-late", priority: 2 };
+  return { label: "Inactivo", cls: "s-danger", priority: 1 };
 }
 
 function projector(devices) {
@@ -94,7 +94,7 @@ function InfoCard({ d }) {
   const kmh = Math.round(speed(d) * 3.6);
   return <div className="live-map-info">
     <div className="live-map-info-head">
-      <div><b>{val(observer(d) || deviceName(d))}</b><span>{val(d.installationId || d.id)}</span></div>
+      <div><b>{val(observer(d) || deviceName(d))}</b><span>{val(d.installationId?.substring(0,8) || d.id?.substring(0,8))}</span></div>
       <span className={`state-pill ${st.cls}`}>{st.label}</span>
     </div>
     <div className="info-grid">
@@ -105,7 +105,7 @@ function InfoCard({ d }) {
       <span><Crosshair size={14} /> {val(vehicle(d))}</span>
       <span><Route size={14} /> {kmh} km/h</span>
     </div>
-    <p>GPS {val(d.gpsStatus)} · {val(d.syncReason)} · {fmt(updated)} · {val(lat(d))}, {val(lon(d))}</p>
+    <p>GPS {val(d.gpsStatus)} · {fmt(updated)} · {val(lat(d).toFixed(5))}, {val(lon(d).toFixed(5))}</p>
   </div>;
 }
 
@@ -115,10 +115,10 @@ function OpsStrip({ devices }) {
   const active = devices.filter((d) => String(d.tripStatus || "").toUpperCase() === "ACTIVE").length;
   const attention = devices.filter((d) => ["s-danger", "s-late"].includes(state(d).cls)).length;
   return <div className="ops-strip">
-    <span><Radio size={14} /> {total} reportando</span>
+    <span><Radio size={14} /> {total} equipos reportando</span>
     <span><MapPin size={14} /> {validCount} con ubicación</span>
-    <span><Navigation size={14} /> {active} activos</span>
-    <span className={attention ? "attention" : ""}><Crosshair size={14} /> {attention} atención</span>
+    <span><Navigation size={14} /> {active} en curso</span>
+    <span className={attention ? "attention" : ""}><Crosshair size={14} /> {attention} requieren atención</span>
   </div>;
 }
 
@@ -129,10 +129,10 @@ export default function LiveDevicesMap({ devices, selectedId, onSelectDevice }) 
   const points = useMemo(() => project ? validDevices.map((d) => ({ d, p: project(d) })) : [], [project, validDevices]);
 
   return <section className="card live-map-card">
-    <div className="live-map-head"><div><h3><MapPin size={18} /> Mapa live simplificado</h3><p>Vista operativa sin API key, alimentada por <b>live_devices</b>.</p></div><div className="map-count"><b>{validDevices.length}</b><span>ubicaciones válidas</span></div></div>
+    <div className="live-map-head"><div><h3><MapPin size={18} /> Equipos en Tiempo Real</h3><p>Ubicación operativa de los equipos transmitiendo actualmente.</p></div><div className="map-count"><b>{validDevices.length}</b><span>puntos activos</span></div></div>
     <OpsStrip devices={devices} />
     <div className="live-map-stage">
-      {!validDevices.length ? <div className="live-map-empty">Aún no hay ubicaciones válidas para pintar en el mapa.</div> : <>
+      {!validDevices.length ? <div className="live-map-empty">Esperando datos de ubicación...</div> : <>
         <svg className="live-map-svg" viewBox={`0 0 ${W} ${H}`}>
           <rect width={W} height={H} rx="22" className="map-bg" />
           {Array.from({ length: 11 }).map((_, i) => <g key={i} className="map-grid"><line x1={(W / 10) * i} y1="0" x2={(W / 10) * i} y2={H} /><line x1="0" y1={(H / 10) * i} x2={W} y2={(H / 10) * i} /></g>)}
@@ -142,7 +142,7 @@ export default function LiveDevicesMap({ devices, selectedId, onSelectDevice }) 
           {points.map(({ d, p }) => <DeviceDot key={d.id} d={d} p={p} selected={d.id === selected?.id} onSelect={onSelectDevice} />)}
         </svg>
         <InfoCard d={selected} />
-        <div className="live-map-legend"><span><i className="s-ok" />Vivo</span><span><i className="s-warn" />Reciente</span><span><i className="s-late" />Atrasado</span><span><i className="s-danger" />Atención</span><span><i className="s-muted" />Finalizado</span></div>
+        <div className="live-map-legend"><span><i className="s-ok" />Transmitiendo</span><span><i className="s-warn" />Reciente</span><span><i className="s-late" />Demorado</span><span><i className="s-danger" />Atención</span><span><i className="s-muted" />Completado</span></div>
       </>}
     </div>
   </section>;

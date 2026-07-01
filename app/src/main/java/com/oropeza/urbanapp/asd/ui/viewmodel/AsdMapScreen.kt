@@ -79,7 +79,7 @@ fun AsdMapScreen(
             
             val mets = AsdMapMetrics.from(valid, stopEvents, mapP.size)
             val timeline = buildAsdTimeline(trip?.startTime, stopEvents, trip?.endTime)
-            val start = raw.firstOrNull()?.copy(title = "INICIO RECORRIDO ASD", status = "START")
+            val start = raw.firstOrNull()?.copy(title = "INICIO LEVANTAMIENTO ASD", status = "START")
             val end = raw.lastOrNull()?.copy(title = "FIN / ÚLTIMO PUNTO ASD", status = "END")?.takeIf { raw.size >= 2 }
             val locate = raw.lastOrNull()?.copy(id = "asd-current-location", title = "UBICACIÓN ACTUAL / ÚLTIMO GPS", subtitle = "ÚLTIMO PUNTO REGISTRADO DEL RECORRIDO")
             
@@ -146,7 +146,7 @@ fun AsdMapScreen(
 
 @Composable private fun PremiumGpsDashboard(metrics: AsdMapMetrics, modifier: Modifier = Modifier) { Card(modifier = modifier) { Column(Modifier.padding(10.dp)) { Text(metrics.gpsStatusText, style = MaterialTheme.typography.titleSmall); Text("${metrics.accuracyText} · ${metrics.modeText} · ${metrics.coverageText}", style = MaterialTheme.typography.bodySmall); Text("Puntos: ${metrics.pointCount} · Kalman ${metrics.kalmanText}", style = MaterialTheme.typography.bodySmall); Text("Still lock: ${metrics.stillLockText} · Smooth: ${metrics.smoothText}", style = MaterialTheme.typography.bodySmall) } } }
 
-@Composable private fun AsdMapLegend(modifier: Modifier = Modifier) { Card(modifier = modifier) { Column(Modifier.padding(10.dp)) { Text("LEYENDA", style = MaterialTheme.typography.titleSmall); Text("🔵 RUTA SMOOTH", style = MaterialTheme.typography.bodySmall); Text("🟢 INICIO RECORRIDO", style = MaterialTheme.typography.bodySmall); Text("🔴 FIN / ÚLTIMO PUNTO", style = MaterialTheme.typography.bodySmall); Text("🔵 EVENTO ASD", style = MaterialTheme.typography.bodySmall); Text("🟠 DEMORA", style = MaterialTheme.typography.bodySmall); Text("🟣 ASD + DEMORA", style = MaterialTheme.typography.bodySmall) } } }
+@Composable private fun AsdMapLegend(modifier: Modifier = Modifier) { Card(modifier = modifier) { Column(Modifier.padding(10.dp)) { Text("LEYENDA", style = MaterialTheme.typography.titleSmall); Text("🔵 RUTA SMOOTH", style = MaterialTheme.typography.bodySmall); Text("🟢 INICIO LEVANTAMIENTO", style = MaterialTheme.typography.bodySmall); Text("🔴 FIN / ÚLTIMO PUNTO", style = MaterialTheme.typography.bodySmall); Text("🔵 EVENTO ASD", style = MaterialTheme.typography.bodySmall); Text("🟠 DEMORA", style = MaterialTheme.typography.bodySmall); Text("🟣 ASD + DEMORA", style = MaterialTheme.typography.bodySmall) } } }
 
 @Composable private fun AsdTimelineCard(items: List<String>, modifier: Modifier = Modifier) { if (items.isEmpty()) return; Card(modifier = modifier) { Column(Modifier.padding(10.dp)) { Text("SECUENCIA", style = MaterialTheme.typography.titleSmall); items.take(6).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }; if (items.size > 6) Text("+${items.size - 6} EVENTOS MÁS", style = MaterialTheme.typography.bodySmall) } } }
 

@@ -38,8 +38,8 @@ function ageLabel(value) {
 
 function liveState(device) {
   const tripStatus = String(device.tripStatus || "").toUpperCase();
-  if (tripStatus === "FINISHED" || tripStatus === "IDLE") {
-    return { label: "Finalizado", className: "live-muted" };
+  if (tripStatus === "FINISHED" || tripStatus === "IDLE" || tripStatus === "CLOSED") {
+    return { label: "Completado", className: "live-muted" };
   }
 
   const gpsStatus = String(device.gpsStatus || "").toUpperCase();
@@ -49,11 +49,11 @@ function liveState(device) {
 
   const minutes = minutesSince(device.lastUpdateClient || device.lastUpdateServer);
   if (minutes === null) return { label: "Sin reporte", className: "live-muted" };
-  if (minutes <= 2) return { label: "Vivo", className: "live-ok" };
+  if (minutes <= 2) return { label: "Transmitiendo", className: "live-ok" };
   if (minutes <= 10) return { label: "Reciente", className: "live-warn" };
-  if (minutes <= 30) return { label: "Atrasado", className: "live-late" };
+  if (minutes <= 30) return { label: "Demorado", className: "live-late" };
 
-  return { label: "Perdido", className: "live-danger" };
+  return { label: "Inactivo", className: "live-danger" };
 }
 
 function getLat(device) {
@@ -135,62 +135,62 @@ export default function LiveDevicesPanel({ devices }) {
 
   return <div className="live-wrap">
     <section className="grid stats live-stats">
-      <div className="stat"><b>{devices.length}</b><span>Observadores live</span></div>
-      <div className="stat"><b>{counters.Vivo || 0}</b><span>Vivos</span></div>
+      <div className="stat"><b>{devices.length}</b><span>Equipos en Campo</span></div>
+      <div className="stat"><b>{counters.Activo || 0}</b><span>Transmitiendo</span></div>
       <div className="stat"><b>{(counters.Reciente || 0) + (counters.Atrasado || 0)}</b><span>Con retraso</span></div>
-      <div className="stat"><b>{(counters.Perdido || 0) + (counters["GPS débil"] || 0)}</b><span>Atención</span></div>
+      <div className="stat"><b>{(counters.Inactivo || 0) + (counters["GPS débil"] || 0)}</b><span>Requieren atención</span></div>
     </section>
 
     <section className="card live-toolbar">
       <div>
-        <h3><Activity size={18} /> Centro de control live</h3>
-        <p>Lectura en tiempo real desde Firestore: <b>live_devices</b>.</p>
+        <h3><Activity size={18} /> Centro de Control en Vivo</h3>
+        <p>Monitoreo de actividad y ubicación de operadores en tiempo real.</p>
       </div>
       <div className="live-filters">
         <label>
           <Search size={16} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar ruta, observador, eco, dispositivo..." />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por ruta, operador, equipo..." />
         </label>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="ALL">Todos</option>
-          <option value="VIVO">Vivo</option>
+          <option value="ALL">Ver todos</option>
+          <option value="ACTIVO">Activo</option>
           <option value="RECIENTE">Reciente</option>
-          <option value="ATRASADO">Atrasado</option>
-          <option value="PERDIDO">Perdido</option>
+          <option value="ATRASADO">Demorado</option>
+          <option value="INACTIVO">Inactivo</option>
           <option value="GPS DÉBIL">GPS débil</option>
-          <option value="FINALIZADO">Finalizado</option>
+          <option value="FINALIZADO">Completado</option>
         </select>
       </div>
     </section>
 
-    {filtered.length === 0 ? <div className="empty">Aún no hay dispositivos live para los filtros actuales.</div> : <div className="table live-table"><table>
+    {filtered.length === 0 ? <div className="empty">No se encontraron equipos con los filtros seleccionados.</div> : <div className="table live-table"><table>
       <thead><tr>
         <th>Estado</th>
-        <th>Observador / dispositivo</th>
-        <th>Ruta</th>
+        <th>Operador / Equipo</th>
+        <th>Levantamiento / Ruta</th>
         <th>Unidad</th>
         <th>Ubicación</th>
-        <th>GPS</th>
-        <th>Batería</th>
-        <th>Último reporte</th>
-        <th>Sync</th>
+        <th>Calidad GPS</th>
+        <th>Energía</th>
+        <th>Último Reporte</th>
+        <th>Sincronización</th>
       </tr></thead>
       <tbody>{filtered.map((device) => <tr key={device.id}>
         <td><LiveBadge device={device} /></td>
         <td>
           <b>{val(getObserver(device))}</b>
           <span>{val(getDeviceName(device))}</span>
-          <small>{val(device.installationId || device.id)}</small>
+          <small>{val(device.installationId?.substring(0,8) || device.id?.substring(0,8))}</small>
         </td>
         <td>
           <b>{val(getRoute(device))}</b>
           <span>{val(getDirection(device))}</span>
-          <small>Trip {val(device.tripId)}</small>
+          <small>Folio: {val(device.tripId)}</small>
         </td>
         <td>{val(getVehicle(device))}</td>
         <td>
           <span><MapPin size={13} /> {val(getLat(device))}, {val(getLon(device))}</span>
-          <small>Precisión {val(device.position?.accuracy ?? device.accuracy)} m</small>
+          <small>Margen: {val(device.position?.accuracy ?? device.accuracy)}m</small>
         </td>
         <td>{val(device.gpsStatus)}</td>
         <td>{val(getBattery(device))}{getBattery(device) !== undefined && getBattery(device) !== null ? "%" : ""}</td>
@@ -199,8 +199,7 @@ export default function LiveDevicesPanel({ devices }) {
           <span>{formatDate(device.lastUpdateClient || device.lastUpdateServer)}</span>
         </td>
         <td>
-          <b>{val(device.syncReason)}</b>
-          <span>{val(device.tripStatus)}</span>
+          <b>{val(device.tripStatus === 'ACTIVE' ? 'OPERANDO' : 'COMPLETADO')}</b>
           <small>v{val(device.syncVersion)}</small>
         </td>
       </tr>)}</tbody>
