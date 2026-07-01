@@ -75,11 +75,19 @@ class AsdTripListVM : ViewModel() {
     }
 
     fun resumeTracking(context: android.content.Context, tripId: Long) {
+        if (TrackingService.isRunning) return
+        
         val intent = android.content.Intent(context, TrackingService::class.java).apply {
             action = TrackingService.ACTION_START
             putExtra(TrackingService.EXTRA_TRIP_ID, tripId)
         }
-        context.startForegroundService(intent)
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
+
         _activeTripToRecover.value = null
         
         viewModelScope.launch {

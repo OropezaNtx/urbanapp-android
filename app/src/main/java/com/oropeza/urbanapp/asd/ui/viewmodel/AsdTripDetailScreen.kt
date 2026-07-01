@@ -368,14 +368,31 @@ fun AsdTripDetailScreen(
         return true
     }
 
-    fun startTrackingService() = context.startService(Intent(context, TrackingService::class.java).apply {
-        action = TrackingService.ACTION_START
-        putExtra(TrackingService.EXTRA_TRIP_ID, tripId)
-    })
+    fun startTrackingService() {
+        if (TrackingService.isRunning) return
+        if (!gps.hasPermission()) {
+            snackbarText = "Activa permisos de ubicación para iniciar el rastreo."
+            return
+        }
+        
+        val intent = Intent(context, TrackingService::class.java).apply {
+            action = TrackingService.ACTION_START
+            putExtra(TrackingService.EXTRA_TRIP_ID, tripId)
+        }
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
+    }
 
-    fun stopTrackingService() = context.startService(Intent(context, TrackingService::class.java).apply {
-        action = TrackingService.ACTION_STOP
-    })
+    fun stopTrackingService() {
+        if (!TrackingService.isRunning) return
+        context.startService(Intent(context, TrackingService::class.java).apply {
+            action = TrackingService.ACTION_STOP
+        })
+    }
 
     fun resetCaptureForm() {
         menUp = 0
@@ -811,7 +828,7 @@ fun AsdTripDetailScreen(
 
         LaunchedEffect(tripId, isEnded) {
             if (!isEnded) {
-                if (gps.hasPermission()) startTrackingService() else snackbarText = "Tip: activa permisos de ubicación para registrar GPS."
+                startTrackingService()
             } else {
                 stopTrackingService()
             }

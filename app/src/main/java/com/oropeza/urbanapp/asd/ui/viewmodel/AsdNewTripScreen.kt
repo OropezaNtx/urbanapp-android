@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.oropeza.urbanapp.BuildConfig
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.AsdCatalogSyncState
 import com.oropeza.urbanapp.asd.data.local.AsdFieldPersonCatalogItem
@@ -36,12 +37,17 @@ import com.oropeza.urbanapp.asd.importer.AsdCatalogXlsxImporter
 import com.oropeza.urbanapp.asd.location.LocationProvider
 import com.oropeza.urbanapp.asd.sync.AsdCatalogFirestoreSync
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
+import com.oropeza.urbanapp.ui.components.*
+import com.oropeza.urbanapp.ui.theme.LocalAforaColors
+import com.oropeza.urbanapp.ui.theme.LocalAforaTypography
+import com.oropeza.urbanapp.ui.theme.UrbanAppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.ui.tooling.preview.Preview
 
 class AsdNewTripVM : ViewModel() {
     val syncState: Flow<AsdCatalogSyncState?> = AsdGraph.repo.catalogSyncStateFlow()
@@ -85,273 +91,146 @@ class AsdNewTripVM : ViewModel() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AsdNewTripScreen(
     onCreated: (Long) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    vm: AsdNewTripVM = viewModel()
 ) {
-    val vm: AsdNewTripVM = viewModel()
-    val scope = rememberCoroutineScope()
-    val scrollState = rememberScrollState()
-    val focusManager = LocalFocusManager.current
+    val syncState by vm.syncState.collectAsState(initial = null)
     val context = LocalContext.current
     val gps = remember { LocationProvider(context) }
-    val syncState by vm.syncState.collectAsState(initial = null)
+    val scope = rememberCoroutineScope()
 
-    var planningRouteId by remember { mutableStateOf("") }
-    var routeName by remember { mutableStateOf("") }
-    var company by remember { mutableStateOf("") }
-    var baseStart by remember { mutableStateOf("") }
-    var baseEnd by remember { mutableStateOf("") }
-    var routeNumberTxt by remember { mutableStateOf("") }
-    var direction by remember { mutableStateOf("IDA") }
-    var esFs by remember { mutableStateOf("ES") }
-    var startWpAtOne by remember { mutableStateOf(false) }
-    var vehicleType by remember { mutableStateOf("COMBI") }
-    var seatCapacityTxt by remember { mutableStateOf("") }
-    var vehicleEco by remember { mutableStateOf("") }
-    var plateNumber by remember { mutableStateOf("") }
-    var aforador by remember { mutableStateOf("") }
-    var observerSex by remember { mutableStateOf<String?>(null) }
-    var supervisor by remember { mutableStateOf("") }
-    var deviceNumber by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    AsdNewTripContent(
+        syncState = syncState,
+        isLicenseActive = UrbanRuntime.licenseStatus(context) == com.oropeza.urbanapp.core.license.UrbanLicenseStatus.ACTIVE,
+        onBack = onBack,
+        onGetRoute = { id, dir -> vm.getRoute(id, dir) },
+        onCreateTrip = { pId, rN, comp, vE, dir, nts, af, sup, dN, oS, rNum, esfs, bS, bE, pN, vT, sC, cW, setL, setG, setE ->
+            scope.launch { 
+                createTripFlow(vm, gps, pId, rN, comp, vE, dir, nts, af, sup, dN, oS, rNum, esfs, bS, bE, pN, vT, sC, cW, onCreated, setL, setG, setE) 
+            }
+        },
+        hasGpsPermission = { gps.hasPermission() }
+    )
+}
 
-    var error by remember { mutableStateOf<String?>(null) }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AsdNewTripContent(
+    syncState: AsdCatalogSyncState?,
+    isLicenseActive: Boolean,
+    onBack: () -> Unit,
+    onGetRoute: suspend (String, String) -> AsdRouteCatalogItem?,
+    onCreateTrip: (String, String, String, String, String, String, String, String, String, String, String, String, String, String, String, String, String, Boolean, (Boolean) -> Unit, (String?) -> Unit, (String?) -> Unit) -> Unit,
+    hasGpsPermission: () -> Boolean
+) {
+    val colors = LocalAforaColors.current
+    val typography = LocalAforaTypography.current
+    val focusManager = LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+
+    var pId by remember { mutableStateOf("") }
+    var rN by remember { mutableStateOf("") }
+    var comp by remember { mutableStateOf("") }
+    var bS by remember { mutableStateOf("") }
+    var bE by remember { mutableStateOf("") }
+    var rNum by remember { mutableStateOf("") }
+    var dir by remember { mutableStateOf("IDA") }
+    var af by remember { mutableStateOf("") }
+    
     var loading by remember { mutableStateOf(false) }
     var gpsMsg by remember { mutableStateOf<String?>(null) }
-    var pendingCreate by remember { mutableStateOf(false) }
-    val snackbarHostState = remember { SnackbarHostState() }
+    var error by remember { mutableStateOf<String?>(null) }
 
-    val bgApp = Color(0xFF07110F)
-    val greenAcc = Color(0xFF35D36B)
-
-    LaunchedEffect(planningRouteId, direction) {
-        if (planningRouteId.length >= 3) {
-            val route = vm.getRoute(planningRouteId, direction)
+    LaunchedEffect(pId, dir) {
+        if (pId.length >= 3) {
+            val route = onGetRoute(pId, dir)
             if (route != null) {
-                routeName = if (route.derrotero.isNullOrBlank()) route.routeName else "${route.routeName} (${route.derrotero})"
-                company = route.company ?: ""
-                baseStart = route.baseStart ?: ""
-                baseEnd = route.baseEnd ?: ""
+                rN = if (route.derrotero.isNullOrBlank()) route.routeName else "${route.routeName} (${route.derrotero})"
+                comp = route.company ?: ""
+                bS = route.baseStart ?: ""
+                bE = route.baseEnd ?: ""
             }
         }
     }
-
-    val permLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
-        val granted = (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) ||
-                (result[Manifest.permission.ACCESS_COARSE_LOCATION] == true)
-        if (!granted) {
-            pendingCreate = false
-            error = "Se requiere permiso de ubicación para registrar coordenadas."
-            return@rememberLauncherForActivityResult
-        }
-        if (pendingCreate) {
-            pendingCreate = false
-            scope.launch { createTripFlow(vm, gps,
-                planningRouteId, routeName, company, vehicleEco, direction, notes,
-                aforador, supervisor, deviceNumber, observerSex ?: "",
-                routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
-                !startWpAtOne, onCreated, { loading = it }, { gpsMsg = it }, { error = it }
-            ) }
-        }
-    }
-
-    fun requestPermsIfNeededAndCreateOrWait() {
-        if (!gps.hasPermission()) {
-            pendingCreate = true
-            permLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-        } else {
-            scope.launch {
-                createTripFlow(vm, gps,
-                    planningRouteId, routeName, company, vehicleEco, direction, notes,
-                    aforador, supervisor, deviceNumber, observerSex ?: "",
-                    routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
-                    !startWpAtOne, onCreated, { loading = it }, { gpsMsg = it }, { error = it }
-                )
-            }
-        }
-    }
-
-    val licenseStatus = remember { UrbanRuntime.licenseStatus(context) }
-    val isLicenseActive = licenseStatus == com.oropeza.urbanapp.core.license.UrbanLicenseStatus.ACTIVE
-    val canCreateTrip = !loading && isLicenseActive
 
     Scaffold(
-        containerColor = bgApp,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = colors.Background,
         topBar = {
             TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = bgApp, titleContentColor = Color.White),
-                title = { Text("NUEVO LEVANTAMIENTO", fontWeight = FontWeight.ExtraBold) },
-                navigationIcon = {
-                    TextButton(onClick = { focusManager.clearFocus(); onBack() }) { 
-                        Text("ATRÁS", color = Color.White) 
-                    }
-                }
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface, titleContentColor = colors.Secondary),
+                title = { Text("NUEVO LEVANTAMIENTO", style = typography.Headline, fontWeight = FontWeight.Black) },
+                navigationIcon = { TextButton(onClick = { focusManager.clearFocus(); onBack() }) { Text("ATRÁS", color = colors.Primary, fontWeight = FontWeight.Bold) } }
             )
         }
     ) { pad ->
         Column(
-            modifier = Modifier
-                .padding(pad)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            if (!isLicenseActive) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                ) {
-                    Text(
-                        text = "Acción bloqueada: Licencia no activa. Contacte a soporte.",
-                        modifier = Modifier.padding(12.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+            if (!isLicenseActive) AforaInlineAlert("Licencia no activa. Contacte a soporte.", colors.Danger)
 
-            NewTripSection("CATÁLOGO") {
-                syncState?.let { state ->
-                    val statusColor = if(state.status == "READY") greenAcc else Color.Red
-                    Text(if(state.status == "READY") "Catálogo verificado ✅" else "Error en catálogo ❌", color = statusColor, fontWeight = FontWeight.Bold)
-                }
-                
-                OutlinedTextField(
-                    value = planningRouteId,
-                    onValueChange = { planningRouteId = it.uppercase() },
-                    label = { Text("ID DE PLANIFICACIÓN") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = asdTextFieldColors(),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
-                )
-            }
-
-            NewTripSection("DETALLES DE RUTA") {
-                RouteDataItem("NOMBRE DE RUTA", routeName)
-                RouteDataItem("SENTIDO", direction)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { direction = "IDA" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if(direction=="IDA") greenAcc else Color.DarkGray)) { Text("IDA") }
-                    Button(onClick = { direction = "VUELTA" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if(direction=="VUELTA") greenAcc else Color.DarkGray)) { Text("VUELTA") }
-                }
-            }
-
-            NewTripSection("DATOS DEL OPERADOR") {
-                OutlinedTextField(
-                    value = aforador,
-                    onValueChange = { aforador = it.uppercase() },
-                    label = { Text("NOMBRE DEL OPERADOR") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = asdTextFieldColors()
-                )
-            }
-
-            gpsMsg?.let { Text(it, color = greenAcc, style = MaterialTheme.typography.bodySmall) }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-
-            Button(
-                enabled = canCreateTrip,
-                onClick = {
-                    focusManager.clearFocus()
-                    if (planningRouteId.isBlank() || aforador.isBlank()) { 
-                        error = "ID de Planificación y Operador son obligatorios."
-                        return@Button 
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AforaSectionHeader("PROYECTO Y CATÁLOGO")
+                AforaOperationalCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        syncState?.let { Text(if(it.status == "READY") "Catálogo verificado ✅" else "Error en catálogo ❌", style = typography.BodySmall, color = if(it.status == "READY") colors.Success else colors.Danger, fontWeight = FontWeight.Bold) }
+                        AforaTextField(value = pId, onValueChange = { pId = it.uppercase() }, label = "ID DE RUTA", modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }))
                     }
-                    requestPermsIfNeededAndCreateOrWait()
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                if (loading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black)
-                else Text("INICIAR LEVANTAMIENTO", fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                }
             }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AforaSectionHeader("DETALLES DE LA RUTA")
+                AforaOperationalCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        AforaMetadataRow("NOMBRE", rN.ifBlank { "SIN SELECCIONAR" })
+                        AforaMetadataRow("EMPRESA", comp.ifBlank { "NO DISPONIBLE" })
+                        HorizontalDivider(color = colors.Outline.copy(alpha = 0.1f))
+                        Text("SENTIDO", style = typography.Label, color = colors.Secondary.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AforaSecondaryButton("IDA", { dir = "IDA" }, Modifier.weight(1f), isOutlined = dir != "IDA")
+                            AforaSecondaryButton("VUELTA", { dir = "VUELTA" }, Modifier.weight(1f), isOutlined = dir != "VUELTA")
+                        }
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AforaSectionHeader("PERSONAL OPERATIVO")
+                AforaOperationalCard { AforaTextField(value = af, onValueChange = { af = it.uppercase() }, label = "NOMBRE DEL OPERADOR", modifier = Modifier.fillMaxWidth()) }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                gpsMsg?.let { AforaInlineAlert(it, colors.Success) }
+                error?.let { AforaInlineAlert(it, colors.Danger) }
+            }
+
+            AforaPrimaryButton(enabled = !loading && isLicenseActive, text = if (loading) "INICIANDO..." else "INICIAR LEVANTAMIENTO", onClick = {
+                focusManager.clearFocus()
+                if (pId.isBlank() || af.isBlank()) { error = "ID de Ruta y Operador son obligatorios."; return@AforaPrimaryButton }
+                onCreateTrip(pId, rN, comp, "", dir, "", af, "", "", "", rNum, "", bS, bE, "", "", "", false, { loading = it }, { gpsMsg = it }, { error = it })
+            })
+            
+            AforaMetadataRow("VERSIÓN", "v${BuildConfig.VERSION_NAME}", valueColor = colors.Secondary.copy(alpha = 0.4f))
         }
     }
 }
 
 @Composable
-private fun RouteDataItem(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = Color(0xFF35D36B), fontWeight = FontWeight.Bold)
-        Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodyLarge, color = Color.White)
-    }
+private fun AforaTextField(value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, keyboardOptions: KeyboardOptions = KeyboardOptions.Default, keyboardActions: KeyboardActions = KeyboardActions.Default) {
+    val colors = LocalAforaColors.current; val typography = LocalAforaTypography.current
+    OutlinedTextField(value = value, onValueChange = onValueChange, label = { Text(label) }, modifier = modifier, singleLine = true, shape = MaterialTheme.shapes.extraSmall, textStyle = typography.BodyLarge, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.Primary, unfocusedBorderColor = colors.Outline.copy(alpha = 0.5f), focusedLabelColor = colors.Primary, unfocusedLabelColor = colors.Secondary.copy(alpha = 0.4f), focusedTextColor = colors.Secondary, unfocusedTextColor = colors.Secondary), keyboardOptions = keyboardOptions, keyboardActions = keyboardActions)
 }
 
-@Composable
-private fun NewTripSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716)),
-        border = BorderStroke(1.dp, Color(0xFF223A36)),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFF35D36B))
-            content()
-        }
-    }
-}
-
-@Composable
-private fun asdTextFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = Color(0xFF35D36B),
-    unfocusedBorderColor = Color(0xFF223A36),
-    focusedLabelColor = Color(0xFF35D36B),
-    unfocusedLabelColor = Color.White.copy(alpha = 0.4f),
-    focusedTextColor = Color.White,
-    unfocusedTextColor = Color.White
-)
-
-private suspend fun createTripFlow(
-    vm: AsdNewTripVM,
-    gps: LocationProvider,
-    planningRouteId: String,
-    routeName: String,
-    company: String,
-    vehicleEco: String,
-    direction: String,
-    notes: String,
-    aforador: String,
-    supervisor: String,
-    deviceNumber: String,
-    observerSex: String,
-    routeNumberTxt: String,
-    esFs: String,
-    baseStart: String,
-    baseEnd: String,
-    plateNumber: String,
-    vehicleType: String,
-    seatCapacityTxt: String,
-    continueWaypoints: Boolean,
-    onCreated: (Long) -> Unit,
-    setLoading: (Boolean) -> Unit,
-    setGpsMsg: (String?) -> Unit,
-    setError: (String?) -> Unit
-) {
+private suspend fun createTripFlow(vm: AsdNewTripVM, gps: LocationProvider, pId: String, rN: String, comp: String, vE: String, dir: String, nts: String, af: String, sup: String, dN: String, oS: String, rNum: String, esfs: String, bS: String, bE: String, pN: String, vT: String, sC: String, cW: Boolean, onC: (Long) -> Unit, setL: (Boolean) -> Unit, setG: (String?) -> Unit, setE: (String?) -> Unit) {
     try {
-        setLoading(true)
-        setGpsMsg("Obteniendo ubicación inicial...")
-        val fix = withContext(Dispatchers.IO) { gps.getBestFixStrict(50.0, 5000) }
-        
-        val id = vm.createWithFix(
-            planningRouteId, fix.lat, fix.lon, fix.altM, fix.accM, fix.provider, fix.fixTime, fix.status,
-            routeName, company, vehicleEco, direction, notes, routeNumberTxt.toIntOrNull(), esFs, baseStart, baseEnd,
-            plateNumber, vehicleType, seatCapacityTxt.toIntOrNull(), aforador, supervisor, deviceNumber, observerSex, continueWaypoints
-        )
-        setLoading(false)
-        onCreated(id)
-    } catch (e: Exception) {
-        setLoading(false)
-        setError(e.message ?: "Error al crear el levantamiento.")
-    }
+        setL(true); setG("Obteniendo ubicación..."); val fix = withContext(Dispatchers.IO) { gps.getBestFixStrict(50.0, 5000) }
+        val id = vm.createWithFix(pId, fix.lat, fix.lon, fix.altM, fix.accM, fix.provider, fix.fixTime, fix.status, rN, comp, vE, dir, nts, rNum.toIntOrNull(), esfs, bS, bE, pN, vT, sC.toIntOrNull(), af, sup, dN, oS, cW)
+        setL(false); onC(id)
+    } catch (e: Exception) { setL(false); setE(e.message ?: "Error al crear.") }
 }
+
+@Preview(showBackground = true) @Composable fun AsdNewTripScreenPreview() { UrbanAppTheme { AsdNewTripContent(null, true, {}, { _, _ -> null }, { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> }, { true }) } }
