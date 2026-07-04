@@ -168,11 +168,11 @@ class AsdRepository(private val db: AppDatabase) {
             baseStart = cleanText(baseStart),
             baseEnd = cleanText(baseEnd),
             plateNumber = cleanText(plateNumber),
-            vehicleType = cleanText(vehicleType),
+            vehicleType = vehicleType,
             seatCapacity = seatCapacity,
             aforador = cleanText(aforador),
             supervisor = cleanText(supervisor),
-            deviceNumber = cleanText(deviceNumber),
+            deviceNumber = deviceNumber,
             observerSex = normalizeSex(observerSex)
         )
         val tripId = tripDao.insert(trip)
@@ -228,7 +228,6 @@ class AsdRepository(private val db: AppDatabase) {
         if (activeBandera != null) return false
 
         val endMs = System.currentTimeMillis()
-
         val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
 
         addStopDetailed(
@@ -341,10 +340,10 @@ class AsdRepository(private val db: AppDatabase) {
         startFixTime: Long = 0L
     ) {
         val pair = if (isTripBoundaryFlag(stopType, stopName, delayCodes)) {
-            val fixed = if (stopName?.contains("FINAL", ignoreCase = true) == true || delayCodes?.contains("FINAL", ignoreCase = true) == true) {
-                (tripDao.getByIdOnce(tripId)?.nextWaypointId ?: 1).let { id -> com.oropeza.urbanapp.asd.data.local.WaypointPair(id, id) }
+            if (stopName?.contains("FINAL", ignoreCase = true) == true || delayCodes?.contains("FINAL", ignoreCase = true) == true) {
+                (tripDao.getByIdOnce(tripId)?.nextWaypointId ?: 1).let { id -> WaypointPair(id, id) }
             } else {
-                com.oropeza.urbanapp.asd.data.local.WaypointPair(1, 1)
+                WaypointPair(1, 1)
             }
         } else {
             tripDao.reserveWaypointPair(tripId)
