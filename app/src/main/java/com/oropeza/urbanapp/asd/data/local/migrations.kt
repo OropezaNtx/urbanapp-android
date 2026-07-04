@@ -339,6 +339,56 @@ object Migrations {
         }
     }
 
+    val MIGRATION_20_21 = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            addTrackPointColumn(db, "rawLat", "REAL NOT NULL DEFAULT 0.0")
+            addTrackPointColumn(db, "rawLon", "REAL NOT NULL DEFAULT 0.0")
+            addTrackPointColumn(db, "rawAltM", "REAL NOT NULL DEFAULT 0.0")
+            addTrackPointColumn(db, "filteredLat", "REAL NOT NULL DEFAULT 0.0")
+            addTrackPointColumn(db, "filteredLon", "REAL NOT NULL DEFAULT 0.0")
+            addTrackPointColumn(db, "sourceFixTimeMs", "INTEGER NOT NULL DEFAULT 0")
+            addTrackPointColumn(db, "receivedAtMs", "INTEGER NOT NULL DEFAULT 0")
+            addTrackPointColumn(db, "savedAtMs", "INTEGER NOT NULL DEFAULT 0")
+            addTrackPointColumn(db, "sampleStatus", "TEXT NOT NULL DEFAULT 'LIVE'")
+            addTrackPointColumn(db, "qualityStatus", "TEXT NOT NULL DEFAULT 'UNKNOWN'")
+            addTrackPointColumn(db, "geometryStatus", "TEXT NOT NULL DEFAULT 'GEOMETRY_OK'")
+            addTrackPointColumn(db, "filterStatus", "TEXT NOT NULL DEFAULT 'raw'")
+            addTrackPointColumn(db, "engineMode", "TEXT NOT NULL DEFAULT 'NA'")
+            addTrackPointColumn(db, "armStatus", "TEXT NOT NULL DEFAULT 'QUICK'")
+            addTrackPointColumn(db, "isStale", "INTEGER NOT NULL DEFAULT 0")
+            addTrackPointColumn(db, "isBackfillEligible", "INTEGER NOT NULL DEFAULT 0")
+            addTrackPointColumn(db, "isSynthetic", "INTEGER NOT NULL DEFAULT 0")
+
+            db.execSQL("UPDATE TrackPoint SET rawLat = lat WHERE rawLat = 0.0")
+            db.execSQL("UPDATE TrackPoint SET rawLon = lon WHERE rawLon = 0.0")
+            db.execSQL("UPDATE TrackPoint SET rawAltM = altM WHERE rawAltM = 0.0")
+            db.execSQL("UPDATE TrackPoint SET filteredLat = lat WHERE filteredLat = 0.0")
+            db.execSQL("UPDATE TrackPoint SET filteredLon = lon WHERE filteredLon = 0.0")
+            db.execSQL("UPDATE TrackPoint SET sourceFixTimeMs = timeMs WHERE sourceFixTimeMs = 0")
+            db.execSQL("UPDATE TrackPoint SET receivedAtMs = timeMs WHERE receivedAtMs = 0")
+            db.execSQL("UPDATE TrackPoint SET savedAtMs = timeMs WHERE savedAtMs = 0")
+            db.execSQL("UPDATE TrackPoint SET sampleStatus = 'NO_FIX', qualityStatus = 'NO_FIX', geometryStatus = 'NO_FIX', isSynthetic = 1 WHERE lat = 0.0 AND lon = 0.0")
+            db.execSQL("UPDATE TrackPoint SET sampleStatus = 'STALE', isStale = 1 WHERE provider LIKE '%+STALE+%'")
+            db.execSQL("UPDATE TrackPoint SET sampleStatus = 'LIVE' WHERE provider LIKE '%+LIVE+%'")
+            db.execSQL("UPDATE TrackPoint SET qualityStatus = 'GOOD_ACCURACY' WHERE provider LIKE '%+GOOD_ACCURACY+%'")
+            db.execSQL("UPDATE TrackPoint SET qualityStatus = 'USABLE_ACCURACY' WHERE provider LIKE '%+USABLE_ACCURACY+%'")
+            db.execSQL("UPDATE TrackPoint SET qualityStatus = 'LOW_ACCURACY' WHERE provider LIKE '%+LOW_ACCURACY+%'")
+            db.execSQL("UPDATE TrackPoint SET qualityStatus = 'VERY_LOW_ACCURACY' WHERE provider LIKE '%+VERY_LOW_ACCURACY+%'")
+            db.execSQL("UPDATE TrackPoint SET geometryStatus = 'SUSPECT_SPEED' WHERE provider LIKE '%+SUSPECT_SPEED%'")
+            db.execSQL("UPDATE TrackPoint SET geometryStatus = 'SUSPECT_JUMP' WHERE provider LIKE '%+SUSPECT_JUMP%'")
+            db.execSQL("UPDATE TrackPoint SET filterStatus = 'kalman' WHERE provider LIKE '%+kalman+%'")
+            db.execSQL("UPDATE TrackPoint SET engineMode = 'ACQUIRE' WHERE provider LIKE '%+ACQUIRE+%'")
+            db.execSQL("UPDATE TrackPoint SET engineMode = 'TRACK' WHERE provider LIKE '%+TRACK+%'")
+            db.execSQL("UPDATE TrackPoint SET engineMode = 'STILL' WHERE provider LIKE '%+STILL+%'")
+            db.execSQL("UPDATE TrackPoint SET armStatus = 'ARMED' WHERE provider LIKE '%+ARMED+%'")
+            db.execSQL("UPDATE TrackPoint SET isBackfillEligible = 1 WHERE isStale = 0 AND accM > 0.0 AND accM <= 60.0 AND geometryStatus = 'GEOMETRY_OK'")
+
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_TrackPoint_sampleStatus ON TrackPoint(sampleStatus)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_TrackPoint_qualityStatus ON TrackPoint(qualityStatus)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_TrackPoint_geometryStatus ON TrackPoint(geometryStatus)")
+        }
+    }
+
     private fun addTripOperationalMetadataColumns(db: SupportSQLiteDatabase) {
         if (!tripColumnExists(db, "aforador")) {
             db.execSQL("ALTER TABLE Trip ADD COLUMN aforador TEXT")
@@ -352,7 +402,17 @@ object Migrations {
     }
 
     private fun tripColumnExists(db: SupportSQLiteDatabase, columnName: String): Boolean {
-        val cursor = db.query("PRAGMA table_info(`Trip`)")
+        return tableColumnExists(db, "Trip", columnName)
+    }
+
+    private fun addTrackPointColumn(db: SupportSQLiteDatabase, columnName: String, columnSql: String) {
+        if (!tableColumnExists(db, "TrackPoint", columnName)) {
+            db.execSQL("ALTER TABLE TrackPoint ADD COLUMN $columnName $columnSql")
+        }
+    }
+
+    private fun tableColumnExists(db: SupportSQLiteDatabase, tableName: String, columnName: String): Boolean {
+        val cursor = db.query("PRAGMA table_info(`$tableName`)")
         return try {
             val nameIndex = cursor.getColumnIndex("name")
             while (cursor.moveToNext()) {
