@@ -11,13 +11,10 @@ import kotlin.math.sqrt
 /**
  * Afora GPS Engine V3.
  *
- * This class is intentionally Android-free. It owns the capture contract:
- * while a trip is active, the caller may ask for one sample every fixed cadence,
- * and the engine will return a TrackPoint instead of filtering it out.
- *
- * Filtering decisions are represented as tags for now because TrackPoint does not
- * yet have formal quality columns. A later Room migration should promote these
- * tags to explicit fields.
+ * Android-free engine that owns the capture contract:
+ * while a trip is active, every sampler tick produces a TrackPoint.
+ * Quality is classified explicitly in TrackPoint columns; provider keeps a compact
+ * legacy/audit tag for backward compatibility with older exporters and screens.
  */
 class AforaGpsEngine(
     private val config: Config = Config()
@@ -69,9 +66,10 @@ class AforaGpsEngine(
     )
 
     private data class Classification(
-        val sampleTag: String,
-        val qualityTag: String,
-        val geometryTag: String,
+        val sampleStatus: String,
+        val qualityStatus: String,
+        val geometryStatus: String,
+        val filterStatus: String,
         val shouldUseKalman: Boolean,
         val shouldUpdateAcceptedAnchor: Boolean,
         val shouldBackfillEvents: Boolean
@@ -143,7 +141,23 @@ class AforaGpsEngine(
                 lat = 0.0,
                 lon = 0.0,
                 accM = 9999.0,
-                provider = "none+raw+ACQUIRE+QUICK+NO_FIX+NO_FIX+NO_FIX"
+                provider = "none+raw+ACQUIRE+QUICK+NO_FIX+NO_FIX+NO_FIX",
+                rawLat = 0.0,
+                rawLon = 0.0,
+                filteredLat = 0.0,
+                filteredLon = 0.0,
+                sourceFixTimeMs = sampleTimeMs,
+                receivedAtMs = 0L,
+                savedAtMs = sampleTimeMs,
+                sampleStatus = "NO_FIX",
+                qualityStatus = "NO_FIX",
+                geometryStatus = "NO_FIX",
+                filterStatus = "raw",
+                engineMode = mode.name,
+                armStatus = "QUICK",
+                isStale = false,
+                isBackfillEligible = false,
+                isSynthetic = true
             )
             rememberSaved(p)
             return CaptureSample(
@@ -154,15 +168,15 @@ class AforaGpsEngine(
         }
 
         val isStale = sampleTimeMs - fix.receivedAtMs > config.staleFixAfterMs
-        val lat = fix.lat
-        val lon = fix.lon
+        val rawLat = fix.lat
+        val rawLon = fix.lon
         val accM = fix.accM
 
         updateArming(isStale = isStale, accM = accM)
 
         val classification = classifyFix(
-            lat = lat,
-            lon = lon,
+            lat = rawLat,
+            lon = rawLon,
             accM = accM,
             sampleTimeMs = sampleTimeMs,
             elapsedNanos = fix.elapsedNanos,
@@ -170,37 +184,54 @@ class AforaGpsEngine(
         )
 
         val isStationary = mode == Mode.STILL || stillCounter >= 3
-        val (latOut, lonOut) = if (classification.shouldUseKalman) {
+        val (filteredLat, filteredLon) = if (classification.shouldUseKalman) {
             kalmanTrack.update(
-                lat = lat,
-                lon = lon,
+                lat = rawLat,
+                lon = rawLon,
                 accM = accM,
                 timeMs = sampleTimeMs,
                 isStationary = isStationary
             )
         } else {
-            lat to lon
+            rawLat to rawLon
         }
 
         if (classification.shouldUpdateAcceptedAnchor) {
             lastAcceptedElapsedNanos = if (fix.elapsedNanos > 0L) fix.elapsedNanos else lastAcceptedElapsedNanos
             lastAcceptedTimeMs = sampleTimeMs
-            lastAcceptedLat = latOut
-            lastAcceptedLon = lonOut
+            lastAcceptedLat = filteredLat
+            lastAcceptedLon = filteredLon
         }
 
         val modeTag = mode.name
-        val armingTag = if (recordingArmed) "ARMED" else "QUICK"
-        val filterTag = if (classification.shouldUseKalman) "kalman" else "raw"
-        val provider = fix.provider ?: "fused"
+        val armStatus = if (recordingArmed) "ARMED" else "QUICK"
+        val providerBase = fix.provider ?: "fused"
+        val providerAudit = "$providerBase+${classification.filterStatus}+$modeTag+$armStatus+${classification.sampleStatus}+${classification.qualityStatus}+${classification.geometryStatus}"
 
         val p = TrackPoint(
             tripId = tripId,
             timeMs = sampleTimeMs,
-            lat = latOut,
-            lon = lonOut,
+            lat = filteredLat,
+            lon = filteredLon,
             accM = accM,
-            provider = "$provider+$filterTag+$modeTag+$armingTag+${classification.sampleTag}+${classification.qualityTag}+${classification.geometryTag}"
+            provider = providerAudit,
+            rawLat = rawLat,
+            rawLon = rawLon,
+            rawAltM = 0.0,
+            filteredLat = filteredLat,
+            filteredLon = filteredLon,
+            sourceFixTimeMs = if (fix.fixTimeMs > 0L) fix.fixTimeMs else sampleTimeMs,
+            receivedAtMs = fix.receivedAtMs,
+            savedAtMs = sampleTimeMs,
+            sampleStatus = classification.sampleStatus,
+            qualityStatus = classification.qualityStatus,
+            geometryStatus = classification.geometryStatus,
+            filterStatus = classification.filterStatus,
+            engineMode = modeTag,
+            armStatus = armStatus,
+            isStale = isStale,
+            isBackfillEligible = classification.shouldBackfillEvents,
+            isSynthetic = false
         )
         rememberSaved(p)
 
@@ -241,24 +272,25 @@ class AforaGpsEngine(
     ): Classification {
         if (lat == 0.0 && lon == 0.0) {
             return Classification(
-                sampleTag = "NO_FIX",
-                qualityTag = "NO_FIX",
-                geometryTag = "NO_FIX",
+                sampleStatus = "NO_FIX",
+                qualityStatus = "NO_FIX",
+                geometryStatus = "NO_FIX",
+                filterStatus = "raw",
                 shouldUseKalman = false,
                 shouldUpdateAcceptedAnchor = false,
                 shouldBackfillEvents = false
             )
         }
 
-        val sampleTag = if (isStale) "STALE" else "LIVE"
-        val qualityTag = when {
+        val sampleStatus = if (isStale) "STALE" else "LIVE"
+        val qualityStatus = when {
             accM <= config.requiredAccM -> "GOOD_ACCURACY"
             accM <= config.usableAccM -> "USABLE_ACCURACY"
             accM <= 80.0 -> "LOW_ACCURACY"
             else -> "VERY_LOW_ACCURACY"
         }
 
-        var geometryTag = "GEOMETRY_OK"
+        var geometryStatus = "GEOMETRY_OK"
         var shouldUpdateAcceptedAnchor = !isStale
 
         val lastT = lastAcceptedTimeMs
@@ -277,7 +309,7 @@ class AforaGpsEngine(
             val speedMs = distM / dtSec
             val noiseRadiusM = maxOf(config.stationaryBaseRadiusM, accM * 1.4)
 
-            geometryTag = when {
+            geometryStatus = when {
                 speedMs > config.maxSpeedMs -> "SUSPECT_SPEED"
                 distM > config.jumpM && accM > config.jumpAccM -> "SUSPECT_JUMP"
                 else -> "GEOMETRY_OK"
@@ -292,16 +324,17 @@ class AforaGpsEngine(
             if (stillCounter >= 8) mode = Mode.STILL
             if (stillCounter == 0 && mode == Mode.STILL) mode = Mode.TRACK
 
-            if (geometryTag != "GEOMETRY_OK") shouldUpdateAcceptedAnchor = false
+            if (geometryStatus != "GEOMETRY_OK") shouldUpdateAcceptedAnchor = false
         }
 
-        val shouldUseKalman = !isStale && accM <= config.kalmanUseAccM && geometryTag == "GEOMETRY_OK"
-        val shouldBackfillEvents = !isStale && accM > 0.0 && accM <= 60.0 && geometryTag == "GEOMETRY_OK"
+        val shouldUseKalman = !isStale && accM <= config.kalmanUseAccM && geometryStatus == "GEOMETRY_OK"
+        val shouldBackfillEvents = !isStale && accM > 0.0 && accM <= 60.0 && geometryStatus == "GEOMETRY_OK"
 
         return Classification(
-            sampleTag = sampleTag,
-            qualityTag = qualityTag,
-            geometryTag = geometryTag,
+            sampleStatus = sampleStatus,
+            qualityStatus = qualityStatus,
+            geometryStatus = geometryStatus,
+            filterStatus = if (shouldUseKalman) "kalman" else "raw",
             shouldUseKalman = shouldUseKalman,
             shouldUpdateAcceptedAnchor = shouldUpdateAcceptedAnchor,
             shouldBackfillEvents = shouldBackfillEvents
@@ -320,10 +353,10 @@ class AforaGpsEngine(
             lon = point.lon,
             accM = point.accM,
             provider = point.provider,
-            fixTimeMs = point.timeMs,
-            receivedAtMs = lastFixReceivedAtMs,
+            fixTimeMs = point.sourceFixTimeMs,
+            receivedAtMs = point.receivedAtMs,
             savedAtMs = savedAtMs,
-            hasFix = point.lat != 0.0 || point.lon != 0.0
+            hasFix = point.sampleStatus != "NO_FIX"
         )
     }
 
