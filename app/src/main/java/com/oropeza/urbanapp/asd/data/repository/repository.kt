@@ -83,12 +83,12 @@ class AsdRepository(private val db: AppDatabase) {
             baseStart = cleanText(baseStart),
             baseEnd = cleanText(baseEnd),
             plateNumber = cleanText(plateNumber),
-            vehicleType = cleanText(vehicleType),
+            vehicleType = vehicleType,
             seatCapacity = seatCapacity,
             notes = cleanText(notes),
             aforador = cleanText(aforador),
             supervisor = cleanText(supervisor),
-            deviceNumber = cleanText(deviceNumber),
+            deviceNumber = deviceNumber,
             observerSex = normalizeSex(observerSex)
         )
         val ok = tripDao.update(updated) > 0
@@ -310,7 +310,7 @@ class AsdRepository(private val db: AppDatabase) {
         return n.contains("AD/INICIO") || n.contains("AD/FINAL") || c.contains("AD/INICIO") || c.contains("AD/FINAL")
     }
 
-    private suspend fun addStopDetailed(
+    suspend fun addStopDetailed(
         tripId: Long,
         stopType: String,
         stopTimeMs: Long,
