@@ -3,7 +3,6 @@ package com.oropeza.urbanapp.asd.export
 import android.content.Context
 import android.net.Uri
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
-import com.oropeza.urbanapp.asd.location.GpsAuditDiagnostics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -31,16 +30,24 @@ object GpsAuditCsvExporter {
             "dist_prev_m",
             "lat",
             "lon",
-            "altM",
+            "raw_lat",
+            "raw_lon",
+            "filtered_lat",
+            "filtered_lon",
+            "alt_m",
             "accuracy_m",
-            "provider_base",
-            "gps_filter",
-            "gps_mode",
-            "gps_arm_state",
-            "gps_quality",
-            "gps_decision",
-            "is_kalman",
-            "is_still_lock",
+            "source_fix_time_ms",
+            "received_at_ms",
+            "saved_at_ms",
+            "sample_status",
+            "quality_status",
+            "geometry_status",
+            "filter_status",
+            "engine_mode",
+            "arm_status",
+            "is_stale",
+            "is_backfill_eligible",
+            "is_synthetic",
             "provider_raw"
         )
         var segmentId = 1
@@ -51,7 +58,6 @@ object GpsAuditCsvExporter {
             if (isTimeGap) segmentId += 1
             val isSegmentStart = index == 0 || isTimeGap
             val distPrevM = if (isSegmentStart) 0.0 else previous?.let { haversineMeters(it.lat, it.lon, p.lat, p.lon) } ?: 0.0
-            val diag = GpsAuditDiagnostics.parse(p.provider)
             listOf(
                 p.tripId,
                 p.timeMs,
@@ -63,16 +69,24 @@ object GpsAuditCsvExporter {
                 String.format(Locale.US, "%.2f", distPrevM),
                 p.lat,
                 p.lon,
+                p.rawLat,
+                p.rawLon,
+                p.filteredLat,
+                p.filteredLon,
                 p.altM,
                 p.accM,
-                diag.provider,
-                diag.filter,
-                diag.mode,
-                diag.armState,
-                diag.quality,
-                diag.decision,
-                diag.isKalman,
-                diag.isStillLock,
+                p.sourceFixTimeMs,
+                p.receivedAtMs,
+                p.savedAtMs,
+                p.sampleStatus,
+                p.qualityStatus,
+                p.geometryStatus,
+                p.filterStatus,
+                p.engineMode,
+                p.armStatus,
+                p.isStale,
+                p.isBackfillEligible,
+                p.isSynthetic,
                 p.provider
             )
         }
