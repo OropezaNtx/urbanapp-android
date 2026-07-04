@@ -115,7 +115,7 @@ class LocationProvider(private val context: Context) {
             .setMinUpdateIntervalMillis(minUpdateMsLocal)
             .setMinUpdateDistanceMeters(minDistanceMLocal)
             .setMaxUpdateDelayMillis(maxWaitTimeMsLocal)
-            .setWaitForAccurateLocation(true)              // ✅ clave
+            .setWaitForAccurateLocation(false)
             .setGranularity(Granularity.GRANULARITY_FINE)  // ✅ clave
             .build()
 
@@ -342,7 +342,7 @@ class LocationProvider(private val context: Context) {
             .setMinUpdateIntervalMillis(minUpdateMs)
             .setMinUpdateDistanceMeters(minDistanceM)
             .setMaxUpdateDelayMillis(maxWaitTimeMs)
-            .setWaitForAccurateLocation(true) // 🔥 clave
+            .setWaitForAccurateLocation(false)
             .setGranularity(Granularity.GRANULARITY_FINE) // 🔥 clave
             .build()
 

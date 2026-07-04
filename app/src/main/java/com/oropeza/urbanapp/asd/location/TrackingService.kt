@@ -15,6 +15,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlin.math.atan2
@@ -34,7 +37,33 @@ class TrackingService : Service() {
         private const val TAG = "TrackingService"
         var isRunning = false
             private set
+
+        data class RuntimeGpsState(
+            val hasFix: Boolean = false,
+            val lat: Double = 0.0,
+            val lon: Double = 0.0,
+            val accM: Double = 0.0,
+            val provider: String = "none",
+            val fixTimeMs: Long = 0L,
+            val receivedAtMs: Long = 0L,
+            val savedAtMs: Long = 0L,
+            val mode: String = "IDLE",
+            val isRecordingArmed: Boolean = false
+        )
+
+        private val _runtimeGpsState = MutableStateFlow(RuntimeGpsState())
+        val runtimeGpsState: StateFlow<RuntimeGpsState> = _runtimeGpsState.asStateFlow()
     }
+
+    private data class LatestFix(
+        val lat: Double,
+        val lon: Double,
+        val accM: Double,
+        val timeMs: Long,
+        val elapsedNanos: Long,
+        val provider: String?,
+        val receivedAtMs: Long
+    )
 
     private val requiredAccM = 25.0
     private val usableAccM = 45.0
@@ -52,11 +81,18 @@ class TrackingService : Service() {
     private enum class Mode { ACQUIRE, TRACK, STILL }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var job: Job? = null
+    private var mainJob: Job? = null
+    private var gpsUpdatesJob: Job? = null
+    private var saverJob: Job? = null
+    private var watchdogJob: Job? = null
+    
     private var currentTripId: Long? = null
 
     private lateinit var gps: LocationProvider
     private lateinit var headingProvider: HeadingProvider
+
+    private var latestFix: LatestFix? = null
+    private var latestFixReceivedAtMs: Long = 0L
 
     private var goodFixStreak = 0
     private var recordingArmed = false
@@ -72,8 +108,6 @@ class TrackingService : Service() {
 
     private var stillCounter = 0
     private val kalmanTrack = KalmanLatLonFilter()
-
-    private var updatesJob: Job? = null
     private var currentMode: Mode? = null
 
     override fun onCreate() {
@@ -93,7 +127,7 @@ class TrackingService : Service() {
             ACTION_START -> {
                 val tripId = intent.getLongExtra(EXTRA_TRIP_ID, -1L)
                 if (tripId > 0) {
-                    if (job != null && currentTripId != tripId) stopTracking()
+                    if (currentTripId != null && currentTripId != tripId) stopTracking()
                     startTracking(tripId)
                 } else {
                     Log.w(TAG, "ACTION_START sin tripId válido")
@@ -106,12 +140,36 @@ class TrackingService : Service() {
     }
 
     private fun startTracking(tripId: Long) {
-        if (job != null && currentTripId == tripId) return
+        if (currentTripId == tripId) return
 
+        resetTrackingState()
         currentTripId = tripId
+
+        mainJob = scope.launch {
+            if (!gps.hasPermission()) {
+                Log.w(TAG, "Sin permisos de ubicación. No se inicia tracking.")
+                return@launch
+            }
+            
+            startGpsUpdates()
+            startSaverLoop()
+            startWatchdogLoop()
+        }
+    }
+
+    private fun resetTrackingState() {
+        mainJob?.cancel()
+        gpsUpdatesJob?.cancel()
+        saverJob?.cancel()
+        watchdogJob?.cancel()
+        
+        _runtimeGpsState.value = RuntimeGpsState(mode = "IDLE")
+
         recordingArmed = false
         goodFixStreak = 0
         stillCounter = 0
+        latestFix = null
+        latestFixReceivedAtMs = 0L
         lastAcceptedElapsedNanos = null
         lastAcceptedTimeMs = null
         lastAcceptedLat = null
@@ -121,112 +179,88 @@ class TrackingService : Service() {
         lastSavedLon = null
         kalmanTrack.reset()
         currentMode = null
-        updatesJob = null
-
-        job = scope.launch {
-            if (!gps.hasPermission()) {
-                Log.w(TAG, "Sin permisos de ubicación. No se inicia tracking.")
-                return@launch
-            }
-            switchMode(Mode.ACQUIRE)
-            while (true) delay(1000L)
-        }
-
-        job?.invokeOnCompletion {
-            job = null
-            currentTripId = null
-            Log.i(TAG, "Tracking job finished")
-        }
     }
 
-    private fun stopTracking() {
-        updatesJob?.cancel()
-        updatesJob = null
-        job?.cancel()
-        job = null
-        currentTripId = null
-        kalmanTrack.reset()
-        recordingArmed = false
-        goodFixStreak = 0
-        stillCounter = 0
-        lastAcceptedElapsedNanos = null
-        lastAcceptedTimeMs = null
-        lastAcceptedLat = null
-        lastAcceptedLon = null
-        lastSavedTimeMs = null
-        lastSavedLat = null
-        lastSavedLon = null
-        try { headingProvider.stop() } catch (_: Exception) {}
-        stopSelf()
-    }
-
-    override fun onDestroy() {
-        isRunning = false
-        stopTracking()
-        scope.cancel()
-        super.onDestroy()
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    private fun switchMode(mode: Mode) {
-        if (currentMode == mode && updatesJob != null) return
-        currentMode = mode
-
-        updatesJob?.cancel()
-        updatesJob = scope.launch {
-            val tripId = currentTripId ?: return@launch
-            val params = when (mode) {
-                Mode.ACQUIRE -> Params(1000L, 500L, 0f, 0L, true)
-                Mode.TRACK -> Params(2000L, 1000L, 0f, 0L, true)
-                Mode.STILL -> Params(2000L, 1000L, 0f, 0L, true)
-            }
-
+    private fun startGpsUpdates() {
+        gpsUpdatesJob?.cancel()
+        gpsUpdatesJob = scope.launch {
+            Log.i(TAG, "Starting GPS updates listener")
             gps.locationUpdates(
-                intervalMs = params.intervalMs,
-                minUpdateMs = params.minUpdateMs,
-                minDistanceM = params.minDistanceM,
-                maxWaitTimeMs = params.maxWaitTimeMs,
-                highAccuracy = params.highAccuracy
-            )
-                .catch { e -> Log.e(TAG, "Error en locationUpdates()", e) }
-                .collect { loc ->
-                    handleLocation(
-                        tripId = tripId,
-                        lat = loc.latitude,
-                        lon = loc.longitude,
-                        accM = loc.accuracy.toDouble(),
-                        timeFromLoc = loc.time,
-                        elapsedNanos = loc.elapsedRealtimeNanos,
-                        provider = loc.provider
-                    )
-                }
-        }
+                intervalMs = 1000L,
+                minUpdateMs = 500L,
+                minDistanceM = 0f,
+                maxWaitTimeMs = 0L,
+                highAccuracy = true
+            ).catch { e -> 
+                Log.e(TAG, "Error en locationUpdates()", e) 
+            }.collect { loc ->
+                val now = System.currentTimeMillis()
+                latestFix = LatestFix(
+                    lat = loc.latitude,
+                    lon = loc.longitude,
+                    accM = loc.accuracy.toDouble(),
+                    timeMs = loc.time,
+                    elapsedNanos = loc.elapsedRealtimeNanos,
+                    provider = loc.provider,
+                    receivedAtMs = now
+                )
+                latestFixReceivedAtMs = now
 
-        Log.i(TAG, "Switched mode -> $mode")
+                _runtimeGpsState.value = _runtimeGpsState.value.copy(
+                    hasFix = true,
+                    lat = loc.latitude,
+                    lon = loc.longitude,
+                    accM = loc.accuracy.toDouble(),
+                    provider = loc.provider ?: "unknown",
+                    fixTimeMs = if (loc.time > 0L) loc.time else now,
+                    receivedAtMs = now,
+                    mode = currentMode?.name ?: "NA",
+                    isRecordingArmed = recordingArmed
+                )
+            }
+        }
     }
 
-    private data class Params(
-        val intervalMs: Long,
-        val minUpdateMs: Long,
-        val minDistanceM: Float,
-        val maxWaitTimeMs: Long,
-        val highAccuracy: Boolean
-    )
+    private fun restartGpsUpdates() {
+        val age = System.currentTimeMillis() - latestFixReceivedAtMs
+        Log.i(TAG, "GPS watchdog restarting updates. Last fix age: ${age}ms")
+        startGpsUpdates()
+    }
 
-    private fun handleLocation(
-        tripId: Long,
-        lat: Double,
-        lon: Double,
-        accM: Double,
-        timeFromLoc: Long,
-        elapsedNanos: Long,
-        provider: String?
-    ) {
-        val timeMs = if (timeFromLoc > 0L) timeFromLoc else System.currentTimeMillis()
+    private fun startSaverLoop() {
+        saverJob?.cancel()
+        saverJob = scope.launch {
+            while (true) {
+                delay(2000L)
+                val tripId = currentTripId ?: continue
+                val fix = latestFix ?: continue
+                
+                saveTrackPointIfNeeded(tripId, fix)
+            }
+        }
+    }
 
-        val lastEN = lastAcceptedElapsedNanos
-        if (lastEN != null && elapsedNanos > 0L && elapsedNanos == lastEN) return
+    private fun startWatchdogLoop() {
+        watchdogJob?.cancel()
+        watchdogJob = scope.launch {
+            while (true) {
+                delay(3000L)
+                if (System.currentTimeMillis() - latestFixReceivedAtMs > 6000L) {
+                    restartGpsUpdates()
+                }
+            }
+        }
+    }
+
+    private suspend fun saveTrackPointIfNeeded(tripId: Long, fix: LatestFix) {
+        val lat = fix.lat
+        val lon = fix.lon
+        val accM = fix.accM
+        val timeMs = System.currentTimeMillis()
+        val elapsedNanos = fix.elapsedNanos
+        val provider = fix.provider
+
+        if (accM > 80.0) return
 
         if (accM <= requiredAccM) goodFixStreak++ else goodFixStreak = 0
 
@@ -242,15 +276,13 @@ class TrackingService : Service() {
                 lastSavedLat = null
                 lastSavedLon = null
                 stillCounter = 0
-                Log.i(TAG, "Recording ARMED rápido (acc <= $requiredAccM)")
-                switchMode(Mode.TRACK)
+                currentMode = Mode.TRACK
+                Log.i(TAG, "Recording ARMED (acc <= $requiredAccM)")
             } else if (accM > usableAccM) {
-                if (currentMode != Mode.ACQUIRE) switchMode(Mode.ACQUIRE)
+                currentMode = Mode.ACQUIRE
                 return
             }
         }
-
-        if (accM > 80.0) return
 
         val lastT = lastAcceptedTimeMs
         val lastLat = lastAcceptedLat
@@ -270,15 +302,16 @@ class TrackingService : Service() {
             if (speedMs > maxSpeedMs) return
             if (distM > jumpM && accM > jumpAccM) return
 
-            val stationaryRadiusM = maxOf(stationaryBaseRadiusM, accM * 1.4)
+            val noiseRadiusM = maxOf(stationaryBaseRadiusM, accM * 1.4)
 
-            if (distM < stationaryRadiusM && speedMs < 1.2 && accM <= usableAccM) {
+            if (distM < noiseRadiusM && speedMs < 1.2 && accM <= usableAccM) {
                 stillCounter++
             } else {
                 stillCounter = 0
             }
-            if (stillCounter >= 8 && currentMode != Mode.STILL) switchMode(Mode.STILL)
-            if (stillCounter == 0 && currentMode == Mode.STILL) switchMode(Mode.TRACK)
+            
+            if (stillCounter >= 8) currentMode = Mode.STILL
+            if (stillCounter == 0 && currentMode == Mode.STILL) currentMode = Mode.TRACK
         }
 
         val useKalman = accM <= kalmanUseAccM
@@ -294,29 +327,31 @@ class TrackingService : Service() {
         lastAcceptedLat = latF
         lastAcceptedLon = lonF
 
-        val canSave = accM <= usableAccM && shouldSaveTrackPoint(latF, lonF, timeMs, accM)
-        if (canSave) {
+        if (latF != 0.0 && lonF != 0.0) {
             val modeTag = currentMode?.name ?: "NA"
             val qualityTag = if (recordingArmed) "ARMED" else "QUICK"
+            val isStale = System.currentTimeMillis() - fix.receivedAtMs > 6000L
+            val staleTag = if (isStale) "STALE" else "LIVE"
+
             val p = TrackPoint(
                 tripId = tripId,
                 timeMs = timeMs,
                 lat = latF,
                 lon = lonF,
                 accM = accM,
-                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag"
+                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag+$staleTag"
             )
             lastSavedTimeMs = timeMs
             lastSavedLat = latF
             lastSavedLon = lonF
-            scope.launch {
-                try {
-                    AsdGraph.db.trackDao().insert(p)
-                    val completed = AsdGraph.repo.completePendingGpsEvents(tripId, p)
-                    if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error insertando TrackPoint o completando GPS pendiente", e)
-                }
+            
+            try {
+                AsdGraph.db.trackDao().insert(p)
+                _runtimeGpsState.value = _runtimeGpsState.value.copy(savedAtMs = System.currentTimeMillis())
+                val completed = AsdGraph.repo.completePendingGpsEvents(tripId, p)
+                if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error insertando TrackPoint o completando GPS pendiente", e)
             }
         }
     }
@@ -344,6 +379,22 @@ class TrackingService : Service() {
 
         return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
     }
+
+    private fun stopTracking() {
+        resetTrackingState()
+        currentTripId = null
+        try { headingProvider.stop() } catch (_: Exception) {}
+        stopSelf()
+    }
+
+    override fun onDestroy() {
+        isRunning = false
+        stopTracking()
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6_371_000.0
