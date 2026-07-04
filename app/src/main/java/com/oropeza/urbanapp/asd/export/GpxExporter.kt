@@ -7,6 +7,7 @@ import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.location.LatLng
 import com.oropeza.urbanapp.asd.location.PolylineSmoother
+import com.oropeza.urbanapp.asd.location.engine.TrackPointQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -78,7 +79,7 @@ object GpxExporter {
             val tripDesc = trip.operationalDescription()
 
             out.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
-            out.appendLine("""<gpx version="1.1" creator="UrbanApp ASD" xmlns="http://www.topografix.com/GPX/1/1">""")
+            out.appendLine("""<gpx version="1.1" creator="Afora ASD" xmlns="http://www.topografix.com/GPX/1/1">""")
 
             out.appendLine("<metadata>")
             out.appendLine("<name>${esc(trackName)}</name>")
@@ -149,12 +150,10 @@ object GpxExporter {
             out.appendLine("<trk>")
             out.appendLine("<name>${esc(trackName)}</name>")
 
-            val orderedPts = points
-                .filter { it.lat != 0.0 && it.lon != 0.0 }
-                .sortedBy { it.timeMs }
+            val orderedPts = TrackPointQuality.cleanRoutePoints(points)
             if (orderedPts.isNotEmpty()) {
-                val raw = orderedPts.map { LatLng(it.lat, it.lon) }
-                val smooth = PolylineSmoother.movingAverage(raw, window = 3)
+                val raw = orderedPts.map { LatLng(it.filteredLat, it.filteredLon) }
+                val smooth = if (raw.size >= 3) PolylineSmoother.movingAverage(raw, window = 3) else raw
                 val gapMs = 12_000L
 
                 out.appendLine("<trkseg>")
@@ -172,6 +171,7 @@ object GpxExporter {
                     out.appendLine("""<trkpt lat="${s.lat}" lon="${s.lon}">""")
                     if (p.altM > 0.0) out.appendLine("<ele>${p.altM}</ele>")
                     out.appendLine("<time>${esc(fmtIso(p.timeMs))}</time>")
+                    out.appendLine("<desc>${esc(TrackPointQuality.auditLabel(p))}</desc>")
                     out.appendLine("</trkpt>")
                 }
                 out.appendLine("</trkseg>")
