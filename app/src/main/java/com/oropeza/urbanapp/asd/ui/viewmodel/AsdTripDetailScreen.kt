@@ -46,6 +46,8 @@ import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.export.*
 import com.oropeza.urbanapp.asd.location.*
+import com.oropeza.urbanapp.asd.domain.trip.TripDomain
+import com.oropeza.urbanapp.asd.presentation.trip.TripActions
 import com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker
 import com.oropeza.urbanapp.core.events.UrbanEventFactory
 import com.oropeza.urbanapp.core.events.UrbanEventTypes
@@ -70,6 +72,9 @@ import kotlin.math.sqrt
 import com.oropeza.urbanapp.asd.export.TrackCsvExporter
 
 class AsdTripDetailVM : ViewModel() {
+    private val actions = TripActions()
+    private val useCases = TripDomain.useCases
+
     fun tripFlow(tripId: Long) = AsdGraph.repo.tripFlow(tripId)
     fun stopsFlow(tripId: Long) = AsdGraph.repo.stopsFlow(tripId)
     fun trackLastPointFlow(tripId: Long): Flow<TrackPoint?> = AsdGraph.repo.trackLastPointFlow(tripId)
@@ -84,17 +89,19 @@ class AsdTripDetailVM : ViewModel() {
     suspend fun getStopsOnce(tripId: Long) = AsdGraph.repo.getStopsOnce(tripId)
     suspend fun getTrackPointsOnce(tripId: Long) = AsdGraph.repo.getTrackPointsOnce(tripId)
     suspend fun getTrackPointsBetweenOnce(tripId: Long, fromMs: Long, toMs: Long) = AsdGraph.repo.getTrackPointsBetweenOnce(tripId, fromMs, toMs)
-    suspend fun updateTripHeader(tripId: Long, routeName: String, company: String?, vehicleEco: String?, direction: String, routeNumber: Int?, esFs: String?, baseStart: String?, baseEnd: String?, plateNumber: String?, vehicleType: String?, seatCapacity: Int?, notes: String?, aforador: String?, supervisor: String?, deviceNumber: String?, observerSex: String?): Boolean = AsdGraph.repo.updateTripHeader(tripId, routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, notes, aforador, supervisor, deviceNumber, observerSex)
-    suspend fun exportLayoutFinal(context: Context, tripId: Long, uri: Uri): Boolean { val trip = AsdGraph.repo.getTripOnce(tripId) ?: return false; CsvExporter.exportLayoutFinal(context, uri, trip, AsdGraph.repo.getStopsOnce(tripId), AsdGraph.repo.getDelaysOnce(tripId)); return true }
-    suspend fun exportClientXlsx(context: Context, tripId: Long, uri: Uri): Boolean { val trip = AsdGraph.repo.getTripOnce(tripId) ?: return false; val events = AsdGraph.repo.getStopsOnce(tripId); val points = AsdGraph.repo.getTrackPointsOnce(tripId); AsdClientXlsxExporter.export(context, uri, trip, events, points); return true }
-    suspend fun exportTrackCsv(context: Context, tripId: Long, uri: Uri): Boolean { val points = AsdGraph.repo.getTrackPointsOnce(tripId); val raw = points.map { LatLng(it.lat, it.lon) }; val smooth = PolylineSmoother.movingAverage(raw, window = 3); val simplified = PolylineSmoother.douglasPeucker(smooth, epsilonMeters = 4.0); val rebuilt = points.take(simplified.size).mapIndexed { i, p -> p.copy(lat = simplified[i].lat, lon = simplified[i].lon) }; TrackCsvExporter.exportTrackPointsCsv(context, uri, rebuilt); return true }
-    suspend fun exportGpsAuditCsv(context: Context, tripId: Long, uri: Uri): Boolean { val points = AsdGraph.repo.getTrackPointsOnce(tripId); GpsAuditCsvExporter.export(context, uri, points); return true }
-    suspend fun exportTripGpx(context: Context, tripId: Long, uri: Uri): Boolean { val trip = AsdGraph.repo.getTripOnce(tripId) ?: return false; GpxExporter.exportTripGpx(context, uri, trip, AsdGraph.repo.getTrackPointsOnce(tripId), AsdGraph.repo.getStopsOnce(tripId)); return true }
-    suspend fun exportTripKml(context: Context, tripId: Long, uri: Uri): Boolean { val trip = AsdGraph.repo.getTripOnce(tripId) ?: return false; KmlExporter.exportTripKml(context, uri, trip, AsdGraph.repo.getTrackPointsOnce(tripId), AsdGraph.repo.getStopsOnce(tripId)); return true }
-    suspend fun exportGarminTrack(context: Context, tripId: Long, uri: Uri): Boolean { val trip = AsdGraph.repo.getTripOnce(tripId) ?: return false; val points = AsdGraph.repo.getTrackPointsOnce(tripId); AsdGarminGpxExporter.exportGarminTrack(context, uri, trip, points); return true }
-    suspend fun exportGarminWaypoints(context: Context, tripId: Long, uri: Uri): Boolean { val stops = AsdGraph.repo.getStopsOnce(tripId); AsdGarminGpxExporter.exportGarminWaypoints(context, uri, stops); return true }
-    suspend fun addStopDetailed(tripId: Long, stopType: String, stopTimeMs: Long, startTimeMs: Long, stopName: String?, notes: String?, menUp: Int, womenUp: Int, menDown: Int, womenDown: Int, hasLuggage: Boolean, delayCodes: String?, otherDelayDesc: String?, stopFix: LocationFix, startFix: LocationFix = stopFix) { AsdGraph.repo.addStopDetailed(tripId, stopType, stopTimeMs, startTimeMs, stopName, notes, menUp, womenUp, menDown, womenDown, hasLuggage, delayCodes, otherDelayDesc, stopTimeMs, stopFix.lat, stopFix.lon, stopFix.altM, stopFix.accM, stopFix.provider, stopFix.fixTime, stopFix.status, startFix.lat, startFix.lon, startFix.altM, startFix.accM, startFix.provider, startFix.fixTime); UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_EVENT_CREATED, mapOf("tripId" to tripId, "type" to stopType))) }
-    suspend fun endTripWithFix(tripId: Long, fix: LocationFix): Boolean { val ok = AsdGraph.repo.endTripWithFix(tripId, fix.lat, fix.lon, fix.altM, fix.accM, fix.provider, fix.fixTime, fix.status); if (ok) { UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_CLOSED, mapOf("tripId" to tripId))) }; return ok }
+
+    suspend fun updateTripHeader(tripId: Long, routeName: String, company: String?, vehicleEco: String?, direction: String, routeNumber: Int?, esFs: String?, baseStart: String?, baseEnd: String?, plateNumber: String?, vehicleType: String?, seatCapacity: Int?, notes: String?, aforador: String?, supervisor: String?, deviceNumber: String?, observerSex: String?): Boolean =
+        useCases.updateHeader(tripId, routeName, company, vehicleEco, direction, routeNumber, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacity, notes, aforador, supervisor, deviceNumber, observerSex).isSuccess
+
+    suspend fun export(context: Context, tripId: Long, type: String, uri: Uri): Boolean =
+        actions.export(context, tripId, type, uri)
+
+    suspend fun addStopDetailed(tripId: Long, stopType: String, stopTimeMs: Long, startTimeMs: Long, stopName: String?, notes: String?, menUp: Int, womenUp: Int, menDown: Int, womenDown: Int, hasLuggage: Boolean, delayCodes: String?, otherDelayDesc: String?, stopFix: LocationFix, startFix: LocationFix = stopFix) {
+        useCases.addStop(tripId, stopType, stopTimeMs, startTimeMs, stopName, notes, menUp, womenUp, menDown, womenDown, hasLuggage, delayCodes, otherDelayDesc, stopFix, startFix)
+    }
+
+    suspend fun endTripWithFix(tripId: Long, fix: LocationFix): Boolean =
+        actions.closeTrip(tripId, fix).isSuccess
 }
 
 private fun formatElapsed(totalSec: Long): String { val h = totalSec / 3600; val m = (totalSec % 3600) / 60; val s = totalSec % 60; return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s) }
@@ -114,7 +121,7 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val runtimeGps by TrackingService.runtimeGpsState.collectAsState()
     fun sTS() { if (TrackingService.isRunning || !gps.hasPermission()) return; val intent = Intent(context, TrackingService::class.java).apply { action = TrackingService.ACTION_START; putExtra(TrackingService.EXTRA_TRIP_ID, tripId) }; if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent) }
     fun stopTS() { if (!TrackingService.isRunning) return; context.startService(Intent(context, TrackingService::class.java).apply { action = TrackingService.ACTION_STOP }) }
-    AsdTripDetailContent(tripId, trip, stops, lastPoint, pointCount, trackPoints, syncStatus, pendingSyncCount, lastSyncTimeMs, runtimeGps, onBack, onOpenMap, { t, st, stt, n, nt, mu, wu, md, wd, l, c, d, sf, stf -> scope.launch { vm.addStopDetailed(tripId, t, st, stt, n, nt, mu, wu, md, wd, l, c, d, sf, stf) } }, { f -> vm.endTripWithFix(tripId, f) }, { r, c, e, d, num, ef, bs, be, p, v, ca, nts, af, s, dev, sex -> vm.updateTripHeader(tripId, r, c, e, d, num, ef, bs, be, p, v, ca, nts, af, s, dev, sex) }, { type, uri -> when(type) { "CLIENT" -> vm.exportClientXlsx(context, tripId, uri); "CSV" -> vm.exportLayoutFinal(context, tripId, uri); "TRACK" -> vm.exportTrackCsv(context, tripId, uri); "GPX" -> vm.exportTripGpx(context, tripId, uri); "KML" -> vm.exportTripKml(context, tripId, uri); "GARMIN_T" -> vm.exportGarminTrack(context, tripId, uri); "GARMIN_W" -> vm.exportGarminWaypoints(context, tripId, uri); else -> false } }, gps, vm, { sTS() }, { stopTS() })
+    AsdTripDetailContent(tripId, trip, stops, lastPoint, pointCount, trackPoints, syncStatus, pendingSyncCount, lastSyncTimeMs, runtimeGps, onBack, onOpenMap, { t, st, stt, n, nt, mu, wu, md, wd, l, c, d, sf, stf -> scope.launch { vm.addStopDetailed(tripId, t, st, stt, n, nt, mu, wu, md, wd, l, c, d, sf, stf) } }, { f -> vm.endTripWithFix(tripId, f) }, { r, c, e, d, num, ef, bs, be, p, v, ca, nts, af, s, dev, sex -> vm.updateTripHeader(tripId, r, c, e, d, num, ef, bs, be, p, v, ca, nts, af, s, dev, sex) }, { type, uri -> vm.export(context, tripId, type, uri) }, gps, vm, { sTS() }, { stopTS() })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -135,6 +142,12 @@ fun AsdTripDetailContent(tripId: Long, trip: Trip?, stops: List<StopEvent>, last
     fun validateCapture(s: AsdDemoSummary, t: Trip?): String? { if ((menUp + womenUp + menDown + womenDown == 0) && selectedDelayCodes.isEmpty() && otherDelayDesc.isBlank()) return "Registro vacío."; val protM = if (t?.observerSex == "H") 1 else 0; val protW = if (t?.observerSex == "M") 1 else 0; if (menDown > (s.menOnBoard + menUp - protM).coerceAtLeast(0)) return "No se puede bajar al operador (H)."; if (womenDown > (s.womenOnBoard + womenUp - protW).coerceAtLeast(0)) return "No se puede bajar a la operadora (M)."; return null }
     fun saveEvent() { val err = validateCapture(summary, trip); if (err != null) { scope.launch { snackbarHostState.showSnackbar(err) }; return }; scope.launch { loadingGps = true; gpsMsg = "Finalizando captura..."; val now = System.currentTimeMillis(); var endFix = currentFix(now); if (endFix.status == "GPS_PENDING") endFix = gps.getBestFixForEvent(15.0, 45.0, 2500L); val startFix = if (activeDelayStatus == "GPS_PENDING" && endFix.status != "GPS_PENDING") endFix.copy(status = "BACKFILLED") else LocationFix(activeDelayLat, activeDelayLon, activeDelayAccM, activeDelayAltM, activeDelayProvider, activeDelayFixTime, activeDelayStatus); onAddStop(if (menUp + womenUp + menDown + womenDown > 0) "ASD" else "DEMORA", activeDelayStartMs, now, stopName.trim(), notes.trim(), menUp, womenUp, menDown, womenDown, hasLuggage, selectedDelayCodes.joinToString("/").ifBlank { null }, otherDelayDesc.trim().ifBlank { null }, startFix, endFix); resetCapture(); loadingGps = false; gpsMsg = null; scope.launch { snackbarHostState.showSnackbar("Registro guardado ✅") } } }
     val exportCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let { scope.launch { onExport("CSV", it) } } }; val exportXlsx = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) { it?.let { scope.launch { onExport("CLIENT", it) } } }
+    val exportTrackCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let { scope.launch { onExport("TRACK", it) } } }
+    val exportGpsAuditCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let { scope.launch { onExport("GPS_AUDIT", it) } } }
+    val exportGpx = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { it?.let { scope.launch { onExport("GPX", it) } } }
+    val exportKml = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { it?.let { scope.launch { onExport("KML", it) } } }
+    val exportGarminT = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { it?.let { scope.launch { onExport("GARMIN_T", it) } } }
+    val exportGarminW = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { it?.let { scope.launch { onExport("GARMIN_W", it) } } }
     val vehicleTypesCatalog by vm.vehicleTypesFlow.collectAsState(initial = emptyList()); val capacityApplies = if (vehicleTypesCatalog.isNotEmpty()) vehicleTypesCatalog.any { it.name.equals(trip?.vehicleType, ignoreCase = true) && it.capacityApplies } else trip?.vehicleType?.uppercase()?.trim() in listOf("COMBI", "VAN", "SPRINTER"); val captureOnBoard = (summary.onBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0); val exceedsCapacity = capacityApplies && trip?.seatCapacity != null && captureOnBoard > trip.seatCapacity
 
     Scaffold(containerColor = colors.Background, snackbarHost = { SnackbarHost(snackbarHostState) }, topBar = { TopAppBar(colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface, titleContentColor = colors.Secondary, navigationIconContentColor = colors.Primary), title = { Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(text = (trip?.routeName ?: "ASD").uppercase(), style = typography.Headline, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)); TextButton(onClick = { triggerHaptic(); onOpenMap(tripId) }) { Text("MAPA", color = colors.Primary, fontWeight = FontWeight.Bold) } } }, navigationIcon = { TextButton(onClick = { triggerHaptic(); onBack() }) { Text("ATRÁS", color = colors.Primary, fontWeight = FontWeight.Bold) } }) }) { pad ->
@@ -152,7 +165,18 @@ fun AsdTripDetailContent(tripId: Long, trip: Trip?, stops: List<StopEvent>, last
             item { AforaSectionHeader("HISTORIAL DE EVENTOS", Modifier.padding(horizontal = 16.dp)) }
             if (stops.isEmpty()) { item { AforaOperationalCard(modifier = Modifier.padding(horizontal = 16.dp)) { Text("AÚN NO HAY EVENTOS.", modifier = Modifier.padding(16.dp), style = typography.BodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center) } } } else { items(stops.reversed()) { EventCard(it, fmt) } }
             item { DistanceCard(distanceKm, distanceLoading, { distanceLoading = true; scope.launch { distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsOnce(tripId)) / 1000.0 }; distanceLoading = false } }, { distanceLoading = true; scope.launch { distanceKm = withContext(Dispatchers.IO) { distanceMeters(vm.getTrackPointsBetweenOnce(tripId, System.currentTimeMillis() - 900000, System.currentTimeMillis())) / 1000.0 }; distanceLoading = false } }) }
-            item { ExportActionsCard({ exportXlsx.launch("ASD_${tripId}.xlsx") }, { exportCsv.launch("ASD_${tripId}.csv") }, { }, { }, { }, { }, { }, { }) }
+            item {
+                ExportActionsCard(
+                    onExportClientXlsx = { exportXlsx.launch("ASD_${tripId}.xlsx") },
+                    onExportCsv = { exportCsv.launch("ASD_${tripId}.csv") },
+                    onExportTrack = { exportTrackCsv.launch("TRACK_${tripId}.csv") },
+                    onExportGpsAudit = { exportGpsAuditCsv.launch("GPS_AUDIT_${tripId}.csv") },
+                    onExportGpx = { exportGpx.launch("TRIP_${tripId}.gpx") },
+                    onExportKml = { exportKml.launch("TRIP_${tripId}.kml") },
+                    onExportGarminTrack = { exportGarminT.launch("GARMIN_TRACK_${tripId}.gpx") },
+                    onExportGarminWaypoints = { exportGarminW.launch("GARMIN_WAYPOINTS_${tripId}.gpx") }
+                )
+            }
         }
     }
     if (showCloseTripConfirm) { AlertDialog(onDismissRequest = { showCloseTripConfirm = false }, title = { Text("¿CERRAR LEVANTAMIENTO?", style = typography.Title, fontWeight = FontWeight.Black) }, text = { Text("Se generará el reporte final con ${summary.onBoard} pasajeros a bordo.") }, confirmButton = { Button(onClick = { scope.launch { if (onEndTrip(currentFix(System.currentTimeMillis()))) showCloseTripConfirm = false } }, colors = ButtonDefaults.buttonColors(containerColor = colors.Danger)) { Text("CERRAR") } }, dismissButton = { TextButton(onClick = { showCloseTripConfirm = false }) { Text("CANCELAR") } }) }
@@ -238,5 +262,5 @@ private fun EditTripHeaderDialog(trip: Trip, onDismiss: () -> Unit, vm: AsdTripD
 
 private fun buildGpsQualitySummary(points: List<TrackPoint>): String { if (points.isEmpty()) return "-"; val qualities = points.map { point -> val parsed = com.oropeza.urbanapp.asd.location.GpsProviderDiagnostics.parse(point.provider); parsed.quality.ifBlank { when { point.accM <= 10.0 -> "EXCELLENT"; point.accM <= 25.0 -> "GOOD"; point.accM <= 45.0 -> "USABLE"; else -> "POOR" } } }; fun pct(label: String): Int { val count = qualities.count { it == label }; return ((count.toDouble() / qualities.size.toDouble()) * 100.0).toInt() }; return "EXCELLENT ${pct("EXCELLENT")}% / GOOD ${pct("GOOD")}% / USABLE ${pct("USABLE")}% / POOR ${pct("POOR")}%" }
 private data class AsdDemoSummary(val events: Int, val boardings: Int, val alightings: Int, val delays: Int, val onBoard: Int, val menOnBoard: Int, val womenOnBoard: Int, val trackPoints: Int) { companion object { fun from(stops: List<StopEvent>, pointCount: Int): AsdDemoSummary { var boardings = 0; var alightings = 0; var delays = 0; var onBoard = 0; var menOnBoard = 0; var womenOnBoard = 0; stops.sortedBy { it.timestamp }.forEach { event -> val up = event.paxMenUp + event.paxWomenUp; val down = event.paxMenDown + event.paxWomenDown; val type = event.stopType.uppercase(Locale.getDefault()); if (!event.delayCodes.isNullOrBlank() || type in setOf("DEMORA", "BANDERA", "DELAY")) delays += 1; boardings += up; alightings += down; onBoard = (onBoard + up - down).coerceAtLeast(0); menOnBoard = (menOnBoard + event.paxMenUp - event.paxMenDown).coerceAtLeast(0); womenOnBoard = (womenOnBoard + event.paxWomenUp - event.paxWomenDown).coerceAtLeast(0) }; return AsdDemoSummary(stops.size, boardings, alightings, delays, onBoard, menOnBoard, womenOnBoard, pointCount) } } }
-private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double { val r = 6_371_000.0; val dLat = Math.toRadians(lat2 - lat1); val dLon = Math.toRadians(lon2 - lon1); val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2.0); val c = 2 * atan2(sqrt(a), sqrt(1 - a)); return r * c }
+private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double { val r = 6_371_000.0; val dLat = Math.toRadians(lat2 - lat1); val dLat1 = Math.toRadians(lat2 - lat1); val dLon = Math.toRadians(lon2 - lon1); val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2.0); val c = 2 * atan2(sqrt(a), sqrt(1 - a)); return r * c }
 private fun distanceMeters(points: List<TrackPoint>): Double { if (points.size < 2) return 0.0; val raw = points.map { LatLng(it.lat, it.lon) }; val smooth = PolylineSmoother.movingAverage(raw, window = 3); val simplified = PolylineSmoother.douglasPeucker(smooth, epsilonMeters = 4.0); var total = 0.0; for (i in 1 until simplified.size) total += haversineMeters(simplified[i - 1].lat, simplified[i - 1].lon, simplified[i].lat, simplified[i].lon); return total }
