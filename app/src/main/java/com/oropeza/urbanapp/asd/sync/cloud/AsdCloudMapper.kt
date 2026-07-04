@@ -4,6 +4,7 @@ import android.content.Context
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
+import com.oropeza.urbanapp.asd.location.engine.TrackPointQuality
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 
 object AsdCloudMapper {
@@ -37,7 +38,6 @@ object AsdCloudMapper {
             status = if (trip.endTime == null) "ACTIVE" else "CLOSED",
             createdAt = trip.startTime,
             updatedAt = System.currentTimeMillis(),
-
             company = trip.company,
             seatCapacity = trip.seatCapacity,
             baseStart = trip.baseStart,
@@ -96,41 +96,34 @@ object AsdCloudMapper {
             timestamp = event.timestamp,
             startTime = event.startTime,
             stopTime = event.stopTime,
-
             lat = primaryLat,
             lon = primaryLon,
             alt = primaryAlt,
             accuracy = primaryAcc,
-
             stopLat = event.stopLat,
             stopLon = event.stopLon,
             stopAltM = event.stopAltM,
             stopAccM = event.stopAccM,
             stopProvider = event.stopProvider,
             stopFixTime = event.stopFixTime,
-
             startLat = event.startLat,
             startLon = event.startLon,
             startAltM = event.startAltM,
             startAccM = event.startAccM,
             startProvider = event.startProvider,
             startFixTime = event.startFixTime,
-
             locationStatus = event.locationStatus,
-
             menUp = event.paxMenUp,
             womenUp = event.paxWomenUp,
             menDown = event.paxMenDown,
             womenDown = event.paxWomenDown,
             onboardMen = onboardMen,
             onboardWomen = onboardWomen,
-
             delayCodes = event.delayCodes,
             stopName = event.stopName,
             notes = event.notes,
             otherDelayDesc = event.otherDelayDesc,
             hasLuggage = event.hasLuggage,
-
             createdAt = event.timestamp,
             updatedAt = System.currentTimeMillis()
         )
@@ -142,6 +135,24 @@ object AsdCloudMapper {
         alt = p.altM,
         accuracy = p.accM,
         time = p.timeMs,
-        provider = p.provider
+        provider = p.provider,
+        rawLat = p.rawLat,
+        rawLon = p.rawLon,
+        rawAlt = p.rawAltM,
+        filteredLat = p.filteredLat,
+        filteredLon = p.filteredLon,
+        sourceFixTime = p.sourceFixTimeMs,
+        receivedAt = p.receivedAtMs,
+        savedAt = p.savedAtMs,
+        sampleStatus = p.sampleStatus,
+        qualityStatus = p.qualityStatus,
+        geometryStatus = p.geometryStatus,
+        filterStatus = p.filterStatus,
+        engineMode = p.engineMode,
+        armStatus = p.armStatus,
+        isStale = p.isStale,
+        isBackfillEligible = p.isBackfillEligible,
+        isSynthetic = p.isSynthetic,
+        isCleanRoutePoint = TrackPointQuality.isCleanRoutePoint(p)
     )
 }
