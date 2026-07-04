@@ -22,7 +22,7 @@ import com.oropeza.urbanapp.dashboard.OperationalDashboardDao
         AsdCatalogSyncState::class,
         AsdSyncQueueItem::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
