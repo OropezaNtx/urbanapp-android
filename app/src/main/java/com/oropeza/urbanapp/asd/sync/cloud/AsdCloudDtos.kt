@@ -3,7 +3,7 @@ package com.oropeza.urbanapp.asd.sync.cloud
 data class AsdTripCloudDto(
     val cloudTripId: String,
     val localTripId: Long,
-    val workspaceId: String, // standardized to workspaceId
+    val workspaceId: String,
     val projectId: String,
     val workspaceEnvironment: String,
     val routeId: String,
@@ -84,11 +84,16 @@ data class AsdTrackChunkCloudDto(
     val localTripId: Long,
     val chunkIndex: Int,
     val pointCount: Int,
+    val cleanPointCount: Int,
+    val stalePointCount: Int,
+    val noFixPointCount: Int,
+    val syntheticPointCount: Int,
     val points: List<AsdTrackPointDto>,
     val startTime: Long,
     val endTime: Long,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val schemaVersion: Int = 2
 )
 
 data class AsdTrackPointDto(
@@ -97,5 +102,23 @@ data class AsdTrackPointDto(
     val alt: Double?,
     val accuracy: Double,
     val time: Long,
-    val provider: String?
+    val provider: String?,
+    val rawLat: Double,
+    val rawLon: Double,
+    val rawAlt: Double?,
+    val filteredLat: Double,
+    val filteredLon: Double,
+    val sourceFixTime: Long,
+    val receivedAt: Long,
+    val savedAt: Long,
+    val sampleStatus: String,
+    val qualityStatus: String,
+    val geometryStatus: String,
+    val filterStatus: String,
+    val engineMode: String,
+    val armStatus: String,
+    val isStale: Boolean,
+    val isBackfillEligible: Boolean,
+    val isSynthetic: Boolean,
+    val isCleanRoutePoint: Boolean
 )
