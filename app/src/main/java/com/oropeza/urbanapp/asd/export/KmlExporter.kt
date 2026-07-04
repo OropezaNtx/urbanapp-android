@@ -7,6 +7,7 @@ import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
 import com.oropeza.urbanapp.asd.location.LatLng
 import com.oropeza.urbanapp.asd.location.PolylineSmoother
+import com.oropeza.urbanapp.asd.location.engine.TrackPointQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -31,7 +32,7 @@ object KmlExporter {
 
     private fun Trip.operationalDescription(): String {
         return buildString {
-            append("UrbanApp ASD")
+            append("Afora ASD")
             append("\nInicio: ${fmtIso(startTime)}")
             if (!company.isNullOrBlank()) append("\nEmpresa: $company")
             if (!aforador.isNullOrBlank()) append("\nAforador: $aforador")
@@ -55,10 +56,8 @@ object KmlExporter {
 
         os.bufferedWriter(Charsets.UTF_8).use { out ->
             val tripName = "${trip.routeName} - ${trip.direction} (Trip ${trip.tripId})"
-            val orderedPts = points
-                .filter { it.lat != 0.0 && it.lon != 0.0 }
-                .sortedBy { it.timeMs }
-            val raw = orderedPts.map { LatLng(it.lat, it.lon) }
+            val orderedPts = TrackPointQuality.cleanRoutePoints(points)
+            val raw = orderedPts.map { LatLng(it.filteredLat, it.filteredLon) }
             val smooth = if (raw.size >= 3) PolylineSmoother.movingAverage(raw, window = 3) else raw
 
             out.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
@@ -70,7 +69,7 @@ object KmlExporter {
             writeStyles(out)
 
             out.appendLine("<Folder>")
-            out.appendLine("<name>Recorrido</name>")
+            out.appendLine("<name>Recorrido limpio</name>")
             out.appendLine("<Placemark>")
             out.appendLine("<name>${esc(tripName)}</name>")
             out.appendLine("<styleUrl>#routeStyle</styleUrl>")
@@ -78,9 +77,9 @@ object KmlExporter {
             out.appendLine("<altitudeMode>relativeToGround</altitudeMode>")
             out.appendLine("<tessellate>1</tessellate>")
             out.appendLine("<coordinates>")
-            smooth.forEachIndexed { i, p -> 
+            smooth.forEachIndexed { i, p ->
                 val orig = orderedPts[i]
-                out.appendLine("${p.lon},${p.lat},${if (orig.altM > 0.0) orig.altM else 0.0}") 
+                out.appendLine("${p.lon},${p.lat},${if (orig.altM > 0.0) orig.altM else 0.0}")
             }
             out.appendLine("</coordinates>")
             out.appendLine("</LineString>")
