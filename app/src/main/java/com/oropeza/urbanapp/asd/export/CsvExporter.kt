@@ -274,8 +274,23 @@ object CsvExporter {
             "delta_seg",
             "lat",
             "lon",
+            "rawLat",
+            "rawLon",
+            "filteredLat",
+            "filteredLon",
             "accM",
-            "gps_quality",
+            "sampleStatus",
+            "qualityStatus",
+            "geometryStatus",
+            "filterStatus",
+            "engineMode",
+            "armStatus",
+            "isStale",
+            "isBackfillEligible",
+            "isSynthetic",
+            "sourceFixTimeMs",
+            "receivedAtMs",
+            "savedAtMs",
             "provider"
         )
         val rows = ordered.mapIndexed { index, p ->
@@ -288,8 +303,23 @@ object CsvExporter {
                 deltaSec,
                 p.lat,
                 p.lon,
+                p.rawLat,
+                p.rawLon,
+                p.filteredLat,
+                p.filteredLon,
                 p.accM,
-                gpsQuality(p.accM),
+                p.sampleStatus,
+                p.qualityStatus,
+                p.geometryStatus,
+                p.filterStatus,
+                p.engineMode,
+                p.armStatus,
+                p.isStale,
+                p.isBackfillEligible,
+                p.isSynthetic,
+                p.sourceFixTimeMs,
+                p.receivedAtMs,
+                p.savedAtMs,
                 p.provider
             )
         }
@@ -344,7 +374,7 @@ object CsvExporter {
                 e.provider,
                 fmtDateTime(e.fixTime),
                 e.locationStatus,
-                if (e.timeIsManual) "Y" else "N"
+                if (e.timeIsManual) "SI" else "NO"
             )
         }
 
