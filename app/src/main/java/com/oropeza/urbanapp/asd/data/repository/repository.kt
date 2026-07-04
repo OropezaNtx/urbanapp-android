@@ -4,6 +4,7 @@ import android.util.Log
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.backup.AsdOnlineBackup
 import com.oropeza.urbanapp.asd.data.local.*
+import com.oropeza.urbanapp.asd.location.engine.TrackPointQuality
 import com.oropeza.urbanapp.asd.sync.cloud.*
 import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
 import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
@@ -96,12 +97,12 @@ class AsdRepository(private val db: AppDatabase) {
     }
 
     suspend fun completePendingGpsEvents(tripId: Long, point: TrackPoint): Int {
+        if (!point.isBackfillEligible) return 0
         if (point.lat == 0.0 || point.lon == 0.0) return 0
         if (point.accM <= 0.0 || point.accM > 60.0) return 0
         val pending = stopDao.getPendingGpsEvents(tripId, limit = 10)
         var updated = 0
         pending.forEach { event ->
-            // ✅ Backfill inteligente: solo si la diferencia de tiempo es <= 30 segundos
             val diffMs = kotlin.math.abs(point.timeMs - event.timestamp)
             if (diffMs <= 30_000L) {
                 val updatedEvent = event.copy(
@@ -177,7 +178,6 @@ class AsdRepository(private val db: AppDatabase) {
         val tripId = tripDao.insert(trip)
         val finalTrip = trip.copy(tripId = tripId)
 
-        // Cloud Sync Enqueue
         try {
             val context = AsdGraph.appContext
             val cloudTrip = AsdCloudMapper.toCloudDto(context, finalTrip)
@@ -261,15 +261,11 @@ class AsdRepository(private val db: AppDatabase) {
         val ok = tripDao.update(finalTrip) > 0
 
         if (ok) {
-            // Cloud Sync Enqueue
             try {
                 val context = AsdGraph.appContext
                 val cloudTrip = AsdCloudMapper.toCloudDto(context, finalTrip)
                 enqueueSync("TRIP", "UPSERT", tripId, cloudTrip)
-
-                // Chunk track points
                 enqueueTrackChunks(tripId)
-
                 UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_SYNC_READY, mapOf("tripId" to tripId)))
             } catch (e: Exception) {
                 android.util.Log.w("AsdRepository", "Failed to enqueue trip closure for sync", e)
@@ -310,11 +306,12 @@ class AsdRepository(private val db: AppDatabase) {
 
     private fun isTripBoundaryFlag(stopType: String, stopName: String?, delayCodes: String?): Boolean {
         if (!stopType.equals("BANDERA", ignoreCase = true)) return false
-        val combined = listOfNotNull(stopName, delayCodes).joinToString("/").uppercase()
-        return combined.contains("AD/INICIO") || combined.contains("AD/FINAL")
+        val n = stopName?.uppercase().orEmpty()
+        val c = delayCodes?.uppercase().orEmpty()
+        return n.contains("AD/INICIO") || n.contains("AD/FINAL") || c.contains("AD/INICIO") || c.contains("AD/FINAL")
     }
 
-    suspend fun addStopDetailed(
+    private suspend fun addStopDetailed(
         tripId: Long,
         stopType: String,
         stopTimeMs: Long,
@@ -328,14 +325,14 @@ class AsdRepository(private val db: AppDatabase) {
         hasLuggage: Boolean,
         delayCodes: String?,
         otherDelayDesc: String?,
-        eventTimestampMs: Long? = null,
-        stopLat: Double = 0.0,
-        stopLon: Double = 0.0,
+        eventTimestampMs: Long,
+        stopLat: Double,
+        stopLon: Double,
         stopAltM: Double = 0.0,
-        stopAccM: Double = 0.0,
-        stopProvider: String = "",
-        stopFixTime: Long = 0L,
-        locationStatus: String = "NO_FIX",
+        stopAccM: Double,
+        stopProvider: String,
+        stopFixTime: Long,
+        locationStatus: String,
         startLat: Double = 0.0,
         startLon: Double = 0.0,
         startAltM: Double = 0.0,
@@ -343,93 +340,51 @@ class AsdRepository(private val db: AppDatabase) {
         startProvider: String = "",
         startFixTime: Long = 0L
     ) {
-        val now = eventTimestampMs ?: System.currentTimeMillis()
-        val cleanMenUp = max(0, menUp)
-        val cleanWomenUp = max(0, womenUp)
-        val cleanMenDown = max(0, menDown)
-        val cleanWomenDown = max(0, womenDown)
-        val up = cleanMenUp + cleanWomenUp
-        val down = cleanMenDown + cleanWomenDown
-        val normalizedDelayCodes = normalizeDelayCodes(delayCodes, up, down)
-
-        val isAdFinal = normalizedDelayCodes?.contains("AD/FINAL") == true
-
-        if (!isAdFinal) {
-            val trip = tripDao.getByIdOnce(tripId)
-            val normSex = normalizeSex(trip?.observerSex)
-            val (mOnBoard, wOnBoard) = computeDetailedOnBoard(tripId)
-
-            if (normSex == "H") {
-                if (cleanMenDown > (mOnBoard + cleanMenUp - 1).coerceAtLeast(0)) {
-                    throw IllegalStateException("No puedes bajar al observador durante el recorrido.")
-                }
-            } else if (normSex == "M") {
-                if (cleanWomenDown > (wOnBoard + cleanWomenUp - 1).coerceAtLeast(0)) {
-                    throw IllegalStateException("No puedes bajar a la observadora durante el recorrido.")
-                }
+        val pair = if (isTripBoundaryFlag(stopType, stopName, delayCodes)) {
+            val fixed = if (stopName?.contains("FINAL", ignoreCase = true) == true || delayCodes?.contains("FINAL", ignoreCase = true) == true) {
+                (tripDao.getByIdOnce(tripId)?.nextWaypointId ?: 1).let { id -> com.oropeza.urbanapp.asd.data.local.WaypointPair(id, id) }
+            } else {
+                com.oropeza.urbanapp.asd.data.local.WaypointPair(1, 1)
             }
-        }
-
-        if (stopType.equals("DESCENSO", ignoreCase = true)) {
-            val onboard = computeOnBoard(tripId)
-            if (down > onboard) throw IllegalStateException("No puedes bajar $down si solo van $onboard a bordo.")
-        }
-        val pair = if (isTripBoundaryFlag(stopType, stopName, normalizedDelayCodes)) {
-            tripDao.reserveSingleWaypoint(tripId)
         } else {
             tripDao.reserveWaypointPair(tripId)
         }
-        val count = when (stopType.uppercase()) {
-            "ASCENSO" -> up
-            "DESCENSO" -> down
-            "ASD" -> up + down
-            else -> 0
-        }
+
         val event = StopEvent(
             tripId = tripId,
-            timestamp = now,
-            stopType = stopType.uppercase(),
-            count = count.coerceAtLeast(0),
+            timestamp = eventTimestampMs,
+            stopType = stopType.trim().uppercase(),
+            count = menUp + womenUp,
             stopName = cleanText(stopName),
             notes = cleanText(notes),
             waypointStopId = pair.inId,
             waypointStartId = pair.outId,
             stopTime = stopTimeMs,
-            startTime = startTimeMs,
             stopLat = stopLat,
             stopLon = stopLon,
             stopAltM = stopAltM,
-            startLat = startLat,
-            startLon = startLon,
-            startAltM = startAltM,
             stopAccM = stopAccM,
             stopProvider = stopProvider,
             stopFixTime = stopFixTime,
+            startTime = startTimeMs,
+            startLat = startLat,
+            startLon = startLon,
+            startAltM = startAltM,
             startAccM = startAccM,
             startProvider = startProvider,
             startFixTime = startFixTime,
             locationStatus = locationStatus,
-            paxMenUp = cleanMenUp,
-            paxWomenUp = cleanWomenUp,
-            paxMenDown = cleanMenDown,
-            paxWomenDown = cleanWomenDown,
+            delayCodes = normalizeDelayCodes(delayCodes, menUp + womenUp, menDown + womenDown),
+            otherDelayDesc = cleanText(otherDelayDesc),
             hasLuggage = hasLuggage,
-            delayCodes = normalizedDelayCodes,
-            otherDelayDesc = cleanText(otherDelayDesc)
+            paxMenUp = menUp,
+            paxWomenUp = womenUp,
+            paxMenDown = menDown,
+            paxWomenDown = womenDown
         )
         val insertedId = stopDao.insert(event)
         val finalEvent = event.copy(eventId = insertedId)
-        Log.d(
-            "ASD_ROOM_EVENT",
-            "inserted eventId=${finalEvent.eventId}, " +
-                    "type=${finalEvent.stopType}, " +
-                    "delayCodes=${finalEvent.delayCodes}, " +
-                    "locationStatus=${finalEvent.locationStatus}, " +
-                    "stopLat=${finalEvent.stopLat}, stopLon=${finalEvent.stopLon}, stopAcc=${finalEvent.stopAccM}, " +
-                    "startLat=${finalEvent.startLat}, startLon=${finalEvent.startLon}, startAcc=${finalEvent.startAccM}"
-        )
 
-        // Cloud Sync Enqueue
         try {
             val context = AsdGraph.appContext
             val identity = UrbanRuntime.identity(context)
@@ -507,7 +462,6 @@ class AsdRepository(private val db: AppDatabase) {
         val insertedId = stopDao.insert(event)
         val finalEvent = event.copy(eventId = insertedId)
 
-        // Cloud Sync Enqueue
         try {
             val context = AsdGraph.appContext
             val identity = UrbanRuntime.identity(context)
@@ -557,7 +511,6 @@ class AsdRepository(private val db: AppDatabase) {
         )
         val ok = stopDao.update(updated) > 0
         if (ok) {
-            // Cloud Sync Enqueue
             try {
                 val context = AsdGraph.appContext
                 val identity = UrbanRuntime.identity(context)
@@ -632,7 +585,6 @@ class AsdRepository(private val db: AppDatabase) {
     suspend fun getCatalogSyncStateOnce() = asdCatalogSyncStateDao.getStateOnce()
     suspend fun updateCatalogSyncState(state: AsdCatalogSyncState) = asdCatalogSyncStateDao.upsert(state)
 
-    // ✅ Sync Queue
     internal suspend fun enqueueSync(
         type: String,
         operation: String,
@@ -648,10 +600,7 @@ class AsdRepository(private val db: AppDatabase) {
 
             val effectivePath = cloudPath ?: when(type) {
                 "TRIP" -> UrbanCloudPaths.tripPath(workspace, "${identity.installationId}_$localId")
-                "EVENT" -> {
-                    // This is a fallback for legacy enqueuing
-                    UrbanCloudPaths.tripEventPath(workspace, "${identity.installationId}_0", "${identity.installationId}_$localId")
-                }
+                "EVENT" -> UrbanCloudPaths.tripEventPath(workspace, "${identity.installationId}_0", "${identity.installationId}_$localId")
                 else -> null
             }
 
@@ -666,7 +615,6 @@ class AsdRepository(private val db: AppDatabase) {
                     status = "PENDING"
                 )
             )
-            // ✅ Phase 6: Trigger cloud sync activation
             com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler.syncNow(context)
         } catch (e: Exception) {
             android.util.Log.e("AsdRepository", "Sync enqueue failed for $type", e)
@@ -681,10 +629,6 @@ class AsdRepository(private val db: AppDatabase) {
     suspend fun updateSyncItem(item: AsdSyncQueueItem) = syncQueueDao.update(item)
     suspend fun getLastFailedSyncItem() = syncQueueDao.getLastFailedItem()
 
-    /**
-     * Manual trigger for Phase 2 validation using NoopCloudSyncTarget.
-     * Voids the queue by marking all as SYNCED.
-     */
     suspend fun triggerManualNoopSync(): Int {
         val engine = com.oropeza.urbanapp.asd.sync.cloud.CloudSyncEngine(
             this,
@@ -693,9 +637,6 @@ class AsdRepository(private val db: AppDatabase) {
         return engine.processNextBatch()
     }
 
-    /**
-     * Manual trigger for Phase 3 validation using real FirestoreCloudSyncTarget.
-     */
     suspend fun triggerManualCloudSync(): Int {
         val engine = com.oropeza.urbanapp.asd.sync.cloud.CloudSyncEngine(
             this,
@@ -736,7 +677,8 @@ class AsdRepository(private val db: AppDatabase) {
                 mapOf(
                     "tripId" to tripId,
                     "cloudTripId" to cloudTripId,
-                    "pointCount" to points.size
+                    "pointCount" to points.size,
+                    "cleanPointCount" to points.count { TrackPointQuality.isCleanRoutePoint(it) }
                 )
             )
         )
@@ -756,7 +698,7 @@ class AsdRepository(private val db: AppDatabase) {
         }
 
         val chunkSize = UrbanRuntime.configuration(context).trackChunkSize.coerceAtLeast(10)
-        val chunks = points.chunked(chunkSize)
+        val chunks = points.sortedBy { it.timeMs }.chunked(chunkSize)
 
         chunks.forEachIndexed { index, chunk ->
             val chunkId = "${cloudTripId}_chunk_$index"
@@ -766,6 +708,10 @@ class AsdRepository(private val db: AppDatabase) {
                 localTripId = tripId,
                 chunkIndex = index,
                 pointCount = chunk.size,
+                cleanPointCount = chunk.count { TrackPointQuality.isCleanRoutePoint(it) },
+                stalePointCount = chunk.count { it.sampleStatus == "STALE" },
+                noFixPointCount = chunk.count { it.sampleStatus == "NO_FIX" },
+                syntheticPointCount = chunk.count { it.isSynthetic },
                 points = chunk.map { AsdCloudMapper.toTrackPointDto(it) },
                 startTime = chunk.first().timeMs,
                 endTime = chunk.last().timeMs,
@@ -787,6 +733,7 @@ class AsdRepository(private val db: AppDatabase) {
                         "tripId" to tripId,
                         "index" to index,
                         "pointCount" to chunk.size,
+                        "cleanPointCount" to chunk.count { TrackPointQuality.isCleanRoutePoint(it) },
                         "cloudPath" to UrbanCloudPaths.trackChunkPath(workspace, cloudTripId, chunkId)
                     )
                 )
