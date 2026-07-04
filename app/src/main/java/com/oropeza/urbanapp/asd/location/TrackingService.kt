@@ -65,6 +65,17 @@ class TrackingService : Service() {
         val receivedAtMs: Long
     )
 
+    private enum class Mode { ACQUIRE, TRACK, STILL }
+
+    private data class GpsClassification(
+        val sampleTag: String,
+        val qualityTag: String,
+        val geometryTag: String,
+        val shouldUseKalman: Boolean,
+        val shouldUpdateAcceptedAnchor: Boolean,
+        val shouldBackfillEvents: Boolean
+    )
+
     private val requiredAccM = 25.0
     private val usableAccM = 45.0
     private val kalmanUseAccM = 45.0
@@ -73,19 +84,17 @@ class TrackingService : Service() {
     private val maxSpeedMs = 45.0
     private val jumpM = 45.0
     private val jumpAccM = 25.0
-
-    private val minSaveDistanceM = 4.0
     private val stationaryBaseRadiusM = 14.0
-    private val maxSaveIntervalMs = 2_000L
 
-    private enum class Mode { ACQUIRE, TRACK, STILL }
+    private val fixedCaptureIntervalMs = 2_000L
+    private val staleFixAfterMs = 6_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var mainJob: Job? = null
     private var gpsUpdatesJob: Job? = null
     private var saverJob: Job? = null
     private var watchdogJob: Job? = null
-    
+
     private var currentTripId: Long? = null
 
     private lateinit var gps: LocationProvider
@@ -144,13 +153,14 @@ class TrackingService : Service() {
 
         resetTrackingState()
         currentTripId = tripId
+        currentMode = Mode.ACQUIRE
 
         mainJob = scope.launch {
             if (!gps.hasPermission()) {
                 Log.w(TAG, "Sin permisos de ubicación. No se inicia tracking.")
                 return@launch
             }
-            
+
             startGpsUpdates()
             startSaverLoop()
             startWatchdogLoop()
@@ -162,7 +172,7 @@ class TrackingService : Service() {
         gpsUpdatesJob?.cancel()
         saverJob?.cancel()
         watchdogJob?.cancel()
-        
+
         _runtimeGpsState.value = RuntimeGpsState(mode = "IDLE")
 
         recordingArmed = false
@@ -191,8 +201,8 @@ class TrackingService : Service() {
                 minDistanceM = 0f,
                 maxWaitTimeMs = 0L,
                 highAccuracy = true
-            ).catch { e -> 
-                Log.e(TAG, "Error en locationUpdates()", e) 
+            ).catch { e ->
+                Log.e(TAG, "Error en locationUpdates()", e)
             }.collect { loc ->
                 val now = System.currentTimeMillis()
                 latestFix = LatestFix(
@@ -231,11 +241,9 @@ class TrackingService : Service() {
         saverJob?.cancel()
         saverJob = scope.launch {
             while (true) {
-                delay(2000L)
+                delay(fixedCaptureIntervalMs)
                 val tripId = currentTripId ?: continue
-                val fix = latestFix ?: continue
-                
-                saveTrackPointIfNeeded(tripId, fix)
+                saveTrackPointSample(tripId, latestFix)
             }
         }
     }
@@ -245,44 +253,142 @@ class TrackingService : Service() {
         watchdogJob = scope.launch {
             while (true) {
                 delay(3000L)
-                if (System.currentTimeMillis() - latestFixReceivedAtMs > 6000L) {
+                if (System.currentTimeMillis() - latestFixReceivedAtMs > staleFixAfterMs) {
                     restartGpsUpdates()
                 }
             }
         }
     }
 
-    private suspend fun saveTrackPointIfNeeded(tripId: Long, fix: LatestFix) {
+    private suspend fun saveTrackPointSample(tripId: Long, fix: LatestFix?) {
+        val timeMs = System.currentTimeMillis()
+
+        if (fix == null) {
+            currentMode = Mode.ACQUIRE
+            persistTrackPoint(
+                tripId = tripId,
+                point = TrackPoint(
+                    tripId = tripId,
+                    timeMs = timeMs,
+                    lat = 0.0,
+                    lon = 0.0,
+                    accM = 9999.0,
+                    provider = "none+raw+ACQUIRE+NO_FIX+NO_FIX+NO_FIX"
+                ),
+                shouldBackfillEvents = false
+            )
+            return
+        }
+
+        val ageMs = timeMs - fix.receivedAtMs
+        val isStale = ageMs > staleFixAfterMs
         val lat = fix.lat
         val lon = fix.lon
         val accM = fix.accM
-        val timeMs = System.currentTimeMillis()
-        val elapsedNanos = fix.elapsedNanos
-        val provider = fix.provider
+        val provider = fix.provider ?: "fused"
 
-        if (accM > 80.0) return
+        if (!isStale && accM <= requiredAccM) goodFixStreak++ else goodFixStreak = 0
 
-        if (accM <= requiredAccM) goodFixStreak++ else goodFixStreak = 0
-
-        if (!recordingArmed) {
-            if (goodFixStreak >= goodFixNeeded) {
-                recordingArmed = true
-                kalmanTrack.reset()
-                lastAcceptedElapsedNanos = null
-                lastAcceptedTimeMs = null
-                lastAcceptedLat = null
-                lastAcceptedLon = null
-                lastSavedTimeMs = null
-                lastSavedLat = null
-                lastSavedLon = null
-                stillCounter = 0
-                currentMode = Mode.TRACK
-                Log.i(TAG, "Recording ARMED (acc <= $requiredAccM)")
-            } else if (accM > usableAccM) {
-                currentMode = Mode.ACQUIRE
-                return
-            }
+        if (!recordingArmed && goodFixStreak >= goodFixNeeded) {
+            recordingArmed = true
+            kalmanTrack.reset()
+            lastAcceptedElapsedNanos = null
+            lastAcceptedTimeMs = null
+            lastAcceptedLat = null
+            lastAcceptedLon = null
+            lastSavedTimeMs = null
+            lastSavedLat = null
+            lastSavedLon = null
+            stillCounter = 0
+            currentMode = Mode.TRACK
+            Log.i(TAG, "Recording ARMED (acc <= $requiredAccM)")
+        } else if (!recordingArmed) {
+            currentMode = Mode.ACQUIRE
         }
+
+        val classification = classifyFix(
+            lat = lat,
+            lon = lon,
+            accM = accM,
+            timeMs = timeMs,
+            elapsedNanos = fix.elapsedNanos,
+            isStale = isStale
+        )
+
+        val useKalman = classification.shouldUseKalman
+        val isStationary = (currentMode == Mode.STILL) || (stillCounter >= 3)
+        val (latOut, lonOut) = if (useKalman) {
+            kalmanTrack.update(
+                lat = lat,
+                lon = lon,
+                accM = accM,
+                timeMs = timeMs,
+                isStationary = isStationary
+            )
+        } else {
+            lat to lon
+        }
+
+        if (classification.shouldUpdateAcceptedAnchor) {
+            lastAcceptedElapsedNanos = if (fix.elapsedNanos > 0L) fix.elapsedNanos else lastAcceptedElapsedNanos
+            lastAcceptedTimeMs = timeMs
+            lastAcceptedLat = latOut
+            lastAcceptedLon = lonOut
+        }
+
+        val modeTag = currentMode?.name ?: "NA"
+        val armingTag = if (recordingArmed) "ARMED" else "QUICK"
+        val filterTag = if (useKalman) "kalman" else "raw"
+
+        val p = TrackPoint(
+            tripId = tripId,
+            timeMs = timeMs,
+            lat = latOut,
+            lon = lonOut,
+            accM = accM,
+            provider = "$provider+$filterTag+$modeTag+$armingTag+${classification.sampleTag}+${classification.qualityTag}+${classification.geometryTag}"
+        )
+
+        lastSavedTimeMs = timeMs
+        lastSavedLat = latOut
+        lastSavedLon = lonOut
+
+        persistTrackPoint(
+            tripId = tripId,
+            point = p,
+            shouldBackfillEvents = classification.shouldBackfillEvents
+        )
+    }
+
+    private fun classifyFix(
+        lat: Double,
+        lon: Double,
+        accM: Double,
+        timeMs: Long,
+        elapsedNanos: Long,
+        isStale: Boolean
+    ): GpsClassification {
+        if (lat == 0.0 && lon == 0.0) {
+            return GpsClassification(
+                sampleTag = "NO_FIX",
+                qualityTag = "NO_FIX",
+                geometryTag = "NO_FIX",
+                shouldUseKalman = false,
+                shouldUpdateAcceptedAnchor = false,
+                shouldBackfillEvents = false
+            )
+        }
+
+        val sampleTag = if (isStale) "STALE" else "LIVE"
+        val qualityTag = when {
+            accM <= requiredAccM -> "GOOD_ACCURACY"
+            accM <= usableAccM -> "USABLE_ACCURACY"
+            accM <= 80.0 -> "LOW_ACCURACY"
+            else -> "VERY_LOW_ACCURACY"
+        }
+
+        var geometryTag = "GEOMETRY_OK"
+        var shouldUpdateAcceptedAnchor = !isStale
 
         val lastT = lastAcceptedTimeMs
         val lastLat = lastAcceptedLat
@@ -298,86 +404,65 @@ class TrackingService : Service() {
 
             val distM = haversineMeters(lastLat!!, lastLon!!, lat, lon)
             val speedMs = distM / dtSec
-
-            if (speedMs > maxSpeedMs) return
-            if (distM > jumpM && accM > jumpAccM) return
-
             val noiseRadiusM = maxOf(stationaryBaseRadiusM, accM * 1.4)
 
-            if (distM < noiseRadiusM && speedMs < 1.2 && accM <= usableAccM) {
+            geometryTag = when {
+                speedMs > maxSpeedMs -> "SUSPECT_SPEED"
+                distM > jumpM && accM > jumpAccM -> "SUSPECT_JUMP"
+                else -> "GEOMETRY_OK"
+            }
+
+            if (distM < noiseRadiusM && speedMs < 1.2 && accM <= usableAccM && !isStale) {
                 stillCounter++
-            } else {
+            } else if (!isStale) {
                 stillCounter = 0
             }
-            
+
             if (stillCounter >= 8) currentMode = Mode.STILL
             if (stillCounter == 0 && currentMode == Mode.STILL) currentMode = Mode.TRACK
-        }
 
-        val useKalman = accM <= kalmanUseAccM
-        val isStationary = (currentMode == Mode.STILL) || (stillCounter >= 3)
-        val (latF, lonF) = if (useKalman) {
-            kalmanTrack.update(lat = lat, lon = lon, accM = accM, timeMs = timeMs, isStationary = isStationary)
-        } else {
-            lat to lon
-        }
-
-        lastAcceptedElapsedNanos = if (elapsedNanos > 0L) elapsedNanos else lastAcceptedElapsedNanos
-        lastAcceptedTimeMs = timeMs
-        lastAcceptedLat = latF
-        lastAcceptedLon = lonF
-
-        if (latF != 0.0 && lonF != 0.0) {
-            val modeTag = currentMode?.name ?: "NA"
-            val qualityTag = if (recordingArmed) "ARMED" else "QUICK"
-            val isStale = System.currentTimeMillis() - fix.receivedAtMs > 6000L
-            val staleTag = if (isStale) "STALE" else "LIVE"
-
-            val p = TrackPoint(
-                tripId = tripId,
-                timeMs = timeMs,
-                lat = latF,
-                lon = lonF,
-                accM = accM,
-                provider = ((provider ?: "fused") + if (useKalman) "+kalman" else "+raw") + "+$modeTag+$qualityTag+$staleTag"
-            )
-            lastSavedTimeMs = timeMs
-            lastSavedLat = latF
-            lastSavedLon = lonF
-            
-            try {
-                AsdGraph.db.trackDao().insert(p)
-                _runtimeGpsState.value = _runtimeGpsState.value.copy(savedAtMs = System.currentTimeMillis())
-                val completed = AsdGraph.repo.completePendingGpsEvents(tripId, p)
-                if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error insertando TrackPoint o completando GPS pendiente", e)
+            if (geometryTag != "GEOMETRY_OK") {
+                shouldUpdateAcceptedAnchor = false
             }
         }
+
+        val shouldUseKalman = !isStale && accM <= kalmanUseAccM && geometryTag == "GEOMETRY_OK"
+        val shouldBackfillEvents = !isStale && accM > 0.0 && accM <= 60.0 && geometryTag == "GEOMETRY_OK"
+
+        return GpsClassification(
+            sampleTag = sampleTag,
+            qualityTag = qualityTag,
+            geometryTag = geometryTag,
+            shouldUseKalman = shouldUseKalman,
+            shouldUpdateAcceptedAnchor = shouldUpdateAcceptedAnchor,
+            shouldBackfillEvents = shouldBackfillEvents
+        )
     }
 
-    private fun shouldSaveTrackPoint(
-        lat: Double,
-        lon: Double,
-        timeMs: Long,
-        accM: Double
-    ): Boolean {
-        val savedTime = lastSavedTimeMs
-        val savedLat = lastSavedLat
-        val savedLon = lastSavedLon
-        if (savedTime == null || savedLat == null || savedLon == null) return true
+    private suspend fun persistTrackPoint(
+        tripId: Long,
+        point: TrackPoint,
+        shouldBackfillEvents: Boolean
+    ) {
+        try {
+            AsdGraph.db.trackDao().insert(point)
+            _runtimeGpsState.value = _runtimeGpsState.value.copy(
+                lat = point.lat,
+                lon = point.lon,
+                accM = point.accM,
+                provider = point.provider,
+                savedAtMs = System.currentTimeMillis(),
+                mode = currentMode?.name ?: "NA",
+                isRecordingArmed = recordingArmed
+            )
 
-        val distanceM = haversineMeters(savedLat, savedLon, lat, lon)
-        val elapsedMs = (timeMs - savedTime).coerceAtLeast(0L)
-
-        val noiseRadiusM = maxOf(stationaryBaseRadiusM, accM * 1.4)
-        val isStill = currentMode == Mode.STILL || stillCounter >= 3
-
-        if (isStill && distanceM < noiseRadiusM) {
-            return false
+            if (shouldBackfillEvents) {
+                val completed = AsdGraph.repo.completePendingGpsEvents(tripId, point)
+                if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error insertando TrackPoint o completando GPS pendiente", e)
         }
-
-        return distanceM >= minSaveDistanceM || elapsedMs >= maxSaveIntervalMs
     }
 
     private fun stopTracking() {
