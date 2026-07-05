@@ -1,4 +1,4 @@
-package com.oropeza.urbanapp.asd.export
+﻿package com.oropeza.urbanapp.asd.export
 
 import android.content.Context
 import android.net.Uri
@@ -140,12 +140,23 @@ object AsdGarminGpxExporter {
             }.sortedBy { it.timestamp }
 
             for (s in validStops) {
-                val wpName = waypointNameFromEvent(s)
-                val ele = if (s.stopAltM > 0.0) s.stopAltM else 0.0
+                if (s.startLat != 0.0 || s.startLon != 0.0) {
+                    val inName = "%03dI".format(Locale.US, s.waypointStartId)
+                    val eleIn = if (s.startAltM > 0.0) s.startAltM else 0.0
+                    out.appendLine("""  <wpt lat="${"%.6f".format(Locale.US, s.startLat)}" lon="${"%.6f".format(Locale.US, s.startLon)}">""")
+                    out.appendLine("    <ele>${"%.1f".format(Locale.US, eleIn)}</ele>")
+                    out.appendLine("    <time>${fmtIso(if (s.startTime > 0L) s.startTime else s.timestamp)}</time>")
+                    out.appendLine("    <name>$inName</name>")
+                    out.appendLine("    <sym>Flag, Green</sym>")
+                    out.appendLine("  </wpt>")
+                }
+
+                val outName = "%03dO".format(Locale.US, s.waypointStopId)
+                val eleOut = if (s.stopAltM > 0.0) s.stopAltM else 0.0
                 out.appendLine("""  <wpt lat="${"%.6f".format(Locale.US, s.stopLat)}" lon="${"%.6f".format(Locale.US, s.stopLon)}">""")
-                out.appendLine("    <ele>${"%.1f".format(Locale.US, ele)}</ele>")
+                out.appendLine("    <ele>${"%.1f".format(Locale.US, eleOut)}</ele>")
                 out.appendLine("    <time>${fmtIso(if (s.stopTime > 0L) s.stopTime else s.timestamp)}</time>")
-                out.appendLine("    <name>$wpName</name>")
+                out.appendLine("    <name>$outName</name>")
                 out.appendLine("    <sym>Flag, Blue</sym>")
                 out.appendLine("  </wpt>")
             }
@@ -153,3 +164,4 @@ object AsdGarminGpxExporter {
         }
     }
 }
+

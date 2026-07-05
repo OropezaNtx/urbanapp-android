@@ -1,4 +1,4 @@
-package com.oropeza.urbanapp.asd.export
+﻿package com.oropeza.urbanapp.asd.export
 
 import android.content.Context
 import android.net.Uri
@@ -94,7 +94,7 @@ object GpxExporter {
 
                 val hasIn = (s.stopLat != 0.0 || s.stopLon != 0.0) && s.waypointStopId > 0 && s.stopTime > 0L
                 if (hasIn) {
-                    val name = "WP${s.waypointStopId}-$type-IN"
+                    val name = "WP%03d_OUT_%s".format(Locale.US, s.waypointStopId, type.replace("/", "_"))
                     val desc = buildString {
                         append("Tipo: $type")
                         if (!s.delayCodes.isNullOrBlank()) append("\nDemora: ${s.delayCodes}")
@@ -128,7 +128,7 @@ object GpxExporter {
 
                 val hasOut = (s.startLat != 0.0 || s.startLon != 0.0) && s.waypointStartId > 0 && s.startTime > 0L
                 if (hasOut) {
-                    val name = "WP${s.waypointStartId}-$type-OUT"
+                    val name = "WP%03d_IN_%s".format(Locale.US, s.waypointStartId, type.replace("/", "_"))
                     val desc = buildString {
                         append("Tipo: $type")
                         append("\nAcc: ±${"%.1f".format(Locale.US, s.startAccM)} m")
@@ -182,3 +182,4 @@ object GpxExporter {
         }
     }
 }
+
