@@ -1,4 +1,4 @@
-package com.oropeza.urbanapp.asd.data.repository
+﻿package com.oropeza.urbanapp.asd.data.repository
 
 import android.util.Log
 import com.oropeza.urbanapp.asd.AsdGraph
@@ -339,15 +339,7 @@ class AsdRepository(private val db: AppDatabase) {
         startProvider: String = "",
         startFixTime: Long = 0L
     ) {
-        val pair = if (isTripBoundaryFlag(stopType, stopName, delayCodes)) {
-            if (stopName?.contains("FINAL", ignoreCase = true) == true || delayCodes?.contains("FINAL", ignoreCase = true) == true) {
-                (tripDao.getByIdOnce(tripId)?.nextWaypointId ?: 1).let { id -> WaypointPair(id, id) }
-            } else {
-                WaypointPair(1, 1)
-            }
-        } else {
-            tripDao.reserveWaypointPair(tripId)
-        }
+        val pair = tripDao.reserveWaypointPair(tripId)
 
         val event = StopEvent(
             tripId = tripId,
@@ -740,3 +732,4 @@ class AsdRepository(private val db: AppDatabase) {
         }
     }
 }
+
