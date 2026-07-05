@@ -348,8 +348,8 @@ class AsdRepository(private val db: AppDatabase) {
             count = menUp + womenUp,
             stopName = cleanText(stopName),
             notes = cleanText(notes),
-            waypointStopId = pair.inId,
-            waypointStartId = pair.outId,
+            waypointStopId = pair.outId,
+            waypointStartId = pair.inId,
             stopTime = stopTimeMs,
             stopLat = stopLat,
             stopLon = stopLon,
@@ -428,8 +428,8 @@ class AsdRepository(private val db: AppDatabase) {
             count = 0,
             stopName = null,
             notes = cleanText(notes),
-            waypointStopId = pair.inId,
-            waypointStartId = pair.outId,
+            waypointStopId = pair.outId,
+            waypointStartId = pair.inId,
             stopTime = now,
             stopLat = lat,
             stopLon = lon,
@@ -732,4 +732,5 @@ class AsdRepository(private val db: AppDatabase) {
         }
     }
 }
+
 

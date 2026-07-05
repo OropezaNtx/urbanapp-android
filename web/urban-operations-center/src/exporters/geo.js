@@ -158,7 +158,9 @@ function garminMetadata(time, bounds = '') {
   ].filter(Boolean).join('\n');
 }
 function waypointName(idx, event = null) {
-  const wp = event?.waypointStopId ?? event?.waypointStartId ?? event?.wpStop ?? event?.wpStart;
+  const wpStart = event?.waypointStartId ?? event?.wpStart ?? null;
+  const wpStop = event?.waypointStopId ?? event?.wpStop ?? null;
+  const wp = wpStart && wpStop ? `${wpStart} -> ${wpStop}` : (wpStart ?? wpStop ?? "—");
   const n = Number(wp);
   if (Number.isFinite(n) && n > 0) return String(n).padStart(3, '0');
   return String(idx + 1).padStart(3, '0');
