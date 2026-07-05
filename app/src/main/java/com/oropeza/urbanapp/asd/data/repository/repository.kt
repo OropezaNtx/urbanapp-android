@@ -149,7 +149,9 @@ class AsdRepository(private val db: AppDatabase) {
         supervisor: String? = null,
         deviceNumber: String? = null,
         observerSex: String? = null,
-        continueWaypoints: Boolean = false
+        continueWaypoints: Boolean = false,
+        initialMenPassengers: Int = 0,
+        initialWomenPassengers: Int = 0
     ): Long {
         val start = System.currentTimeMillis()
         val initialWp = if (continueWaypoints) (tripDao.getLastTripNextWaypoint() ?: 1) else 1
@@ -188,8 +190,10 @@ class AsdRepository(private val db: AppDatabase) {
         }
 
         val normSex = normalizeSex(observerSex)
-        val mUp = if (normSex == "H") 1 else 0
-        val wUp = if (normSex == "M") 1 else 0
+        val observerMen = if (normSex == "H") 1 else 0
+        val observerWomen = if (normSex == "M") 1 else 0
+        val mUp = initialMenPassengers.coerceAtLeast(0) + observerMen
+        val wUp = initialWomenPassengers.coerceAtLeast(0) + observerWomen
 
         addStopDetailed(
             tripId = tripId,
@@ -197,7 +201,7 @@ class AsdRepository(private val db: AppDatabase) {
             stopTimeMs = start,
             startTimeMs = start,
             stopName = "AD/INICIO",
-            notes = "OBSERVADOR A BORDO",
+            notes = "PASAJEROS INICIALES + OBSERVADOR",
             menUp = mUp, womenUp = wUp, menDown = 0, womenDown = 0,
             hasLuggage = false,
             delayCodes = "AD/INICIO",
@@ -732,5 +736,6 @@ class AsdRepository(private val db: AppDatabase) {
         }
     }
 }
+
 
 
