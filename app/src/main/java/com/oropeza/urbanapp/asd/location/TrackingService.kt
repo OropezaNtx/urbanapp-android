@@ -25,9 +25,20 @@ class TrackingService : Service() {
 
     private val NOTIF_ID = 1001
     private val CHANNEL_ID = "tracking_channel"
+
+    // Requisito operativo: una muestra persistida cada dos segundos.
     private val fixedCaptureIntervalMs = 2_000L
-    private val watchdogIntervalMs = 3_000L
-    private val staleFixAfterMs = 6_000L
+
+    // La adquisición se alinea con la cadencia de persistencia. Fused Location
+    // todavía puede entregar una actualización antes, pero ya no se solicita a 500 ms.
+    private val gpsRequestIntervalMs = 2_000L
+    private val gpsMinUpdateIntervalMs = 1_000L
+
+    // Ausencia de señal no implica que el listener esté muerto. El watchdog solo
+    // reinicia después de una pérdida prolongada y aplica enfriamiento.
+    private val watchdogIntervalMs = 10_000L
+    private val watchdogRestartAfterMs = 60_000L
+    private val watchdogRestartCooldownMs = 30_000L
 
     companion object {
         const val ACTION_START = "TRACK_START"
@@ -48,7 +59,10 @@ class TrackingService : Service() {
             val receivedAtMs: Long = 0L,
             val savedAtMs: Long = 0L,
             val mode: String = "IDLE",
-            val isRecordingArmed: Boolean = false
+            val isRecordingArmed: Boolean = false,
+            val rawFixCount: Long = 0L,
+            val persistedSampleCount: Long = 0L,
+            val watchdogRestartCount: Int = 0
         )
 
         private val _runtimeGpsState = MutableStateFlow(RuntimeGpsState())
@@ -65,15 +79,20 @@ class TrackingService : Service() {
     private var currentTripId: Long? = null
     private var shuttingDown = false
 
+    private var rawFixCount = 0L
+    private var persistedSampleCount = 0L
+    private var watchdogRestartCount = 0
+    private var lastGpsRestartAtMs = 0L
+    private var lastNotificationText: String? = null
+
     private lateinit var gps: LocationProvider
-    private lateinit var headingProvider: HeadingProvider
 
     override fun onCreate() {
         super.onCreate()
         gps = LocationProvider(this)
-        headingProvider = HeadingProvider(this)
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification("Validando recorrido activo…"))
+        lastNotificationText = "Validando recorrido activo…"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -111,6 +130,10 @@ class TrackingService : Service() {
         resetTrackingState()
         currentTripId = tripId
         shuttingDown = false
+        rawFixCount = 0L
+        persistedSampleCount = 0L
+        watchdogRestartCount = 0
+        lastGpsRestartAtMs = 0L
 
         mainJob = scope.launch {
             val trip = AsdGraph.repo.getTripOnce(tripId)
@@ -127,7 +150,6 @@ class TrackingService : Service() {
             }
 
             isRunning = true
-            headingProvider.start()
             engine.start()
             publishRuntimeState(engineState = null, modeOverride = "ACQUIRE")
             updateNotification("Tracking ASD activo")
@@ -150,20 +172,30 @@ class TrackingService : Service() {
         _runtimeGpsState.value = RuntimeGpsState(mode = "IDLE")
     }
 
-    private fun startGpsUpdates() {
+    private fun startGpsUpdates(fromWatchdog: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (fromWatchdog && now - lastGpsRestartAtMs < watchdogRestartCooldownMs) return
+
         gpsUpdatesJob?.cancel()
+        lastGpsRestartAtMs = now
+        if (fromWatchdog) watchdogRestartCount++
+
         gpsUpdatesJob = scope.launch {
-            Log.i(TAG, "Starting GPS updates listener")
+            Log.i(
+                TAG,
+                if (fromWatchdog) "Reiniciando listener GPS por watchdog" else "Iniciando listener GPS"
+            )
             gps.locationUpdates(
-                intervalMs = 1000L,
-                minUpdateMs = 500L,
+                intervalMs = gpsRequestIntervalMs,
+                minUpdateMs = gpsMinUpdateIntervalMs,
                 minDistanceM = 0f,
                 maxWaitTimeMs = 0L,
                 highAccuracy = true
             ).catch { e ->
                 Log.e(TAG, "Error en locationUpdates()", e)
             }.collect { loc ->
-                val now = System.currentTimeMillis()
+                val receivedAt = System.currentTimeMillis()
+                rawFixCount++
                 val engineState = engine.onRawFix(
                     AforaGpsEngine.RawLocationFix(
                         lat = loc.latitude,
@@ -172,7 +204,7 @@ class TrackingService : Service() {
                         fixTimeMs = loc.time,
                         elapsedNanos = loc.elapsedRealtimeNanos,
                         provider = loc.provider,
-                        receivedAtMs = now
+                        receivedAtMs = receivedAt
                     )
                 )
                 publishRuntimeState(engineState)
@@ -208,10 +240,21 @@ class TrackingService : Service() {
             while (true) {
                 delay(watchdogIntervalMs)
                 if (currentTripId == null || !isRunning) break
-                val age = System.currentTimeMillis() - engine.lastFixReceivedAtMs
-                if (engine.lastFixReceivedAtMs == 0L || age > staleFixAfterMs) {
-                    Log.i(TAG, "GPS watchdog restarting updates. Last fix age: ${age}ms")
-                    startGpsUpdates()
+
+                val listenerInactive = gpsUpdatesJob?.isActive != true
+                val lastFixAt = engine.lastFixReceivedAtMs
+                val fixAgeMs = if (lastFixAt > 0L) {
+                    System.currentTimeMillis() - lastFixAt
+                } else {
+                    System.currentTimeMillis() - lastGpsRestartAtMs
+                }
+
+                if (listenerInactive || fixAgeMs > watchdogRestartAfterMs) {
+                    Log.w(
+                        TAG,
+                        "Watchdog GPS: listenerInactive=$listenerInactive, fixAgeMs=$fixAgeMs"
+                    )
+                    startGpsUpdates(fromWatchdog = true)
                 }
             }
         }
@@ -231,11 +274,20 @@ class TrackingService : Service() {
             }
 
             AsdGraph.db.trackDao().insert(sample.point)
+            persistedSampleCount++
             publishRuntimeState(sample.state)
 
             if (sample.shouldBackfillEvents) {
                 val completed = AsdGraph.repo.completePendingGpsEvents(tripId, sample.point)
                 if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
+            }
+
+            if (persistedSampleCount % 300L == 0L) {
+                Log.i(
+                    TAG,
+                    "Métricas tracking trip=$tripId rawFixes=$rawFixCount " +
+                        "persisted=$persistedSampleCount watchdogRestarts=$watchdogRestartCount"
+                )
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error insertando TrackPoint o completando GPS pendiente", e)
@@ -247,7 +299,12 @@ class TrackingService : Service() {
         modeOverride: String? = null
     ) {
         if (engineState == null) {
-            _runtimeGpsState.value = _runtimeGpsState.value.copy(mode = modeOverride ?: "IDLE")
+            _runtimeGpsState.value = _runtimeGpsState.value.copy(
+                mode = modeOverride ?: "IDLE",
+                rawFixCount = rawFixCount,
+                persistedSampleCount = persistedSampleCount,
+                watchdogRestartCount = watchdogRestartCount
+            )
             return
         }
 
@@ -261,7 +318,10 @@ class TrackingService : Service() {
             receivedAtMs = engineState.receivedAtMs,
             savedAtMs = engineState.savedAtMs,
             mode = modeOverride ?: engineState.mode.name,
-            isRecordingArmed = engineState.isRecordingArmed
+            isRecordingArmed = engineState.isRecordingArmed,
+            rawFixCount = rawFixCount,
+            persistedSampleCount = persistedSampleCount,
+            watchdogRestartCount = watchdogRestartCount
         )
     }
 
@@ -270,11 +330,12 @@ class TrackingService : Service() {
         shuttingDown = true
         isRunning = false
         currentTripId = null
+        Log.i(
+            TAG,
+            "Tracking detenido: rawFixes=$rawFixCount persisted=$persistedSampleCount " +
+                "watchdogRestarts=$watchdogRestartCount"
+        )
         resetTrackingState()
-        try {
-            if (::headingProvider.isInitialized) headingProvider.stop()
-        } catch (_: Exception) {
-        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -283,10 +344,6 @@ class TrackingService : Service() {
         isRunning = false
         currentTripId = null
         resetTrackingState()
-        try {
-            if (::headingProvider.isInitialized) headingProvider.stop()
-        } catch (_: Exception) {
-        }
         scope.cancel()
         super.onDestroy()
     }
@@ -294,6 +351,8 @@ class TrackingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun updateNotification(text: String) {
+        if (lastNotificationText == text) return
+        lastNotificationText = text
         val nm = getSystemService(NotificationManager::class.java)
         nm.notify(NOTIF_ID, buildNotification(text))
     }
