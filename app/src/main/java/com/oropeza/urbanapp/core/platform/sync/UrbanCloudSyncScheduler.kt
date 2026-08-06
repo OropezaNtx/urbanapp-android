@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 object UrbanCloudSyncScheduler {
 
     private const val TAG = "UrbanSyncScheduler"
+    private const val MAX_MANUAL_SYNC_ITEMS = 5_000
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
@@ -45,15 +46,18 @@ object UrbanCloudSyncScheduler {
     }
 
     /**
-     * Ejecuta la cola en el proceso actual y espera el resultado.
+     * Drena todos los elementos elegibles de la cola en una sola acción manual.
      *
-     * Solo debe usarse para una acción manual explícita o diagnóstico; nunca
-     * desde una operación de captura de campo.
+     * Se detiene cuando la cola queda vacía, cuando ningún elemento del lote pudo
+     * avanzar o al alcanzar el límite de seguridad. Los elementos con error se
+     * conservan con su mensaje real y no impiden sincronizar los demás.
      */
     suspend fun syncNowBlocking(context: Context): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Starting manual cloud sync attempt...")
+            Log.d(TAG, "Starting full manual cloud sync attempt...")
             UrbanRuntime.publishEvent(UrbanEventFactory.sync(UrbanEventTypes.SYNC_REQUESTED))
+
+            AsdGraph.repo.recoverStaleSyncItems()
 
             val engine = CloudSyncEngine(
                 repository = AsdGraph.repo,
@@ -61,19 +65,32 @@ object UrbanCloudSyncScheduler {
             )
 
             var totalSynced = 0
-            var lastBatchCount: Int
-            do {
-                lastBatchCount = engine.processNextBatch()
-                totalSynced += lastBatchCount
-            } while (lastBatchCount > 0 && totalSynced < 100)
+            while (totalSynced < MAX_MANUAL_SYNC_ITEMS) {
+                val syncedInBatch = engine.processNextBatch()
+                if (syncedInBatch <= 0) break
+                totalSynced += syncedInBatch
+            }
 
-            Log.d(TAG, "Cloud sync attempt finished. Items synced: $totalSynced")
+            val remainingEligible = AsdGraph.repo.getPendingSyncItems(1).isNotEmpty()
+            Log.d(
+                TAG,
+                "Full manual sync finished. Synced=$totalSynced, remainingEligible=$remainingEligible"
+            )
+
             UrbanRuntime.publishEvent(
                 UrbanEventFactory.sync(
                     UrbanEventTypes.SYNC_COMPLETED,
-                    mapOf("syncedCount" to totalSynced)
+                    mapOf(
+                        "syncedCount" to totalSynced,
+                        "remainingEligible" to remainingEligible
+                    )
                 )
             )
+
+            // Si quedan elementos elegibles por haber alcanzado el límite de
+            // seguridad, WorkManager continuará sin bloquear la interfaz.
+            if (remainingEligible) AsdCloudSyncWorker.enqueue(context.applicationContext)
+
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Cloud sync attempt failed", e)
