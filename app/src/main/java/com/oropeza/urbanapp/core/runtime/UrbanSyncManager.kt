@@ -6,7 +6,7 @@ import com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler
 
 object UrbanSyncManager {
     suspend fun syncNow(context: Context): Result<Unit> {
-        return UrbanCloudSyncScheduler.syncNow(context)
+        return UrbanCloudSyncScheduler.syncNowBlocking(context)
     }
 
     fun syncInstallation(context: Context) {
