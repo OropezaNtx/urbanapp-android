@@ -1,4 +1,4 @@
-﻿package com.oropeza.urbanapp.asd.ui.viewmodel
+package com.oropeza.urbanapp.asd.ui.viewmodel
 
 import android.util.Log
 import android.Manifest
@@ -135,12 +135,79 @@ fun AsdTripDetailContent(tripId: Long, trip: Trip?, stops: List<StopEvent>, last
     var menUp by rememberSaveable { mutableStateOf(0) }; var womenUp by rememberSaveable { mutableStateOf(0) }; var menDown by rememberSaveable { mutableStateOf(0) }; var womenDown by rememberSaveable { mutableStateOf(0) }; var selectedDelayCodes by rememberSaveable { mutableStateOf(setOf<String>()) }; var otherDelayDesc by rememberSaveable { mutableStateOf("") }; var hasLuggage by rememberSaveable { mutableStateOf(false) }; var stopName by rememberSaveable { mutableStateOf("") }; var notes by rememberSaveable { mutableStateOf("") }; var activeDelayStartMs by rememberSaveable { mutableStateOf(0L) }; var activeDelayLat by rememberSaveable { mutableStateOf(0.0) }; var activeDelayLon by rememberSaveable { mutableStateOf(0.0) }; var activeDelayAltM by rememberSaveable { mutableStateOf(0.0) }; var activeDelayAccM by rememberSaveable { mutableStateOf(0.0) }; var activeDelayProvider by rememberSaveable { mutableStateOf("") }; var activeDelayFixTime by rememberSaveable { mutableStateOf(0L) }; var activeDelayStatus by rememberSaveable { mutableStateOf("GPS_PENDING") }
     var tickMs by remember { mutableStateOf(System.currentTimeMillis()) }; var loadingGps by remember { mutableStateOf(false) }; var gpsMsg by remember { mutableStateOf<String?>(null) }; var snackbarHostState = remember { SnackbarHostState() }; var showCloseTripConfirm by remember { mutableStateOf(false) }; var showEditHeader by remember { mutableStateOf(false) }; var distanceKm by remember { mutableStateOf<Double?>(null) }; var distanceLoading by remember { mutableStateOf(false) }
     val isDelayActive = activeDelayStartMs > 0L; LaunchedEffect(trip?.endTime) { if (trip?.endTime == null) { while (true) { tickMs = System.currentTimeMillis(); kotlinx.coroutines.delay(1000L) } } }
-    LaunchedEffect(tripId, trip?.endTime) { if (trip?.endTime == null) startTS() else stopTS() }
+    LaunchedEffect(tripId, trip?.endTime) {
+    if (trip?.endTime == null) {
+        startTS()
+    } else {
+        stopTS()
+        snackbarHostState.showSnackbar("Recorrido finalizado ✅")
+        onBack()
+    }
+}
     fun currentFix(now: Long): LocationFix { val p = lastPoint; val ageMs = p?.let { now - it.timeMs } ?: Long.MAX_VALUE; val isRecent = p != null && ageMs <= 15_000L; val isAccurate = p != null && p.accM <= 45.0; val isValid = p != null && p.lat != 0.0 && p.lon != 0.0; return if (p != null && isValid && isRecent && isAccurate) LocationFix(p.lat, p.lon, p.accM, p.altM, p.provider, p.timeMs, "FIX_USABLE") else LocationFix(0.0, 0.0, 0.0, 0.0, "pending", now, "GPS_PENDING") }
     fun ensureActiveDelay() { if (isDelayActive || trip?.endTime != null) return; val now = System.currentTimeMillis(); val fix = currentFix(now); activeDelayStartMs = now; activeDelayLat = fix.lat; activeDelayLon = fix.lon; activeDelayAltM = fix.altM; activeDelayAccM = fix.accM; activeDelayProvider = fix.provider; activeDelayFixTime = fix.fixTime; activeDelayStatus = fix.status }
     fun resetCapture() { menUp = 0; womenUp = 0; menDown = 0; womenDown = 0; selectedDelayCodes = emptySet(); otherDelayDesc = ""; hasLuggage = false; stopName = ""; notes = ""; activeDelayStartMs = 0L }
     fun validateCapture(s: AsdDemoSummary, t: Trip?): String? { if ((menUp + womenUp + menDown + womenDown == 0) && selectedDelayCodes.isEmpty() && otherDelayDesc.isBlank()) return "Registro vacío."; val protM = if (t?.observerSex == "H") 1 else 0; val protW = if (t?.observerSex == "M") 1 else 0; if (menDown > (s.menOnBoard + menUp - protM).coerceAtLeast(0)) return "No se puede bajar al operador (H)."; if (womenDown > (s.womenOnBoard + womenUp - protW).coerceAtLeast(0)) return "No se puede bajar a la operadora (M)."; return null }
-    fun saveEvent() { val err = validateCapture(summary, trip); if (err != null) { scope.launch { snackbarHostState.showSnackbar(err) }; return }; scope.launch { loadingGps = true; gpsMsg = "Finalizando captura..."; val now = System.currentTimeMillis(); var endFix = currentFix(now); if (endFix.status == "GPS_PENDING") endFix = gps.getBestFixForEvent(15.0, 45.0, 2500L); val startFix = if (activeDelayStatus == "GPS_PENDING" && endFix.status != "GPS_PENDING") endFix.copy(status = "BACKFILLED") else LocationFix(activeDelayLat, activeDelayLon, activeDelayAccM, activeDelayAltM, activeDelayProvider, activeDelayFixTime, activeDelayStatus); onAddStop(if (menUp + womenUp + menDown + womenDown > 0) "ASD" else "DEMORA", activeDelayStartMs, now, stopName.trim(), notes.trim(), menUp, womenUp, menDown, womenDown, hasLuggage, selectedDelayCodes.joinToString("/").ifBlank { null }, otherDelayDesc.trim().ifBlank { null }, startFix, endFix); resetCapture(); loadingGps = false; gpsMsg = null; scope.launch { snackbarHostState.showSnackbar("Registro guardado ✅") } } }
+    fun saveEvent() {
+    val err = validateCapture(summary, trip)
+    if (err != null) {
+        scope.launch { snackbarHostState.showSnackbar(err) }
+        return
+    }
+
+    val now = System.currentTimeMillis()
+    val endFix = currentFix(now)
+    val startFix = LocationFix(
+        activeDelayLat,
+        activeDelayLon,
+        activeDelayAccM,
+        activeDelayAltM,
+        activeDelayProvider.ifBlank { "pending" },
+        if (activeDelayFixTime > 0L) activeDelayFixTime else now,
+        activeDelayStatus
+    )
+
+    scope.launch {
+        loadingGps = true
+        gpsMsg = if (endFix.status == "GPS_PENDING") {
+            "Guardando localmente; ubicación pendiente…"
+        } else {
+            "Guardando registro…"
+        }
+        try {
+            vm.addStopDetailed(
+                tripId,
+                if (menUp + womenUp + menDown + womenDown > 0) "ASD" else "DEMORA",
+                activeDelayStartMs,
+                now,
+                stopName.trim(),
+                notes.trim(),
+                menUp,
+                womenUp,
+                menDown,
+                womenDown,
+                hasLuggage,
+                selectedDelayCodes.joinToString("/").ifBlank { null },
+                otherDelayDesc.trim().ifBlank { null },
+                startFix,
+                endFix
+            )
+            resetCapture()
+            snackbarHostState.showSnackbar(
+                if (endFix.status == "GPS_PENDING")
+                    "Registro guardado localmente; GPS pendiente ✅"
+                else
+                    "Registro guardado ✅"
+            )
+        } catch (t: Throwable) {
+            snackbarHostState.showSnackbar("No se pudo guardar el registro: ${t.message ?: "error desconocido"}")
+        } finally {
+            loadingGps = false
+            gpsMsg = null
+        }
+    }
+}
+
     val exportCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let { scope.launch { onExport("CSV", it) } } }; val exportXlsx = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) { it?.let { scope.launch { onExport("CLIENT", it) } } }
     val exportTrackCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let { scope.launch { onExport("TRACK", it) } } }
     val exportGpsAuditCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let { scope.launch { onExport("GPS_AUDIT", it) } } }

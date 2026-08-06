@@ -1,4 +1,4 @@
-﻿package com.oropeza.urbanapp.asd.data.repository
+package com.oropeza.urbanapp.asd.data.repository
 
 import android.util.Log
 import com.oropeza.urbanapp.asd.AsdGraph
@@ -100,11 +100,11 @@ class AsdRepository(private val db: AppDatabase) {
         if (!point.isBackfillEligible) return 0
         if (point.lat == 0.0 || point.lon == 0.0) return 0
         if (point.accM <= 0.0 || point.accM > 60.0) return 0
-        val pending = stopDao.getPendingGpsEvents(tripId, limit = 10)
+        val pending = stopDao.getPendingGpsEvents(tripId, limit = 50)
         var updated = 0
         pending.forEach { event ->
             val diffMs = kotlin.math.abs(point.timeMs - event.timestamp)
-            if (diffMs <= 30_000L) {
+            if (diffMs <= 5 * 60_000L) {
                 val updatedEvent = event.copy(
                     stopLat = point.lat,
                     stopLon = point.lon,

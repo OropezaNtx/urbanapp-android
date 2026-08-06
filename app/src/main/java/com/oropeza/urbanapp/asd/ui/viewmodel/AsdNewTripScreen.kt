@@ -938,117 +938,18 @@ private suspend fun createTripFlow(
     try {
         setLoading(true)
         setError(null)
+        setGpsMsg("Recorrido creado. GPS pendiente de adquisición…")
 
-        // ✅ Intento rápido primero (reduce frustración)
-        setGpsMsg("Tomando ubicación (rápido)…")
-        val quick = gps.getQuickFix(highAccuracy = true)
-
-        // Si tenemos algo rápido, avanzamos con eso (aunque no sea perfecto)
-        if (quick != null) {
-            val acc = quick.accuracy.toDouble()
-            val status = if (acc <= 10.0) "FIX_OK" else "FIX_USABLE"
-
-            setGpsMsg(
-                if (status == "FIX_OK") "GPS OK: ${acc.toInt()}m ✅"
-                else "GPS usable: ${acc.toInt()}m (continuando) ✅"
-            )
-
-            val id = vm.createWithFix(
-                planningRouteId = planningRouteId.trim(),
-                stopLat = quick.latitude,
-                stopLon = quick.longitude,
-                stopAltM = if (quick.hasAltitude()) quick.altitude else 0.0,
-                stopAccM = acc,
-                stopProvider = quick.provider ?: "fused",
-                stopFixTime = if (quick.time > 0L) quick.time else System.currentTimeMillis(),
-                locationStatus = status,
-                routeName = routeName.trim(),
-                company = company.ifBlank { null },
-                vehicleEco = vehicleEco.ifBlank { null },
-                direction = direction,
-                notes = notes.ifBlank { null },
-                routeNumber = routeNumberTxt.trim().toIntOrNull(),
-                esFs = esFs.ifBlank { null },
-                baseStart = baseStart.ifBlank { null },
-                baseEnd = baseEnd.ifBlank { null },
-                plateNumber = plateNumber.ifBlank { null },
-                vehicleType = vehicleType.ifBlank { null },
-                seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
-                aforador = aforador.ifBlank { null },
-                supervisor = supervisor.ifBlank { null },
-                deviceNumber = deviceNumber.ifBlank { null },
-                observerSex = observerSex,
-                continueWaypoints = continueWaypoints
-            )
-
-            setLoading(false)
-            onCreated(id)
-            return
-        }
-
-        // ✅ Si no hubo quick fix, hacemos soft fix (pero sin bloquear indefinidamente)
-        setGpsMsg("Buscando GPS (objetivo ≤10m; usable ≤25m)…")
-        val fix = gps.getBestFixForEvent(
-            targetAccM = 8.0,
-            fallbackAccM = 15.0,
-            timeoutMs = 12_000L,
-            highAccuracy = true
-        )
-
-        // ✅ CAMBIO CLAVE: si NO_FIX, no bloqueamos el inicio. Creamos el viaje sin coordenadas.
-        if (fix.status == "NO_FIX") {
-            setGpsMsg("Sin GPS por ahora (se creó el recorrido). Al iniciar tracking se seguirá ajustando señal… ⚠️")
-
-            val id = vm.createWithFix(
-                planningRouteId = planningRouteId.trim(),
-                stopLat = 0.0,
-                stopLon = 0.0,
-                stopAltM = 0.0,
-                stopAccM = fix.accM,
-                stopProvider = "none",
-                stopFixTime = System.currentTimeMillis(),
-                locationStatus = "NO_FIX",
-                routeName = routeName.trim(),
-                company = company.ifBlank { null },
-                vehicleEco = vehicleEco.ifBlank { null },
-                direction = direction,
-                notes = notes.ifBlank { null },
-                routeNumber = routeNumberTxt.trim().toIntOrNull(),
-                esFs = esFs.ifBlank { null },
-                baseStart = baseStart.ifBlank { null },
-                baseEnd = baseEnd.ifBlank { null },
-                plateNumber = plateNumber.ifBlank { null },
-                vehicleType = vehicleType.ifBlank { null },
-                seatCapacity = seatCapacityTxt.trim().toIntOrNull(),
-                aforador = aforador.ifBlank { null },
-                supervisor = supervisor.ifBlank { null },
-                deviceNumber = deviceNumber.ifBlank { null },
-                observerSex = observerSex,
-                continueWaypoints = continueWaypoints
-            )
-
-            setLoading(false)
-            onCreated(id)
-            return
-        }
-
-        setGpsMsg(
-            when (fix.status) {
-                "FIX_OK" -> "GPS OK: ${fix.accM.toInt()}m ✅"
-                "FIX_USABLE" -> "GPS usable: ${fix.accM.toInt()}m (continuando) ✅"
-                else -> "GPS: ${fix.accM.toInt()}m ✅"
-            }
-        )
-
+        val now = System.currentTimeMillis()
         val id = vm.createWithFix(
             planningRouteId = planningRouteId.trim(),
-            stopLat = fix.lat,
-            stopLon = fix.lon,
-            stopAltM = fix.altM,
-            stopAccM = fix.accM,
-            stopProvider = fix.provider,
-            stopFixTime = fix.fixTime,
-            locationStatus = fix.status,
+            stopLat = 0.0,
+            stopLon = 0.0,
+            stopAltM = 0.0,
+            stopAccM = 0.0,
+            stopProvider = "pending",
+            stopFixTime = now,
+            locationStatus = "GPS_PENDING",
             routeName = routeName.trim(),
             company = company.ifBlank { null },
             vehicleEco = vehicleEco.ifBlank { null },
@@ -1070,7 +971,6 @@ private suspend fun createTripFlow(
 
         setLoading(false)
         onCreated(id)
-
     } catch (e: Exception) {
         setLoading(false)
         setGpsMsg(null)
