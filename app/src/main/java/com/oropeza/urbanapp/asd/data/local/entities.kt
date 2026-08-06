@@ -325,6 +325,7 @@ data class AsdVehicleTypeCatalogItem(
         Index(value = ["status"]),
         Index(value = ["nextAttemptAt"]),
         Index(value = ["entityType"]),
+        Index(value = ["parentTripId"]),
         Index(value = ["priority"]),
         Index(value = ["createdAt"])
     ]
@@ -334,6 +335,7 @@ data class AsdSyncQueueItem(
     val entityType: String,      // TRIP | EVENT | TRACK_SUMMARY | DEVICE_STATUS
     val operation: String,       // CREATE | UPDATE | CLOSE
     val entityLocalId: Long,
+    val parentTripId: Long? = null,
     val cloudPath: String? = null,
     val payloadJson: String,
     val status: String = "PENDING", // PENDING | IN_PROGRESS | SYNCED | FAILED | DEAD_LETTER

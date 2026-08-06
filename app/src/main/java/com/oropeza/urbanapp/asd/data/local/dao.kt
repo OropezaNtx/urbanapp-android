@@ -355,6 +355,19 @@ interface AsdSyncQueueDao {
     @Query("SELECT * FROM sync_queue WHERE (status = 'PENDING' OR status = 'FAILED') AND nextAttemptAt <= :now ORDER BY priority ASC, createdAt ASC LIMIT :limit")
     suspend fun getPending(limit: Int, now: Long = System.currentTimeMillis()): List<AsdSyncQueueItem>
 
+    @Query("""
+        UPDATE sync_queue
+        SET status = 'FAILED',
+            nextAttemptAt = 0,
+            lastError = CASE
+                WHEN lastError IS NULL OR lastError = '' THEN 'Recovered stale IN_PROGRESS item'
+                ELSE lastError
+            END,
+            updatedAt = :now
+        WHERE status = 'IN_PROGRESS' AND updatedAt < :cutoff
+    """)
+    suspend fun recoverStaleInProgress(cutoff: Long, now: Long = System.currentTimeMillis()): Int
+
     @Query("UPDATE sync_queue SET status = 'IN_PROGRESS', updatedAt = :updatedAt WHERE id = :id")
     suspend fun markInProgress(id: Long, updatedAt: Long = System.currentTimeMillis())
 
@@ -385,8 +398,11 @@ interface AsdSyncQueueDao {
     suspend fun getLastFailedItem(): AsdSyncQueueItem?
 
     @Query("""
-        SELECT status FROM sync_queue 
-        WHERE entityLocalId = :tripId 
+        SELECT status FROM sync_queue
+        WHERE (
+            parentTripId = :tripId
+            OR (entityType = 'TRIP' AND entityLocalId = :tripId)
+        )
           AND (entityType = 'TRIP' OR entityType = 'EVENT' OR entityType = 'TRACK_CHUNK')
     """)
     fun getTripSyncItemStatusesFlow(tripId: Long): Flow<List<String>>

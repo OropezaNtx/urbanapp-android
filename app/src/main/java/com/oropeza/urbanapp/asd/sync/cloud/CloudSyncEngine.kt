@@ -22,6 +22,7 @@ class CloudSyncEngine(
      * Returns the number of items successfully processed.
      */
     suspend fun processNextBatch(): Int = withContext(Dispatchers.IO) {
+        repository.recoverStaleSyncItems()
         val pendingItems = repository.getPendingSyncItems(config.maxBatchSize)
         if (pendingItems.isEmpty()) return@withContext 0
 

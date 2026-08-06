@@ -37,7 +37,8 @@ object DbProvider {
                 Migrations.MIGRATION_18_19,
                 Migrations.MIGRATION_19_20,
                 Migrations.MIGRATION_20_21,
-                GpsOperationalMigrations.MIGRATION_21_22
+                GpsOperationalMigrations.MIGRATION_21_22,
+                SyncQueueIntegrityMigrations.MIGRATION_22_23
             )
             .build()
     }

@@ -117,7 +117,19 @@ class AsdRepository(private val db: AppDatabase) {
                 val ok = stopDao.update(updatedEvent) > 0
                 if (ok) {
                     updated++
-                    enqueueSync("EVENT", "UPDATE", event.eventId, updatedEvent)
+                    val context = AsdGraph.appContext
+                    val identity = UrbanRuntime.identity(context)
+                    val workspace = UrbanRuntime.workspace(context)
+                    val cloudTripId = "${identity.installationId}_$tripId"
+                    val cloudEvent = AsdCloudMapper.toCloudDto(context, updatedEvent, cloudTripId, 0, 0)
+                    enqueueSync(
+                        type = "EVENT",
+                        operation = "UPDATE",
+                        localId = event.eventId,
+                        payload = cloudEvent,
+                        cloudPath = UrbanCloudPaths.tripEventPath(workspace, cloudTripId, cloudEvent.cloudEventId),
+                        parentTripId = tripId
+                    )
                 }
             }
         }
@@ -586,7 +598,8 @@ class AsdRepository(private val db: AppDatabase) {
         localId: Long,
         payload: Any,
         cloudPath: String? = null,
-        priority: Int = 1
+        priority: Int = 1,
+        parentTripId: Long? = null
     ) {
         try {
             val context = AsdGraph.appContext
@@ -599,11 +612,19 @@ class AsdRepository(private val db: AppDatabase) {
                 else -> null
             }
 
+            val resolvedParentTripId = parentTripId ?: when (type) {
+                "TRIP" -> localId
+                "EVENT", "TRACK_CHUNK", "TRACK_SUMMARY" -> effectivePath
+                    ?.let { path -> Regex("_[0-9]+(?=/|$)").find(path)?.value?.drop(1)?.toLongOrNull() }
+                else -> null
+            }
+
             syncQueueDao.insert(
                 AsdSyncQueueItem(
                     entityType = type,
                     operation = operation,
                     entityLocalId = localId,
+                    parentTripId = resolvedParentTripId,
                     payloadJson = gson.toJson(payload),
                     cloudPath = effectivePath,
                     priority = priority,
@@ -619,6 +640,10 @@ class AsdRepository(private val db: AppDatabase) {
     fun syncQueuePendingCountFlow() = syncQueueDao.pendingCountFlow()
     fun syncQueueFailedCountFlow() = syncQueueDao.failedCountFlow()
     fun lastSyncTimeFlow() = syncQueueDao.lastSyncTimeFlow()
+    suspend fun recoverStaleSyncItems(staleAfterMs: Long = 10 * 60 * 1000L): Int {
+        val now = System.currentTimeMillis()
+        return syncQueueDao.recoverStaleInProgress(cutoff = now - staleAfterMs, now = now)
+    }
     suspend fun getPendingSyncItems(limit: Int) = syncQueueDao.getPending(limit)
     suspend fun markSyncItemSynced(id: Long) = syncQueueDao.markSynced(id)
     suspend fun updateSyncItem(item: AsdSyncQueueItem) = syncQueueDao.update(item)
