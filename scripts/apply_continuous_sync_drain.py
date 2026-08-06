@@ -44,33 +44,32 @@ replace_once(
 
 replace_once(
     worker,
-    '''            val remaining = AsdGraph.repo.getPendingSyncItems(1).isNotEmpty()
-            when {
-                remaining -> {
-                    Log.w(TAG, "Quedan elementos pendientes; WorkManager continuará con backoff")
-                    ListenableWorker.Result.retry()
-                }
+    '''            val remainingEligible = AsdGraph.repo.getPendingSyncItems(1).isNotEmpty()
+            Log.i(
+                TAG,
+                "Background sync finished. Synced=$totalSynced, remainingEligible=$remainingEligible"
+            )
 
-                else -> {
-                    Log.i(TAG, "Sincronización en background terminada. Exitosos: $processed")
-                    ListenableWorker.Result.success()
-                }
+            when {
+                remainingEligible && totalSynced > 0 -> ListenableWorker.Result.retry()
+                remainingEligible && runAttemptCount < 5 -> ListenableWorker.Result.retry()
+                else -> ListenableWorker.Result.success()
             }
 ''',
     '''            val outstanding = AsdGraph.repo.getOutstandingSyncCount()
-            when {
-                outstanding > 0 -> {
-                    Log.w(
-                        TAG,
-                        "Quedan $outstanding elementos por resolver; WorkManager continuará automáticamente con backoff"
-                    )
-                    ListenableWorker.Result.retry()
-                }
+            Log.i(
+                TAG,
+                "Background sync finished. Synced=$totalSynced, outstanding=$outstanding"
+            )
 
-                else -> {
-                    Log.i(TAG, "Sincronización en background terminada. Exitosos: $processed")
-                    ListenableWorker.Result.success()
-                }
+            if (outstanding > 0) {
+                Log.w(
+                    TAG,
+                    "Quedan $outstanding elementos por resolver; WorkManager continuará automáticamente con backoff"
+                )
+                ListenableWorker.Result.retry()
+            } else {
+                ListenableWorker.Result.success()
             }
 ''',
     "reintento automático hasta vaciar la cola"
