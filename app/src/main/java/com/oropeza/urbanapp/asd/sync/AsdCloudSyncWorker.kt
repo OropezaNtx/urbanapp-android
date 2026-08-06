@@ -29,7 +29,7 @@ class AsdCloudSyncWorker(
     companion object {
         private const val TAG = "AsdCloudSyncWorker"
         private const val WORK_NAME = "AsdCloudSyncWork"
-        private const val MAX_ITEMS_PER_RUN = 100
+        private const val MAX_ITEMS_PER_RUN = 2_000
 
         fun enqueue(context: Context) {
             val constraints = Constraints.Builder()
@@ -55,29 +55,30 @@ class AsdCloudSyncWorker(
 
     override suspend fun doWork(): ListenableWorker.Result {
         return try {
+            AsdGraph.repo.recoverStaleSyncItems()
+
             val engine = CloudSyncEngine(
                 repository = AsdGraph.repo,
                 target = AsdGraph.getCloudSyncTarget()
             )
 
-            var processed = 0
-            var syncedInBatch: Int
-            do {
-                syncedInBatch = engine.processNextBatch()
-                processed += syncedInBatch
-            } while (syncedInBatch > 0 && processed < MAX_ITEMS_PER_RUN)
+            var totalSynced = 0
+            while (totalSynced < MAX_ITEMS_PER_RUN) {
+                val syncedInBatch = engine.processNextBatch()
+                if (syncedInBatch <= 0) break
+                totalSynced += syncedInBatch
+            }
 
-            val remaining = AsdGraph.repo.getPendingSyncItems(1).isNotEmpty()
+            val remainingEligible = AsdGraph.repo.getPendingSyncItems(1).isNotEmpty()
+            Log.i(
+                TAG,
+                "Background sync finished. Synced=$totalSynced, remainingEligible=$remainingEligible"
+            )
+
             when {
-                remaining && runAttemptCount < 5 -> {
-                    Log.w(TAG, "Quedan elementos pendientes; se solicitará reintento")
-                    ListenableWorker.Result.retry()
-                }
-
-                else -> {
-                    Log.i(TAG, "Sincronización en background terminada. Exitosos: $processed")
-                    ListenableWorker.Result.success()
-                }
+                remainingEligible && totalSynced > 0 -> ListenableWorker.Result.retry()
+                remainingEligible && runAttemptCount < 5 -> ListenableWorker.Result.retry()
+                else -> ListenableWorker.Result.success()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Falló la sincronización en background", e)
