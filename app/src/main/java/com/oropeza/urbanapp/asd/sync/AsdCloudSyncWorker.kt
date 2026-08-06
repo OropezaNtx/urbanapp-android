@@ -2,25 +2,34 @@ package com.oropeza.urbanapp.asd.sync
 
 import android.content.Context
 import android.util.Log
-import androidx.work.*
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
-import com.google.gson.Gson
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.ListenableWorker
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
 import com.oropeza.urbanapp.asd.AsdGraph
-import com.oropeza.urbanapp.asd.data.local.StopEvent
-import com.oropeza.urbanapp.asd.data.local.Trip
-import kotlinx.coroutines.tasks.await
+import com.oropeza.urbanapp.asd.sync.cloud.CloudSyncEngine
 import java.util.concurrent.TimeUnit
 
-class AsdCloudSyncWorker(appContext: Context, workerParams: WorkerParameters) :
-    CoroutineWorker(appContext, workerParams) {
-
-    private val gson = Gson()
-    private val db = Firebase.firestore
+/**
+ * Procesa la cola cloud sin bloquear las operaciones locales de ASD.
+ *
+ * Room y sync_queue se confirman antes de programar este worker. WorkManager
+ * espera conectividad y ejecuta el motor real cuando la red está disponible.
+ */
+class AsdCloudSyncWorker(
+    appContext: Context,
+    workerParams: WorkerParameters
+) : CoroutineWorker(appContext, workerParams) {
 
     companion object {
         private const val TAG = "AsdCloudSyncWorker"
         private const val WORK_NAME = "AsdCloudSyncWork"
+        private const val MAX_ITEMS_PER_RUN = 100
 
         fun enqueue(context: Context) {
             val constraints = Constraints.Builder()
@@ -29,88 +38,54 @@ class AsdCloudSyncWorker(appContext: Context, workerParams: WorkerParameters) :
 
             val request = OneTimeWorkRequestBuilder<AsdCloudSyncWorker>()
                 .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .setBackoffCriteria(
+                    BackoffPolicy.EXPONENTIAL,
+                    30,
+                    TimeUnit.SECONDS
+                )
                 .build()
 
-            WorkManager.getInstance(context).enqueueUniqueWork(
+            WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
                 WORK_NAME,
-                ExistingWorkPolicy.REPLACE,
+                ExistingWorkPolicy.KEEP,
                 request
             )
         }
     }
 
     override suspend fun doWork(): ListenableWorker.Result {
-        val pendingItems = AsdGraph.repo.getPendingSyncItems(50)
-        if (pendingItems.isEmpty()) return ListenableWorker.Result.success()
+        return try {
+            val engine = CloudSyncEngine(
+                repository = AsdGraph.repo,
+                target = AsdGraph.getCloudSyncTarget()
+            )
 
-        var successCount = 0
-        for (item in pendingItems) {
-            try {
-                // Mock sync for Phase 1
-                val success = true
+            var processed = 0
+            var syncedInBatch: Int
+            do {
+                syncedInBatch = engine.processNextBatch()
+                processed += syncedInBatch
+            } while (syncedInBatch > 0 && processed < MAX_ITEMS_PER_RUN)
 
-                if (success) {
-                    AsdGraph.repo.markSyncItemSynced(item.id)
-                    successCount++
-                } else {
-                    markAsFailed(item, "Sync failed for ${item.entityType}")
+            val remaining = AsdGraph.repo.getPendingSyncItems(1).isNotEmpty()
+            when {
+                remaining && runAttemptCount < 5 -> {
+                    Log.w(TAG, "Quedan elementos pendientes; se solicitará reintento")
+                    ListenableWorker.Result.retry()
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error syncing item ${item.id}", e)
-                markAsFailed(item, e.message ?: "Unknown error")
+
+                else -> {
+                    Log.i(TAG, "Sincronización en background terminada. Exitosos: $processed")
+                    ListenableWorker.Result.success()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Falló la sincronización en background", e)
+            if (runAttemptCount < 5) {
+                ListenableWorker.Result.retry()
+            } else {
+                ListenableWorker.Result.failure()
             }
         }
-
-        return if (successCount < pendingItems.size) {
-            ListenableWorker.Result.retry()
-        } else {
-            ListenableWorker.Result.success()
-        }
-    }
-
-    private suspend fun markAsFailed(item: com.oropeza.urbanapp.asd.data.local.AsdSyncQueueItem, error: String) {
-        val updated = item.copy(
-            attempts = item.attempts + 1,
-            lastError = error,
-            status = "FAILED",
-            updatedAt = System.currentTimeMillis()
-        )
-        AsdGraph.repo.updateSyncItem(updated)
-    }
-
-    private suspend fun syncTrip(json: String): Boolean {
-        val trip = gson.fromJson(json, Trip::class.java)
-        db.collection("asd_trips").document(trip.tripId.toString())
-            .set(trip)
-            .await()
-        return true
-    }
-
-    private suspend fun syncEvent(json: String): Boolean {
-        val event = gson.fromJson(json, StopEvent::class.java)
-        db.collection("asd_trips").document(event.tripId.toString())
-            .collection("events").document(event.eventId.toString())
-            .set(event)
-            .await()
-        return true
-    }
-
-    private suspend fun syncTrackSummary(json: String): Boolean {
-        val summary = gson.fromJson(json, TrackSummaryDto::class.java)
-        db.collection("asd_trips").document(summary.tripId.toString())
-            .collection("track_summary").document("latest")
-            .set(summary)
-            .await()
-        return true
-    }
-
-    private suspend fun syncDeviceStatus(json: String): Boolean {
-        val status = gson.fromJson(json, DeviceStatusDto::class.java)
-        db.collection("asd_devices").document(status.deviceId)
-            .collection("status").document("current")
-            .set(status)
-            .await()
-        return true
     }
 }
