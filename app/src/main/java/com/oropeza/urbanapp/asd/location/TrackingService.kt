@@ -63,53 +63,74 @@ class TrackingService : Service() {
     private var saverJob: Job? = null
     private var watchdogJob: Job? = null
     private var currentTripId: Long? = null
+    private var shuttingDown = false
 
     private lateinit var gps: LocationProvider
     private lateinit var headingProvider: HeadingProvider
 
     override fun onCreate() {
         super.onCreate()
-        isRunning = true
         gps = LocationProvider(this)
         headingProvider = HeadingProvider(this)
-        headingProvider.start()
         createNotificationChannel()
-        startForeground(NOTIF_ID, buildNotification("Tracking ASD activo"))
+        startForeground(NOTIF_ID, buildNotification("Validando recorrido activo…"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent == null) return START_STICKY
+        if (intent == null) {
+            Log.w(TAG, "Servicio recreado sin intención; se detiene para evitar captura huérfana")
+            stopTracking()
+            return START_NOT_STICKY
+        }
 
         when (intent.action) {
             ACTION_START -> {
                 val tripId = intent.getLongExtra(EXTRA_TRIP_ID, -1L)
                 if (tripId > 0) {
-                    if (currentTripId != null && currentTripId != tripId) stopTracking()
+                    if (currentTripId != null && currentTripId != tripId) resetTrackingState()
                     startTracking(tripId)
                 } else {
                     Log.w(TAG, "ACTION_START sin tripId válido")
+                    stopTracking()
                 }
             }
+
             ACTION_STOP -> stopTracking()
+            else -> {
+                Log.w(TAG, "Acción desconocida; se detiene el servicio")
+                stopTracking()
+            }
         }
 
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun startTracking(tripId: Long) {
-        if (currentTripId == tripId) return
+        if (currentTripId == tripId && isRunning) return
 
         resetTrackingState()
         currentTripId = tripId
-        engine.start()
-        publishRuntimeState(engineState = null, modeOverride = "ACQUIRE")
+        shuttingDown = false
 
         mainJob = scope.launch {
-            if (!gps.hasPermission()) {
-                Log.w(TAG, "Sin permisos de ubicación. No se inicia tracking.")
+            val trip = AsdGraph.repo.getTripOnce(tripId)
+            if (trip == null || trip.endTime != null) {
+                Log.w(TAG, "No existe recorrido activo para tracking: $tripId")
+                stopTracking()
                 return@launch
             }
 
+            if (!gps.hasPermission()) {
+                Log.w(TAG, "Sin permisos de ubicación. Se detiene tracking.")
+                stopTracking()
+                return@launch
+            }
+
+            isRunning = true
+            headingProvider.start()
+            engine.start()
+            publishRuntimeState(engineState = null, modeOverride = "ACQUIRE")
+            updateNotification("Tracking ASD activo")
             startGpsUpdates()
             startSaverLoop()
             startWatchdogLoop()
@@ -121,6 +142,10 @@ class TrackingService : Service() {
         gpsUpdatesJob?.cancel()
         saverJob?.cancel()
         watchdogJob?.cancel()
+        mainJob = null
+        gpsUpdatesJob = null
+        saverJob = null
+        watchdogJob = null
         engine.reset()
         _runtimeGpsState.value = RuntimeGpsState(mode = "IDLE")
     }
@@ -160,7 +185,17 @@ class TrackingService : Service() {
         saverJob = scope.launch {
             while (true) {
                 delay(fixedCaptureIntervalMs)
-                val tripId = currentTripId ?: continue
+                val tripId = currentTripId ?: break
+
+                // Room es la fuente de verdad: nunca se escribe un punto si el
+                // recorrido ya no existe o fue finalizado.
+                val trip = AsdGraph.repo.getTripOnce(tripId)
+                if (trip == null || trip.endTime != null) {
+                    Log.i(TAG, "Recorrido $tripId inactivo; deteniendo captura GPS")
+                    stopTracking()
+                    break
+                }
+
                 val sample = engine.sample(tripId, System.currentTimeMillis())
                 persistSample(tripId, sample)
             }
@@ -172,6 +207,7 @@ class TrackingService : Service() {
         watchdogJob = scope.launch {
             while (true) {
                 delay(watchdogIntervalMs)
+                if (currentTripId == null || !isRunning) break
                 val age = System.currentTimeMillis() - engine.lastFixReceivedAtMs
                 if (engine.lastFixReceivedAtMs == 0L || age > staleFixAfterMs) {
                     Log.i(TAG, "GPS watchdog restarting updates. Last fix age: ${age}ms")
@@ -186,6 +222,14 @@ class TrackingService : Service() {
         sample: AforaGpsEngine.CaptureSample
     ) {
         try {
+            // Segunda defensa ante una carrera entre el cierre y la escritura.
+            val trip = AsdGraph.repo.getTripOnce(tripId)
+            if (trip == null || trip.endTime != null) {
+                Log.i(TAG, "Muestra descartada porque el recorrido $tripId ya terminó")
+                stopTracking()
+                return
+            }
+
             AsdGraph.db.trackDao().insert(sample.point)
             publishRuntimeState(sample.state)
 
@@ -222,20 +266,37 @@ class TrackingService : Service() {
     }
 
     private fun stopTracking() {
-        resetTrackingState()
+        if (shuttingDown) return
+        shuttingDown = true
+        isRunning = false
         currentTripId = null
-        try { headingProvider.stop() } catch (_: Exception) {}
+        resetTrackingState()
+        try {
+            if (::headingProvider.isInitialized) headingProvider.stop()
+        } catch (_: Exception) {
+        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     override fun onDestroy() {
         isRunning = false
-        stopTracking()
+        currentTripId = null
+        resetTrackingState()
+        try {
+            if (::headingProvider.isInitialized) headingProvider.stop()
+        } catch (_: Exception) {
+        }
         scope.cancel()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIF_ID, buildNotification(text))
+    }
 
     private fun buildNotification(text: String): android.app.Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
