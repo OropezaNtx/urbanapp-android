@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.oropeza.urbanapp.asd.AsdGraph
@@ -65,8 +66,28 @@ class TrackingService : Service() {
             val watchdogRestartCount: Int = 0
         )
 
+        data class TrackingMetricsSnapshot(
+            val tripId: Long? = null,
+            val active: Boolean = false,
+            val elapsedMs: Long = 0L,
+            val rawFixCount: Long = 0L,
+            val persistedSampleCount: Long = 0L,
+            val liveSampleCount: Long = 0L,
+            val noFixSampleCount: Long = 0L,
+            val averageAccuracyM: Double = 0.0,
+            val maxRawFixGapMs: Long = 0L,
+            val averageRoomInsertMs: Double = 0.0,
+            val maxRoomInsertMs: Double = 0.0,
+            val watchdogRestartCount: Int = 0,
+            val engineMode: String = "IDLE",
+            val updatedAtMs: Long = 0L
+        )
+
         private val _runtimeGpsState = MutableStateFlow(RuntimeGpsState())
         val runtimeGpsState: StateFlow<RuntimeGpsState> = _runtimeGpsState.asStateFlow()
+
+        private val _trackingMetrics = MutableStateFlow(TrackingMetricsSnapshot())
+        val trackingMetrics: StateFlow<TrackingMetricsSnapshot> = _trackingMetrics.asStateFlow()
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -81,8 +102,18 @@ class TrackingService : Service() {
 
     private var rawFixCount = 0L
     private var persistedSampleCount = 0L
+    private var liveSampleCount = 0L
+    private var noFixSampleCount = 0L
+    private var accuracySumM = 0.0
+    private var accuracySampleCount = 0L
+    private var maxRawFixGapMs = 0L
+    private var lastRawFixReceivedAtMs = 0L
+    private var totalRoomInsertNs = 0L
+    private var maxRoomInsertNs = 0L
+    private var roomInsertCount = 0L
     private var watchdogRestartCount = 0
     private var lastGpsRestartAtMs = 0L
+    private var trackingStartedElapsedMs = 0L
     private var lastNotificationText: String? = null
 
     private lateinit var gps: LocationProvider
@@ -130,10 +161,7 @@ class TrackingService : Service() {
         resetTrackingState()
         currentTripId = tripId
         shuttingDown = false
-        rawFixCount = 0L
-        persistedSampleCount = 0L
-        watchdogRestartCount = 0
-        lastGpsRestartAtMs = 0L
+        resetMetrics(tripId)
 
         mainJob = scope.launch {
             val trip = AsdGraph.repo.getTripOnce(tripId)
@@ -152,11 +180,34 @@ class TrackingService : Service() {
             isRunning = true
             engine.start()
             publishRuntimeState(engineState = null, modeOverride = "ACQUIRE")
+            publishMetrics(engineMode = "ACQUIRE")
             updateNotification("Tracking ASD activo")
             startGpsUpdates()
             startSaverLoop()
             startWatchdogLoop()
         }
+    }
+
+    private fun resetMetrics(tripId: Long) {
+        rawFixCount = 0L
+        persistedSampleCount = 0L
+        liveSampleCount = 0L
+        noFixSampleCount = 0L
+        accuracySumM = 0.0
+        accuracySampleCount = 0L
+        maxRawFixGapMs = 0L
+        lastRawFixReceivedAtMs = 0L
+        totalRoomInsertNs = 0L
+        maxRoomInsertNs = 0L
+        roomInsertCount = 0L
+        watchdogRestartCount = 0
+        lastGpsRestartAtMs = 0L
+        trackingStartedElapsedMs = SystemClock.elapsedRealtime()
+        _trackingMetrics.value = TrackingMetricsSnapshot(
+            tripId = tripId,
+            active = false,
+            updatedAtMs = System.currentTimeMillis()
+        )
     }
 
     private fun resetTrackingState() {
@@ -195,7 +246,17 @@ class TrackingService : Service() {
                 Log.e(TAG, "Error en locationUpdates()", e)
             }.collect { loc ->
                 val receivedAt = System.currentTimeMillis()
+                if (lastRawFixReceivedAtMs > 0L) {
+                    val gapMs = (receivedAt - lastRawFixReceivedAtMs).coerceAtLeast(0L)
+                    if (gapMs > maxRawFixGapMs) maxRawFixGapMs = gapMs
+                }
+                lastRawFixReceivedAtMs = receivedAt
                 rawFixCount++
+                if (loc.accuracy > 0f) {
+                    accuracySumM += loc.accuracy.toDouble()
+                    accuracySampleCount++
+                }
+
                 val engineState = engine.onRawFix(
                     AforaGpsEngine.RawLocationFix(
                         lat = loc.latitude,
@@ -255,6 +316,7 @@ class TrackingService : Service() {
                         "Watchdog GPS: listenerInactive=$listenerInactive, fixAgeMs=$fixAgeMs"
                     )
                     startGpsUpdates(fromWatchdog = true)
+                    publishMetrics()
                 }
             }
         }
@@ -273,9 +335,22 @@ class TrackingService : Service() {
                 return
             }
 
+            val insertStartedNs = SystemClock.elapsedRealtimeNanos()
             AsdGraph.db.trackDao().insert(sample.point)
+            val insertDurationNs = (SystemClock.elapsedRealtimeNanos() - insertStartedNs).coerceAtLeast(0L)
+            totalRoomInsertNs += insertDurationNs
+            roomInsertCount++
+            if (insertDurationNs > maxRoomInsertNs) maxRoomInsertNs = insertDurationNs
+
             persistedSampleCount++
+            if (sample.point.sampleStatus == "NO_FIX") {
+                noFixSampleCount++
+            } else {
+                liveSampleCount++
+            }
+
             publishRuntimeState(sample.state)
+            publishMetrics(engineMode = sample.state.mode.name)
 
             if (sample.shouldBackfillEvents) {
                 val completed = AsdGraph.repo.completePendingGpsEvents(tripId, sample.point)
@@ -283,11 +358,7 @@ class TrackingService : Service() {
             }
 
             if (persistedSampleCount % 300L == 0L) {
-                Log.i(
-                    TAG,
-                    "Métricas tracking trip=$tripId rawFixes=$rawFixCount " +
-                        "persisted=$persistedSampleCount watchdogRestarts=$watchdogRestartCount"
-                )
+                logMetrics("periodic")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error insertando TrackPoint o completando GPS pendiente", e)
@@ -325,16 +396,66 @@ class TrackingService : Service() {
         )
     }
 
+    private fun publishMetrics(
+        engineMode: String = _runtimeGpsState.value.mode,
+        activeOverride: Boolean? = null
+    ) {
+        val elapsedMs = if (trackingStartedElapsedMs > 0L) {
+            (SystemClock.elapsedRealtime() - trackingStartedElapsedMs).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+        val averageAccuracy = if (accuracySampleCount > 0L) {
+            accuracySumM / accuracySampleCount.toDouble()
+        } else {
+            0.0
+        }
+        val averageInsertMs = if (roomInsertCount > 0L) {
+            totalRoomInsertNs.toDouble() / roomInsertCount.toDouble() / 1_000_000.0
+        } else {
+            0.0
+        }
+
+        _trackingMetrics.value = TrackingMetricsSnapshot(
+            tripId = currentTripId ?: _trackingMetrics.value.tripId,
+            active = activeOverride ?: isRunning,
+            elapsedMs = elapsedMs,
+            rawFixCount = rawFixCount,
+            persistedSampleCount = persistedSampleCount,
+            liveSampleCount = liveSampleCount,
+            noFixSampleCount = noFixSampleCount,
+            averageAccuracyM = averageAccuracy,
+            maxRawFixGapMs = maxRawFixGapMs,
+            averageRoomInsertMs = averageInsertMs,
+            maxRoomInsertMs = maxRoomInsertNs.toDouble() / 1_000_000.0,
+            watchdogRestartCount = watchdogRestartCount,
+            engineMode = engineMode,
+            updatedAtMs = System.currentTimeMillis()
+        )
+    }
+
+    private fun logMetrics(reason: String) {
+        val metrics = _trackingMetrics.value
+        Log.i(
+            TAG,
+            "metrics reason=$reason trip=${metrics.tripId} active=${metrics.active} " +
+                "elapsedMs=${metrics.elapsedMs} rawFixes=${metrics.rawFixCount} " +
+                "persisted=${metrics.persistedSampleCount} live=${metrics.liveSampleCount} " +
+                "noFix=${metrics.noFixSampleCount} avgAccM=${"%.2f".format(metrics.averageAccuracyM)} " +
+                "maxFixGapMs=${metrics.maxRawFixGapMs} " +
+                "avgRoomInsertMs=${"%.3f".format(metrics.averageRoomInsertMs)} " +
+                "maxRoomInsertMs=${"%.3f".format(metrics.maxRoomInsertMs)} " +
+                "watchdogRestarts=${metrics.watchdogRestartCount} mode=${metrics.engineMode}"
+        )
+    }
+
     private fun stopTracking() {
         if (shuttingDown) return
         shuttingDown = true
         isRunning = false
+        publishMetrics(activeOverride = false)
+        logMetrics("stop")
         currentTripId = null
-        Log.i(
-            TAG,
-            "Tracking detenido: rawFixes=$rawFixCount persisted=$persistedSampleCount " +
-                "watchdogRestarts=$watchdogRestartCount"
-        )
         resetTrackingState()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -342,6 +463,7 @@ class TrackingService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        publishMetrics(activeOverride = false)
         currentTripId = null
         resetTrackingState()
         scope.cancel()
