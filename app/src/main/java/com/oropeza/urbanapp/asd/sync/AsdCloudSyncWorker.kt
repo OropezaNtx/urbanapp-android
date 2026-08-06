@@ -69,16 +69,20 @@ class AsdCloudSyncWorker(
                 totalSynced += syncedInBatch
             }
 
-            val remainingEligible = AsdGraph.repo.getPendingSyncItems(1).isNotEmpty()
+            val outstanding = AsdGraph.repo.getOutstandingSyncCount()
             Log.i(
                 TAG,
-                "Background sync finished. Synced=$totalSynced, remainingEligible=$remainingEligible"
+                "Background sync finished. Synced=$totalSynced, outstanding=$outstanding"
             )
 
-            when {
-                remainingEligible && totalSynced > 0 -> ListenableWorker.Result.retry()
-                remainingEligible && runAttemptCount < 5 -> ListenableWorker.Result.retry()
-                else -> ListenableWorker.Result.success()
+            if (outstanding > 0) {
+                Log.w(
+                    TAG,
+                    "Quedan $outstanding elementos por resolver; WorkManager continuará automáticamente con backoff"
+                )
+                ListenableWorker.Result.retry()
+            } else {
+                ListenableWorker.Result.success()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Falló la sincronización en background", e)

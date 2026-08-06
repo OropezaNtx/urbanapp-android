@@ -56,7 +56,12 @@ class AsdTripListVM : ViewModel() {
 
     init {
         checkForRecovery()
-    }
+        viewModelScope.launch { AsdGraph.repo.reconcileHistoricalTrips() }
+
+        viewModelScope.launch {
+            AsdGraph.repo.reactivateFailedSyncItems()
+        }
+}
 
     fun checkForRecovery() {
         viewModelScope.launch {
@@ -76,12 +81,12 @@ class AsdTripListVM : ViewModel() {
 
     fun resumeTracking(context: android.content.Context, tripId: Long) {
         if (TrackingService.isRunning) return
-        
+
         val intent = android.content.Intent(context, TrackingService::class.java).apply {
             action = TrackingService.ACTION_START
             putExtra(TrackingService.EXTRA_TRIP_ID, tripId)
         }
-        
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             context.startForegroundService(intent)
         } else {
@@ -89,7 +94,7 @@ class AsdTripListVM : ViewModel() {
         }
 
         _activeTripToRecover.value = null
-        
+
         viewModelScope.launch {
             UrbanRuntime.publishEvent(UrbanEventFactory.platform(
                 UrbanEventTypes.RECOVERY_RESUMED,
@@ -150,7 +155,7 @@ fun AsdTripListContent(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
-    
+
     var showDiag by remember { mutableStateOf(false) }
     var diagText by remember { mutableStateOf("") }
 
@@ -165,8 +170,8 @@ fun AsdTripListContent(
                 ),
                 title = { Text("LEVANTAMIENTOS", style = typography.Headline, fontWeight = FontWeight.Black) },
                 navigationIcon = {
-                    TextButton(onClick = onBackHome) { 
-                        Text("INICIO", color = colors.Primary, fontWeight = FontWeight.Bold) 
+                    TextButton(onClick = onBackHome) {
+                        Text("INICIO", color = colors.Primary, fontWeight = FontWeight.Bold)
                     }
                 },
                 actions = {
@@ -187,7 +192,7 @@ fun AsdTripListContent(
                 containerColor = colors.Primary,
                 contentColor = colors.OnPrimary,
                 shape = MaterialTheme.shapes.extraSmall
-            ) { 
+            ) {
                 Icon(Icons.Default.Add, contentDescription = "Nuevo Levantamiento")
             }
         }
@@ -197,7 +202,7 @@ fun AsdTripListContent(
                 .padding(pad)
                 .fillMaxSize()
         ) {
-            
+
             // Operational Recovery Banner
             activeTripToRecover?.let { trip ->
                 AforaOperationalCard(
@@ -269,7 +274,7 @@ fun AsdTripListContent(
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = { 
+                        TextButton(onClick = {
                             clipboardManager.setText(AnnotatedString(diagText))
                             scope.launch { snackbarHostState.showSnackbar("Copiado al portapapeles") }
                         }) { Text("COPIAR", fontWeight = FontWeight.Bold) }
@@ -324,7 +329,7 @@ fun AsdTripListContent(
                     }
                 }
             }
-            
+
             AforaMetadataRow(
                 label = "VERSIÓN",
                 value = "v${BuildConfig.VERSION_NAME}",
@@ -343,7 +348,7 @@ private fun CloudSyncStatusCard(
 ) {
     val colors = LocalAforaColors.current
     val typography = LocalAforaTypography.current
-    
+
     AforaOperationalCard(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         containerColor = colors.Surface
@@ -358,13 +363,13 @@ private fun CloudSyncStatusCard(
                 Column {
                     Text("PENDIENTES", style = typography.Label, color = if (pendingCount > 0) colors.Warning else colors.Secondary.copy(alpha = 0.4f))
                     Text(
-                        "$pendingCount", 
-                        style = typography.Headline, 
+                        "$pendingCount",
+                        style = typography.Headline,
                         fontWeight = FontWeight.Black,
                         color = if (pendingCount > 0) colors.Warning else colors.Secondary
                     )
                 }
-                
+
                 if (failedCount > 0) {
                     Column {
                         Text("CON ERROR", style = typography.Label, color = colors.Danger)
@@ -378,7 +383,7 @@ private fun CloudSyncStatusCard(
                     shape = MaterialTheme.shapes.extraSmall,
                     modifier = Modifier.height(48.dp)
                 ) {
-                    Text("SINCRONIZAR AHORA", style = typography.Label, fontWeight = FontWeight.Bold)
+                    Text("REINTENTAR ERRORES", style = typography.Label, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -410,18 +415,18 @@ private fun TripCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    trip.routeName.uppercase(), 
-                    style = typography.Title, 
+                    trip.routeName.uppercase(),
+                    style = typography.Title,
                     fontWeight = FontWeight.ExtraBold,
                     color = colors.Secondary,
                     modifier = Modifier.weight(1f)
                 )
-                
+
                 if (syncStatus != AsdTripSyncStatus.NOT_QUEUED) {
                     SyncStatusChip(syncStatus)
                 }
             }
-            
+
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 AforaMetadataRow(label = "UNIDAD", value = "ECO ${trip.vehicleEco ?: "-"} • ${trip.plateNumber ?: "-"}")
                 AforaMetadataRow(label = "INICIO", value = start)

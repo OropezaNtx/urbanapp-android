@@ -12,6 +12,9 @@ interface TripDao {
     @Query("SELECT * FROM Trip ORDER BY startTime DESC")
     fun getAll(): Flow<List<Trip>>
 
+    @Query("SELECT * FROM Trip ORDER BY startTime ASC")
+    suspend fun getAllOnce(): List<Trip>
+
     @Query("SELECT * FROM Trip WHERE tripId = :id LIMIT 1")
     fun getById(id: Long): Flow<Trip?>
 
@@ -348,9 +351,34 @@ interface AsdVehicleTypeCatalogDao {
     }
 }
 
+data class AsdTripSyncDiagnostics(
+    val totalCount: Int,
+    val pendingCount: Int,
+    val inProgressCount: Int,
+    val syncedCount: Int,
+    val failedCount: Int,
+    val deadLetterCount: Int,
+    val lastError: String?,
+    val lastFailedPath: String?,
+    val lastUpdatedAt: Long?
+)
+
 @Dao
 interface AsdSyncQueueDao {
     @Insert suspend fun insert(item: AsdSyncQueueItem): Long
+
+    @Query("""
+        SELECT * FROM sync_queue
+        WHERE entityType = :entityType
+          AND entityLocalId = :entityLocalId
+          AND parentTripId = :parentTripId
+          AND cloudPath = :cloudPath
+        ORDER BY id DESC LIMIT 1
+    """)
+    suspend fun findLogicalItem(entityType: String, entityLocalId: Long, parentTripId: Long, cloudPath: String): AsdSyncQueueItem?
+
+    @Query("SELECT COUNT(*) FROM sync_queue WHERE parentTripId = :tripId AND entityType = :entityType")
+    suspend fun countTypeForTrip(tripId: Long, entityType: String): Int
 
     @Query("SELECT * FROM sync_queue WHERE (status = 'PENDING' OR status = 'FAILED') AND nextAttemptAt <= :now ORDER BY priority ASC, createdAt ASC LIMIT :limit")
     suspend fun getPending(limit: Int, now: Long = System.currentTimeMillis()): List<AsdSyncQueueItem>
@@ -383,8 +411,18 @@ interface AsdSyncQueueDao {
     @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED'")
     fun pendingCountFlow(): Flow<Int>
 
+    @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED' OR status = 'IN_PROGRESS'")
+    suspend fun getOutstandingCount(): Int
+
     @Query("SELECT COUNT(*) FROM sync_queue WHERE status = 'FAILED'")
     fun failedCountFlow(): Flow<Int>
+
+    @Query("""
+        UPDATE sync_queue
+        SET status = 'PENDING', nextAttemptAt = 0, updatedAt = :now
+        WHERE status = 'FAILED' OR status = 'DEAD_LETTER'
+    """)
+    suspend fun reactivateFailed(now: Long = System.currentTimeMillis()): Int
 
     @Query("SELECT lastError FROM sync_queue WHERE lastError IS NOT NULL ORDER BY updatedAt DESC LIMIT :limit")
     suspend fun getLatestErrors(limit: Int): List<String>
@@ -406,4 +444,19 @@ interface AsdSyncQueueDao {
           AND (entityType = 'TRIP' OR entityType = 'EVENT' OR entityType = 'TRACK_CHUNK')
     """)
     fun getTripSyncItemStatusesFlow(tripId: Long): Flow<List<String>>
+
+    @Query("""
+        SELECT COUNT(*) totalCount,
+        SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END) pendingCount,
+        SUM(CASE WHEN status='IN_PROGRESS' THEN 1 ELSE 0 END) inProgressCount,
+        SUM(CASE WHEN status='SYNCED' THEN 1 ELSE 0 END) syncedCount,
+        SUM(CASE WHEN status='FAILED' THEN 1 ELSE 0 END) failedCount,
+        SUM(CASE WHEN status='DEAD_LETTER' THEN 1 ELSE 0 END) deadLetterCount,
+        (SELECT lastError FROM sync_queue q2 WHERE (q2.parentTripId=:tripId OR (q2.entityType='TRIP' AND q2.entityLocalId=:tripId)) AND q2.lastError IS NOT NULL ORDER BY q2.updatedAt DESC LIMIT 1) lastError,
+        (SELECT cloudPath FROM sync_queue q3 WHERE (q3.parentTripId=:tripId OR (q3.entityType='TRIP' AND q3.entityLocalId=:tripId)) AND q3.lastError IS NOT NULL ORDER BY q3.updatedAt DESC LIMIT 1) lastFailedPath,
+        MAX(updatedAt) lastUpdatedAt
+        FROM sync_queue
+        WHERE parentTripId=:tripId OR (entityType='TRIP' AND entityLocalId=:tripId)
+    """)
+    fun getTripDiagnosticsFlow(tripId: Long): Flow<AsdTripSyncDiagnostics>
 }

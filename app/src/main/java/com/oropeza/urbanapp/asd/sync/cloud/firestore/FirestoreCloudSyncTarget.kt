@@ -1,6 +1,7 @@
 package com.oropeza.urbanapp.asd.sync.cloud.firestore
 
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
@@ -14,7 +15,14 @@ import kotlinx.coroutines.tasks.await
 class FirestoreCloudSyncTarget : CloudSyncTarget {
 
     private val db = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
     private val gson = Gson()
+
+    private suspend fun ensureAuthenticated() {
+        if (auth.currentUser == null) {
+            auth.signInAnonymously().await()
+        }
+    }
     private val mapType = object : TypeToken<Map<String, Any?>>() {}.type
 
     private companion object {
@@ -28,6 +36,7 @@ class FirestoreCloudSyncTarget : CloudSyncTarget {
         }
 
         return try {
+            ensureAuthenticated()
             val payloadMap: Map<String, Any?> = gson.fromJson(item.payloadJson, mapType)
             
             db.document(path)
@@ -50,6 +59,7 @@ class FirestoreCloudSyncTarget : CloudSyncTarget {
         }
 
         return try {
+            ensureAuthenticated()
             db.document(path)
                 .delete()
                 .await()

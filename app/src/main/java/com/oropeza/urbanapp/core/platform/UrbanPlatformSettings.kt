@@ -4,6 +4,9 @@ import android.content.Context
 
 object UrbanPlatformSettings {
 
+    const val DEFAULT_ORGANIZATION_ID = "afora"
+    const val DEFAULT_PROJECT_ID = "urban_operations"
+
     private const val PREFS_NAME = "urban_platform_settings"
     private const val KEY_WORKSPACE_ID = "workspace_id" // Standardized
     private const val KEY_ORG_ID = "organization_id"   // Legacy support
@@ -13,14 +16,14 @@ object UrbanPlatformSettings {
 
     fun getWorkspaceId(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_WORKSPACE_ID, null) 
-            ?: prefs.getString(KEY_ORG_ID, "") 
-            ?: ""
+        return prefs.getString(KEY_WORKSPACE_ID, null)
+            ?: prefs.getString(KEY_ORG_ID, null)
+            ?: DEFAULT_ORGANIZATION_ID
     }
 
     fun getProjectId(context: Context): String {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_PROJECT_ID, "") ?: ""
+            .getString(KEY_PROJECT_ID, DEFAULT_PROJECT_ID) ?: DEFAULT_PROJECT_ID
     }
 
     fun getLicenseId(context: Context): String? {

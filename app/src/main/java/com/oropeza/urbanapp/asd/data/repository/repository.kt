@@ -639,12 +639,20 @@ class AsdRepository(private val db: AppDatabase) {
 
     fun syncQueuePendingCountFlow() = syncQueueDao.pendingCountFlow()
     fun syncQueueFailedCountFlow() = syncQueueDao.failedCountFlow()
+    suspend fun reactivateFailedSyncItems(): Int {
+        val reactivated = syncQueueDao.reactivateFailed()
+        if (reactivated > 0) {
+            com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler.syncNow(AsdGraph.appContext)
+        }
+        return reactivated
+    }
     fun lastSyncTimeFlow() = syncQueueDao.lastSyncTimeFlow()
     suspend fun recoverStaleSyncItems(staleAfterMs: Long = 10 * 60 * 1000L): Int {
         val now = System.currentTimeMillis()
         return syncQueueDao.recoverStaleInProgress(cutoff = now - staleAfterMs, now = now)
     }
     suspend fun getPendingSyncItems(limit: Int) = syncQueueDao.getPending(limit)
+    suspend fun getOutstandingSyncCount(): Int = syncQueueDao.getOutstandingCount()
     suspend fun markSyncItemSynced(id: Long) = syncQueueDao.markSynced(id)
     suspend fun updateSyncItem(item: AsdSyncQueueItem) = syncQueueDao.update(item)
     suspend fun getLastFailedSyncItem() = syncQueueDao.getLastFailedItem()
@@ -664,6 +672,62 @@ class AsdRepository(private val db: AppDatabase) {
         )
         return engine.processNextBatch()
     }
+
+    data class HistoricalReconciliationReport(
+        val scannedTrips: Int,
+        val queuedTrips: Int,
+        val queuedEvents: Int,
+        val queuedTrackSets: Int,
+        val skippedExisting: Int,
+        val errors: List<String>
+    )
+
+    suspend fun reconcileHistoricalTrips(): HistoricalReconciliationReport {
+        val context = AsdGraph.appContext
+        val workspace = UrbanRuntime.workspace(context)
+        val identity = UrbanRuntime.identity(context)
+        val trips = tripDao.getAllOnce()
+        var queuedTrips = 0
+        var queuedEvents = 0
+        var queuedTrackSets = 0
+        var skipped = 0
+        val errors = mutableListOf<String>()
+
+        trips.forEach { trip ->
+            try {
+                val cloudTripId = "${identity.installationId}_${trip.tripId}"
+                val tripPath = UrbanCloudPaths.tripPath(workspace, cloudTripId)
+                if (syncQueueDao.findLogicalItem("TRIP", trip.tripId, trip.tripId, tripPath) == null) {
+                    enqueueSync("TRIP", "UPSERT", trip.tripId, AsdCloudMapper.toCloudDto(context, trip), tripPath, parentTripId = trip.tripId)
+                    queuedTrips++
+                } else skipped++
+
+                var men = 0
+                var women = 0
+                stopDao.getByTripOnce(trip.tripId).forEach { event ->
+                    men = (men + event.paxMenUp - event.paxMenDown).coerceAtLeast(0)
+                    women = (women + event.paxWomenUp - event.paxWomenDown).coerceAtLeast(0)
+                    val dto = AsdCloudMapper.toCloudDto(context, event, cloudTripId, men, women)
+                    val path = UrbanCloudPaths.tripEventPath(workspace, cloudTripId, dto.cloudEventId)
+                    if (syncQueueDao.findLogicalItem("EVENT", event.eventId, trip.tripId, path) == null) {
+                        enqueueSync("EVENT", "UPSERT", event.eventId, dto, path, parentTripId = trip.tripId)
+                        queuedEvents++
+                    } else skipped++
+                }
+
+                if (trip.endTime != null && syncQueueDao.countTypeForTrip(trip.tripId, "TRACK_CHUNK") == 0) {
+                    enqueueTrackChunks(trip.tripId)
+                    queuedTrackSets++
+                }
+            } catch (t: Throwable) {
+                errors += "Trip ${trip.tripId}: ${t.message ?: t::class.java.simpleName}"
+            }
+        }
+        com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker.enqueue(context)
+        return HistoricalReconciliationReport(trips.size, queuedTrips, queuedEvents, queuedTrackSets, skipped, errors)
+    }
+
+    fun getTripSyncDiagnosticsFlow(tripId: Long) = syncQueueDao.getTripDiagnosticsFlow(tripId)
 
     fun getTripSyncStatusFlow(tripId: Long): Flow<AsdTripSyncStatus> {
         return syncQueueDao.getTripSyncItemStatusesFlow(tripId).map { statuses ->
