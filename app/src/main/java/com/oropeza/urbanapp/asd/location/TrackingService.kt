@@ -24,21 +24,17 @@ import kotlinx.coroutines.launch
 
 class TrackingService : Service() {
 
-    private val NOTIF_ID = 1001
-    private val CHANNEL_ID = "tracking_channel"
+    private val notificationId = 1001
+    private val channelId = "tracking_channel"
 
-    // Requisito operativo: una muestra persistida cada dos segundos.
     private val fixedCaptureIntervalMs = 2_000L
     private val roomInsertRetryDelayMs = 150L
     private val roomInsertMaxAttempts = 2
+    private val sessionHeartbeatEverySamples = 5L
 
-    // La adquisición se alinea con la cadencia de persistencia. Fused Location
-    // todavía puede entregar una actualización antes, pero ya no se solicita a 500 ms.
     private val gpsRequestIntervalMs = 2_000L
     private val gpsMinUpdateIntervalMs = 1_000L
 
-    // Ausencia de señal no implica que el listener esté muerto. El watchdog solo
-    // reinicia después de una pérdida prolongada y aplica enfriamiento.
     private val watchdogIntervalMs = 10_000L
     private val watchdogRestartAfterMs = 60_000L
     private val watchdogRestartCooldownMs = 30_000L
@@ -47,7 +43,12 @@ class TrackingService : Service() {
         const val ACTION_START = "TRACK_START"
         const val ACTION_STOP = "TRACK_STOP"
         const val EXTRA_TRIP_ID = "trip_id"
+
         private const val TAG = "TrackingService"
+        private const val PREFS_NAME = "asd_tracking_recovery"
+        private const val PREF_SESSION_ACTIVE = "session_active"
+        private const val PREF_TRIP_ID = "trip_id"
+        private const val PREF_LAST_HEARTBEAT_MS = "last_heartbeat_ms"
 
         var isRunning = false
             private set
@@ -88,6 +89,9 @@ class TrackingService : Service() {
             val lastRoomInsertError: String? = null,
             val degraded: Boolean = false,
             val watchdogRestartCount: Int = 0,
+            val recoveryCount: Int = 0,
+            val lastRecoveryGapMs: Long = 0L,
+            val recoveredAfterProcessDeath: Boolean = false,
             val engineMode: String = "IDLE",
             val updatedAtMs: Long = 0L
         )
@@ -108,6 +112,7 @@ class TrackingService : Service() {
     private var watchdogJob: Job? = null
     private var currentTripId: Long? = null
     private var shuttingDown = false
+    private var recoveryInProgress = false
 
     private var rawFixCount = 0L
     private var persistedSampleCount = 0L
@@ -132,6 +137,9 @@ class TrackingService : Service() {
     private var lastGpsRestartAtMs = 0L
     private var trackingStartedElapsedMs = 0L
     private var lastNotificationText: String? = null
+    private var recoveryCount = 0
+    private var lastRecoveryGapMs = 0L
+    private var recoveredAfterProcessDeath = false
 
     private lateinit var gps: LocationProvider
 
@@ -139,66 +147,120 @@ class TrackingService : Service() {
         super.onCreate()
         gps = LocationProvider(this)
         createNotificationChannel()
-        startForeground(NOTIF_ID, buildNotification("Validando recorrido activo…"))
+        startForeground(notificationId, buildNotification("Validando recorrido activo…"))
         lastNotificationText = "Validando recorrido activo…"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent == null) {
-            Log.w(TAG, "Servicio recreado sin intención; se detiene para evitar captura huérfana")
-            stopTracking()
-            return START_NOT_STICKY
+            Log.w(TAG, "Servicio recreado por Android sin Intent; iniciando reconciliación local")
+            recoverAfterProcessRecreation()
+            return START_STICKY
         }
 
         when (intent.action) {
             ACTION_START -> {
                 val tripId = intent.getLongExtra(EXTRA_TRIP_ID, -1L)
-                if (tripId > 0) {
+                if (tripId > 0L) {
                     if (currentTripId != null && currentTripId != tripId) resetTrackingState()
-                    startTracking(tripId)
+                    startTracking(tripId, recovered = false, recoveryGapMs = 0L)
                 } else {
                     Log.w(TAG, "ACTION_START sin tripId válido")
-                    stopTracking()
+                    stopTracking(clearRecoveryMarker = true)
                 }
             }
 
-            ACTION_STOP -> stopTracking()
+            ACTION_STOP -> stopTracking(clearRecoveryMarker = true)
             else -> {
                 Log.w(TAG, "Acción desconocida; se detiene el servicio")
-                stopTracking()
+                stopTracking(clearRecoveryMarker = true)
             }
         }
 
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
-    private fun startTracking(tripId: Long) {
+    private fun recoverAfterProcessRecreation() {
+        if (recoveryInProgress || mainJob?.isActive == true || isRunning) return
+        recoveryInProgress = true
+
+        scope.launch {
+            val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            val markerActive = prefs.getBoolean(PREF_SESSION_ACTIVE, false)
+            val markedTripId = prefs.getLong(PREF_TRIP_ID, -1L)
+            val lastHeartbeatMs = prefs.getLong(PREF_LAST_HEARTBEAT_MS, 0L)
+
+            val activeTrips = AsdGraph.db.tripDao().getAllOnce().filter { it.endTime == null }
+            val activeTrip = activeTrips.singleOrNull()
+
+            val canRecover = markerActive &&
+                markedTripId > 0L &&
+                activeTrip != null &&
+                activeTrip.tripId == markedTripId
+
+            if (!canRecover) {
+                Log.w(
+                    TAG,
+                    "Recuperación rechazada: markerActive=$markerActive markedTripId=$markedTripId " +
+                        "activeTripCount=${activeTrips.size} activeTripId=${activeTrip?.tripId}"
+                )
+                recoveryInProgress = false
+                clearSessionMarker()
+                stopTracking(clearRecoveryMarker = false)
+                return@launch
+            }
+
+            val now = System.currentTimeMillis()
+            val gapMs = if (lastHeartbeatMs > 0L) {
+                (now - lastHeartbeatMs).coerceAtLeast(0L)
+            } else {
+                0L
+            }
+
+            Log.w(TAG, "Recuperando tracking trip=${activeTrip.tripId} suspensiónMs=$gapMs")
+            recoveryInProgress = false
+            startTracking(activeTrip.tripId, recovered = true, recoveryGapMs = gapMs)
+        }
+    }
+
+    private fun startTracking(tripId: Long, recovered: Boolean, recoveryGapMs: Long) {
         if (currentTripId == tripId && isRunning) return
 
         resetTrackingState()
         currentTripId = tripId
         shuttingDown = false
         resetMetrics(tripId)
+        recoveredAfterProcessDeath = recovered
+        lastRecoveryGapMs = recoveryGapMs
+        if (recovered) recoveryCount++
 
         mainJob = scope.launch {
             val trip = AsdGraph.repo.getTripOnce(tripId)
             if (trip == null || trip.endTime != null) {
                 Log.w(TAG, "No existe recorrido activo para tracking: $tripId")
-                stopTracking()
+                stopTracking(clearRecoveryMarker = true)
                 return@launch
             }
 
             if (!gps.hasPermission()) {
                 Log.w(TAG, "Sin permisos de ubicación. Se detiene tracking.")
-                stopTracking()
+                stopTracking(clearRecoveryMarker = true)
                 return@launch
             }
 
             isRunning = true
             engine.start()
+            writeSessionHeartbeat(tripId)
             publishRuntimeState(engineState = null, modeOverride = "ACQUIRE")
             publishMetrics(engineMode = "ACQUIRE")
-            updateNotification("Tracking ASD activo")
+            updateNotification(
+                if (recovered) {
+                    "Tracking reanudado tras ${formatGap(recoveryGapMs)}"
+                } else {
+                    "Tracking ASD activo"
+                }
+            )
+            if (recovered) logMetrics("recovered")
             startGpsUpdates()
             startSaverLoop()
             startWatchdogLoop()
@@ -228,6 +290,9 @@ class TrackingService : Service() {
         watchdogRestartCount = 0
         lastGpsRestartAtMs = 0L
         trackingStartedElapsedMs = SystemClock.elapsedRealtime()
+        recoveryCount = 0
+        lastRecoveryGapMs = 0L
+        recoveredAfterProcessDeath = false
         _trackingMetrics.value = TrackingMetricsSnapshot(
             tripId = tripId,
             active = false,
@@ -320,13 +385,10 @@ class TrackingService : Service() {
                 }
 
                 val tripId = currentTripId ?: break
-
-                // Única lectura de Trip por tick. La inserción no vuelve a consultar
-                // el recorrido, evitando dos lecturas por muestra.
                 val trip = AsdGraph.repo.getTripOnce(tripId)
                 if (trip == null || trip.endTime != null) {
                     Log.i(TAG, "Recorrido $tripId inactivo; deteniendo captura GPS")
-                    stopTracking()
+                    stopTracking(clearRecoveryMarker = true)
                     break
                 }
 
@@ -347,7 +409,10 @@ class TrackingService : Service() {
         watchdogJob = scope.launch {
             while (true) {
                 delay(watchdogIntervalMs)
-                if (currentTripId == null || !isRunning) break
+                val tripId = currentTripId ?: break
+                if (!isRunning) break
+
+                writeSessionHeartbeat(tripId)
 
                 val listenerInactive = gpsUpdatesJob?.isActive != true
                 val lastFixAt = engine.lastFixReceivedAtMs
@@ -358,10 +423,7 @@ class TrackingService : Service() {
                 }
 
                 if (listenerInactive || fixAgeMs > watchdogRestartAfterMs) {
-                    Log.w(
-                        TAG,
-                        "Watchdog GPS: listenerInactive=$listenerInactive, fixAgeMs=$fixAgeMs"
-                    )
+                    Log.w(TAG, "Watchdog GPS: listenerInactive=$listenerInactive, fixAgeMs=$fixAgeMs")
                     startGpsUpdates(fromWatchdog = true)
                     publishMetrics()
                 }
@@ -376,6 +438,10 @@ class TrackingService : Service() {
         if (!insertTrackPointWithRetry(sample)) return
 
         persistedSampleCount++
+        if (persistedSampleCount % sessionHeartbeatEverySamples == 0L) {
+            writeSessionHeartbeat(tripId)
+        }
+
         if (sample.point.sampleStatus == "NO_FIX") {
             noFixSampleCount++
         } else {
@@ -399,9 +465,7 @@ class TrackingService : Service() {
         }
     }
 
-    private suspend fun insertTrackPointWithRetry(
-        sample: AforaGpsEngine.CaptureSample
-    ): Boolean {
+    private suspend fun insertTrackPointWithRetry(sample: AforaGpsEngine.CaptureSample): Boolean {
         var lastError: Exception? = null
 
         repeat(roomInsertMaxAttempts) { attemptIndex ->
@@ -431,11 +495,7 @@ class TrackingService : Service() {
                 roomInsertFailureCount++
                 consecutiveRoomInsertFailures++
                 lastRoomInsertError = e.message ?: e.javaClass.simpleName
-                Log.e(
-                    TAG,
-                    "Fallo Room intento ${attemptIndex + 1}/$roomInsertMaxAttempts",
-                    e
-                )
+                Log.e(TAG, "Fallo Room intento ${attemptIndex + 1}/$roomInsertMaxAttempts", e)
                 publishMetrics(engineMode = sample.state.mode.name)
 
                 if (attemptIndex + 1 < roomInsertMaxAttempts) {
@@ -527,6 +587,9 @@ class TrackingService : Service() {
             lastRoomInsertError = lastRoomInsertError,
             degraded = degraded,
             watchdogRestartCount = watchdogRestartCount,
+            recoveryCount = recoveryCount,
+            lastRecoveryGapMs = lastRecoveryGapMs,
+            recoveredAfterProcessDeath = recoveredAfterProcessDeath,
             engineMode = engineMode,
             updatedAtMs = System.currentTimeMillis()
         )
@@ -548,14 +611,38 @@ class TrackingService : Service() {
                 "roomFailures=${metrics.roomInsertFailureCount} " +
                 "consecutiveRoomFailures=${metrics.consecutiveRoomInsertFailures} " +
                 "degraded=${metrics.degraded} watchdogRestarts=${metrics.watchdogRestartCount} " +
-                "mode=${metrics.engineMode}"
+                "recoveryCount=${metrics.recoveryCount} recoveryGapMs=${metrics.lastRecoveryGapMs} " +
+                "recovered=${metrics.recoveredAfterProcessDeath} mode=${metrics.engineMode}"
         )
     }
 
-    private fun stopTracking() {
+    private fun writeSessionHeartbeat(tripId: Long) {
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .edit()
+            .putBoolean(PREF_SESSION_ACTIVE, true)
+            .putLong(PREF_TRIP_ID, tripId)
+            .putLong(PREF_LAST_HEARTBEAT_MS, System.currentTimeMillis())
+            .apply()
+    }
+
+    private fun clearSessionMarker() {
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().clear().apply()
+    }
+
+    private fun formatGap(gapMs: Long): String {
+        val seconds = gapMs / 1_000L
+        return if (seconds < 60L) {
+            "${seconds}s"
+        } else {
+            "${seconds / 60L}m ${seconds % 60L}s"
+        }
+    }
+
+    private fun stopTracking(clearRecoveryMarker: Boolean) {
         if (shuttingDown) return
         shuttingDown = true
         isRunning = false
+        if (clearRecoveryMarker) clearSessionMarker()
         publishMetrics(activeOverride = false)
         logMetrics("stop")
         currentTripId = null
@@ -578,12 +665,12 @@ class TrackingService : Service() {
     private fun updateNotification(text: String) {
         if (lastNotificationText == text) return
         lastNotificationText = text
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(NOTIF_ID, buildNotification(text))
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(notificationId, buildNotification(text))
     }
 
     private fun buildNotification(text: String): android.app.Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentTitle("UrbanApp ASD")
             .setContentText(text)
@@ -596,12 +683,12 @@ class TrackingService : Service() {
     private fun createNotificationChannel() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID,
+                channelId,
                 "Tracking",
                 NotificationManager.IMPORTANCE_LOW
             )
-            val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(channel)
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
         }
     }
 }
