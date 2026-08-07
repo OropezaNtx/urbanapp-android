@@ -9,7 +9,6 @@ import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ListenableWorker
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.oropeza.urbanapp.asd.AsdGraph
@@ -83,7 +82,6 @@ class TrackingRecoveryWorker(
             val request = OneTimeWorkRequestBuilder<TrackingRecoveryWorker>()
                 .setInputData(input)
                 .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
-                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .addTag(WATCHDOG_TAG)
                 .build()
 
