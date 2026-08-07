@@ -1,12 +1,13 @@
 import { buildTrackMetrics } from "../components/TrackSummary";
 import { webIntegrity } from "./webIntegrity";
 
-export const OPERATIONAL_ANALYTICS_VERSION = "3.2.1";
+export const OPERATIONAL_ANALYTICS_VERSION = "3.2.2";
 
 const NOT_AVAILABLE = "NOT_AVAILABLE";
 const MOVING_THRESHOLD_KMH = 2;
 const MIN_GAP_THRESHOLD_MS = 10_000;
-const FALLBACK_MAX_PLAUSIBLE_SPEED_KMH = 160;
+const MAX_PLAUSIBLE_SEGMENT_SPEED_KMH = 160;
+const NEUTRAL_OPERATION_CODES = new Set(["AD", "INICIO", "FINAL"]);
 
 function num(value) {
   const n = Number(value);
@@ -22,7 +23,14 @@ function timestamp(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function validCoordinate(point) {
+  const lat = Number(point?.lat);
+  const lon = Number(point?.lon);
+  return Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 && !(lat === 0 && lon === 0);
+}
+
 function distanceM(a, b) {
+  if (!validCoordinate(a) || !validCoordinate(b)) return 0;
   const R = 6_371_000;
   const lat1 = num(a?.lat) * Math.PI / 180;
   const lat2 = num(b?.lat) * Math.PI / 180;
@@ -49,10 +57,21 @@ function accuracyStats(points) {
   };
 }
 
-function geometryRejected(point) {
-  const geometry = String(point?.geometryStatus || "").toUpperCase();
-  const sample = String(point?.sampleStatus || "").toUpperCase();
-  return geometry === "SUSPECT_SPEED" || geometry === "SUSPECT_JUMP" || geometry === "NO_FIX" || sample === "NO_FIX";
+function pointStatus(point, field, fallback = "UNKNOWN") {
+  return String(point?.[field] ?? fallback).trim().toUpperCase() || fallback;
+}
+
+function countBy(values) {
+  return values.reduce((acc, value) => {
+    const key = String(value || "UNKNOWN");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function compactHistogram(histogram) {
+  const entries = Object.entries(histogram || {}).sort((a, b) => b[1] - a[1]);
+  return entries.length ? entries.map(([key, value]) => `${key}:${value}`).join(",") : "NONE";
 }
 
 function buildSegments(points) {
@@ -64,19 +83,26 @@ function buildSegments(points) {
     const endMs = timestamp(curr.time);
     const dtMs = endMs - startMs;
     if (dtMs <= 0) continue;
+
     const meters = distanceM(prev, curr);
     const kmh = (meters / dtMs) * 3600;
-    const rejectedByEngine = geometryRejected(prev) || geometryRejected(curr);
-    const rejectedByFallback = Number.isFinite(kmh) && kmh > FALLBACK_MAX_PLAUSIBLE_SPEED_KMH;
+    const noFix = pointStatus(prev, "sampleStatus") === "NO_FIX" || pointStatus(curr, "sampleStatus") === "NO_FIX";
+    const impossibleSpeed = Number.isFinite(kmh) && kmh > MAX_PLAUSIBLE_SEGMENT_SPEED_KMH;
+    const engineSuspect = [prev, curr].some((point) => {
+      const status = pointStatus(point, "geometryStatus");
+      return status === "SUSPECT_SPEED" || status === "SUSPECT_JUMP";
+    });
+
     segments.push({
       startMs,
       endMs,
       dtMs,
       meters,
       kmh,
-      trusted: !rejectedByEngine && !rejectedByFallback,
-      rejectedByEngine,
-      rejectedByFallback,
+      trusted: !noFix && !impossibleSpeed,
+      noFix,
+      impossibleSpeed,
+      engineSuspect,
     });
   }
   return segments;
@@ -86,31 +112,45 @@ function normalizeType(event) {
   return String(event?.eventType ?? event?.stopType ?? "").trim().toUpperCase();
 }
 
-function hasDelayCode(event) {
-  return String(event?.delayCodes ?? "").trim().length > 0;
+function delayTokens(event) {
+  return String(event?.delayCodes ?? "")
+    .split(/[\/,|;]+/)
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function meaningfulDelayTokens(event) {
+  return delayTokens(event).filter((token) => !NEUTRAL_OPERATION_CODES.has(token));
 }
 
 function classifyEvents(events = []) {
   const safe = Array.isArray(events) ? events : [];
-  const flags = safe.filter((e) => normalizeType(e).includes("BANDERA"));
-  const pureDelays = safe.filter((e) => {
-    const type = normalizeType(e);
+  const types = safe.map(normalizeType);
+  const allTokens = safe.flatMap(delayTokens);
+  const flags = safe.filter((event) => normalizeType(event).includes("BANDERA"));
+  const explicitDelays = safe.filter((event) => {
+    const type = normalizeType(event);
     return type.includes("DEMORA") || type.includes("DELAY");
   });
-  const codedDelayEvents = safe.filter(hasDelayCode);
-  const observations = safe.filter((e) => String(e?.notes ?? e?.otherDelayDesc ?? "").trim().length > 0);
+  const codedDelayEvents = safe.filter((event) => meaningfulDelayTokens(event).length > 0);
+  const delays = safe.filter((event) => explicitDelays.includes(event) || meaningfulDelayTokens(event).length > 0);
+  const observations = safe.filter((event) => String(event?.notes ?? event?.otherDelayDesc ?? "").trim().length > 0);
   const incidentIds = new Set(
     safe
-      .filter((e) => flags.includes(e) || pureDelays.includes(e) || hasDelayCode(e))
-      .map((e, index) => e?.id ?? e?.cloudEventId ?? e?.eventId ?? index)
+      .filter((event) => flags.includes(event) || delays.includes(event))
+      .map((event, index) => event?.id ?? event?.cloudEventId ?? event?.eventId ?? index)
   );
+
   return {
     total: safe.length,
-    delays: pureDelays.length,
+    delays: delays.length,
+    explicitDelays: explicitDelays.length,
     flags: flags.length,
     codedDelayEvents: codedDelayEvents.length,
     incidents: incidentIds.size,
     observations: observations.length,
+    typeHistogram: countBy(types),
+    delayCodeHistogram: countBy(allTokens),
   };
 }
 
@@ -127,8 +167,8 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
   const track = buildTrackMetrics(Array.isArray(trackChunks) ? trackChunks : []);
   const points = track.points || [];
   const segments = buildSegments(points);
-  const trustedSegments = segments.filter((s) => s.trusted);
-  const rejectedSegments = segments.filter((s) => !s.trusted);
+  const trustedSegments = segments.filter((segment) => segment.trusted);
+  const rejectedSegments = segments.filter((segment) => !segment.trusted);
 
   const tripStartMs = timestamp(trip?.startTime) || track.startTime || 0;
   const tripEndMs = timestamp(trip?.endTime) || track.endTime || 0;
@@ -137,27 +177,29 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
     : (track.durationMs || 0);
 
   const rawDistanceKm = track.distance / 1000;
-  const trustedDistanceM = trustedSegments.reduce((sum, s) => sum + s.meters, 0);
-  const distanceKm = trustedDistanceM / 1000;
+  const analyticDistanceM = trustedSegments.reduce((sum, segment) => sum + segment.meters, 0);
+  const distanceKm = analyticDistanceM / 1000;
+  const distanceAdjustmentKm = rawDistanceKm - distanceKm;
+  const distanceCorrectionPct = rawDistanceKm > 0 ? (distanceAdjustmentKm / rawDistanceKm) * 100 : 0;
 
-  const intervals = segments.map((s) => s.dtMs).filter((v) => v > 0);
+  const intervals = segments.map((segment) => segment.dtMs).filter((value) => value > 0);
   const medianIntervalMs = median(intervals);
   const expectedIntervalMs = medianIntervalMs > 0 ? medianIntervalMs : 0;
   const gapThresholdMs = Math.max(MIN_GAP_THRESHOLD_MS, expectedIntervalMs > 0 ? expectedIntervalMs * 3 : MIN_GAP_THRESHOLD_MS);
-  const gpsGaps = segments.filter((s) => s.dtMs > gapThresholdMs);
+  const gpsGaps = segments.filter((segment) => segment.dtMs > gapThresholdMs);
   const noGpsMs = gpsGaps.reduce((sum, gap) => sum + Math.max(0, gap.dtMs - expectedIntervalMs), 0);
   const gpsCoveragePct = durationMs > 0 ? Math.max(0, Math.min(100, ((durationMs - noGpsMs) / durationMs) * 100)) : null;
   const accuracy = accuracyStats(points);
 
-  const speeds = trustedSegments.map((s) => s.kmh).filter((v) => Number.isFinite(v) && v >= 0);
-  const movingSegments = trustedSegments.filter((s) => s.kmh > MOVING_THRESHOLD_KMH);
-  const movingMs = movingSegments.reduce((sum, s) => sum + s.dtMs, 0);
-  const stoppedMs = Math.max(0, durationMs - movingMs - noGpsMs);
+  const speeds = trustedSegments.map((segment) => segment.kmh).filter((value) => Number.isFinite(value) && value >= 0);
+  const movingSegments = trustedSegments.filter((segment) => segment.kmh > MOVING_THRESHOLD_KMH);
+  const movingMs = movingSegments.reduce((sum, segment) => sum + segment.dtMs, 0);
+  const observedOperationalMs = Math.max(0, durationMs - noGpsMs);
+  const stoppedMs = Math.max(0, observedOperationalMs - movingMs);
   const averageSpeedKmh = durationMs > 0 ? distanceKm / (durationMs / 3_600_000) : null;
   const maxSpeedKmh = speeds.length ? Math.max(...speeds) : null;
   const minSpeedKmh = speeds.length ? Math.min(...speeds) : null;
-  const observedOperationalMs = Math.max(0, durationMs - noGpsMs);
-  const operatorEfficiencyPct = observedOperationalMs > 0
+  const movementRatioPct = observedOperationalMs > 0
     ? Math.max(0, Math.min(100, (movingMs / observedOperationalMs) * 100))
     : null;
 
@@ -184,14 +226,19 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
       minAccuracyM: accuracy.minM,
       maxAccuracyM: accuracy.maxM,
       rejectedSegments: rejectedSegments.length,
-      engineRejectedSegments: rejectedSegments.filter((s) => s.rejectedByEngine).length,
-      fallbackRejectedSegments: rejectedSegments.filter((s) => s.rejectedByFallback).length,
+      rejectedNoFixSegments: rejectedSegments.filter((segment) => segment.noFix).length,
+      rejectedImpossibleSpeedSegments: rejectedSegments.filter((segment) => segment.impossibleSpeed).length,
+      engineSuspectSegments: segments.filter((segment) => segment.engineSuspect).length,
+      geometryStatusHistogram: countBy(points.map((point) => pointStatus(point, "geometryStatus"))),
+      sampleStatusHistogram: countBy(points.map((point) => pointStatus(point, "sampleStatus"))),
+      qualityStatusHistogram: countBy(points.map((point) => pointStatus(point, "qualityStatus"))),
     },
     trip: {
       durationMs,
       distanceKm,
       rawDistanceKm,
-      distanceAdjustmentKm: rawDistanceKm - distanceKm,
+      distanceAdjustmentKm,
+      distanceCorrectionPct,
       averageSpeedKmh,
       maxSpeedKmh,
       minSpeedKmh,
@@ -205,7 +252,8 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
       movingMs,
       stoppedMs,
       unobservedMs: noGpsMs,
-      efficiencyPct: operatorEfficiencyPct,
+      movementRatioPct,
+      efficiencyPct: movementRatioPct,
       gpsCoveragePct,
     },
     device: {
@@ -234,21 +282,26 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
 
 export function logOperationalAnalytics({ tripDocId, trip, events, trackChunks }) {
   const result = evaluateOperationalAnalytics({ trip, events, trackChunks });
+  const id = tripDocId ?? trip?.id ?? null;
+
   webIntegrity("OPERATIONAL_ANALYTICS", {
-    tripDocId: tripDocId ?? trip?.id ?? null,
+    tripDocId: id,
     version: result.version,
     gpsLossEvents: result.gps.lossEvents,
     gpsNoSignalMs: result.gps.noGpsMs,
     gpsCoveragePct: result.gps.coveragePct == null ? null : result.gps.coveragePct.toFixed(2),
     avgAccuracyM: result.gps.averageAccuracyM == null ? null : result.gps.averageAccuracyM.toFixed(2),
     rejectedSegments: result.gps.rejectedSegments,
+    engineSuspectSegments: result.gps.engineSuspectSegments,
     durationMs: result.trip.durationMs,
     distanceKm: result.trip.distanceKm.toFixed(3),
     rawDistanceKm: result.trip.rawDistanceKm.toFixed(3),
+    distanceCorrectionPct: result.trip.distanceCorrectionPct.toFixed(2),
     avgSpeedKmh: result.trip.averageSpeedKmh == null ? null : result.trip.averageSpeedKmh.toFixed(2),
     maxSpeedKmh: result.trip.maxSpeedKmh == null ? null : result.trip.maxSpeedKmh.toFixed(2),
     events: result.events.total,
     delays: result.events.delays,
+    explicitDelays: result.events.explicitDelays,
     flags: result.events.flags,
     codedDelayEvents: result.events.codedDelayEvents,
     incidents: result.events.incidents,
@@ -256,12 +309,30 @@ export function logOperationalAnalytics({ tripDocId, trip, events, trackChunks }
     movingMs: result.operator.movingMs,
     stoppedMs: result.operator.stoppedMs,
     unobservedMs: result.operator.unobservedMs,
-    efficiencyPct: result.operator.efficiencyPct == null ? null : result.operator.efficiencyPct.toFixed(2),
+    movementRatioPct: result.operator.movementRatioPct == null ? null : result.operator.movementRatioPct.toFixed(2),
     payloadBytesEstimated: result.sync.payloadBytesEstimated,
     webAnalysisMs: result.sync.webAnalysisMs.toFixed(3),
   });
+
+  webIntegrity("OPERATIONAL_GPS_SEMANTICS", {
+    tripDocId: id,
+    geometryStatus: compactHistogram(result.gps.geometryStatusHistogram),
+    sampleStatus: compactHistogram(result.gps.sampleStatusHistogram),
+    qualityStatus: compactHistogram(result.gps.qualityStatusHistogram),
+    engineSuspectSegments: result.gps.engineSuspectSegments,
+    rejectedNoFixSegments: result.gps.rejectedNoFixSegments,
+    rejectedImpossibleSpeedSegments: result.gps.rejectedImpossibleSpeedSegments,
+  });
+
+  webIntegrity("OPERATIONAL_EVENT_SEMANTICS", {
+    tripDocId: id,
+    stopTypes: compactHistogram(result.events.typeHistogram),
+    delayCodes: compactHistogram(result.events.delayCodeHistogram),
+    neutralCodes: "AD,INICIO,FINAL",
+  });
+
   webIntegrity("OPERATIONAL_ANALYTICS_AVAILABILITY", {
-    tripDocId: tripDocId ?? trip?.id ?? null,
+    tripDocId: id,
     batteryHistory: result.availability.batteryHistory,
     heartbeatHistory: result.availability.heartbeatHistory,
     reconnectionHistory: result.availability.reconnectionHistory,
