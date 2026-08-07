@@ -99,9 +99,10 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
 
   const intervals = segments.map((s) => s.dtMs).filter((v) => v > 0);
   const medianIntervalMs = median(intervals);
-  const gapThresholdMs = Math.max(MIN_GAP_THRESHOLD_MS, medianIntervalMs > 0 ? medianIntervalMs * 3 : MIN_GAP_THRESHOLD_MS);
+  const expectedIntervalMs = medianIntervalMs > 0 ? medianIntervalMs : 0;
+  const gapThresholdMs = Math.max(MIN_GAP_THRESHOLD_MS, expectedIntervalMs > 0 ? expectedIntervalMs * 3 : MIN_GAP_THRESHOLD_MS);
   const gpsGaps = segments.filter((s) => s.dtMs > gapThresholdMs);
-  const noGpsMs = gpsGaps.reduce((sum, gap) => sum + gap.dtMs, 0);
+  const noGpsMs = gpsGaps.reduce((sum, gap) => sum + Math.max(0, gap.dtMs - expectedIntervalMs), 0);
   const gpsCoveragePct = durationMs > 0 ? Math.max(0, Math.min(100, ((durationMs - noGpsMs) / durationMs) * 100)) : null;
   const accuracy = accuracyStats(points);
 
@@ -131,6 +132,7 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
       noGpsMs,
       coveragePct: gpsCoveragePct,
       medianIntervalMs: medianIntervalMs || null,
+      expectedIntervalMs: expectedIntervalMs || null,
       gapThresholdMs,
       averageAccuracyM: accuracy.averageM,
       minAccuracyM: accuracy.minM,
@@ -184,6 +186,7 @@ export function logOperationalAnalytics({ tripDocId, trip, events, trackChunks }
     tripDocId: tripDocId ?? trip?.id ?? null,
     version: result.version,
     gpsLossEvents: result.gps.lossEvents,
+    gpsNoSignalMs: result.gps.noGpsMs,
     gpsCoveragePct: result.gps.coveragePct == null ? null : result.gps.coveragePct.toFixed(2),
     avgAccuracyM: result.gps.averageAccuracyM == null ? null : result.gps.averageAccuracyM.toFixed(2),
     durationMs: result.trip.durationMs,
@@ -193,11 +196,21 @@ export function logOperationalAnalytics({ tripDocId, trip, events, trackChunks }
     events: result.events.total,
     delays: result.events.delays,
     flags: result.events.flags,
+    observations: result.events.observations,
     movingMs: result.operator.movingMs,
     stoppedMs: result.operator.stoppedMs,
     efficiencyPct: result.operator.efficiencyPct == null ? null : result.operator.efficiencyPct.toFixed(2),
     payloadBytesEstimated: result.sync.payloadBytesEstimated,
     webAnalysisMs: result.sync.webAnalysisMs.toFixed(3),
+  });
+  webIntegrity("OPERATIONAL_ANALYTICS_AVAILABILITY", {
+    tripDocId: tripDocId ?? trip?.id ?? null,
+    batteryHistory: result.availability.batteryHistory,
+    heartbeatHistory: result.availability.heartbeatHistory,
+    reconnectionHistory: result.availability.reconnectionHistory,
+    uploadTiming: result.availability.uploadTiming,
+    cloudTiming: result.availability.cloudTiming,
+    webAnalysisTiming: result.availability.webAnalysisTiming,
   });
   return result;
 }
