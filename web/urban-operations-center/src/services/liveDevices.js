@@ -1,11 +1,9 @@
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
+import { webIntegrity, webIntegrityError } from "./webIntegrity";
 
 function mapDocs(snapshot) {
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
 function toMillis(value) {
@@ -13,7 +11,6 @@ function toMillis(value) {
   if (typeof value === "number") return value;
   if (value.toMillis) return value.toMillis();
   if (value.seconds) return value.seconds * 1000;
-
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -25,16 +22,35 @@ function sortByLastUpdateDesc(a, b) {
 }
 
 export function subscribeLiveDevices(onDevices, onError) {
-  const ref = collection(db, "live_devices");
+  const path = "live_devices";
+  webIntegrity("WEB_COLLECTION_PATH", { operation: "SUBSCRIBE_LIVE_DEVICES", path });
+  webIntegrity("WEB_FIRESTORE_READ", { operation: "SUBSCRIBE_LIVE_DEVICES", path, outcome: "SUBSCRIBE" });
 
+  const ref = collection(db, path);
   return onSnapshot(
     ref,
     (snapshot) => {
       const devices = mapDocs(snapshot).sort(sortByLastUpdateDesc);
+      webIntegrity("WEB_QUERY_RESULT", {
+        operation: "SUBSCRIBE_LIVE_DEVICES",
+        path,
+        outcome: "SUCCESS",
+        count: devices.length,
+      });
       onDevices(devices);
     },
     (error) => {
-      console.error("Error escuchando live_devices", error);
+      if (error?.code === "permission-denied") {
+        webIntegrityError("WEB_FIRESTORE_PERMISSION_DENIED", error, {
+          operation: "SUBSCRIBE_LIVE_DEVICES",
+          path,
+        });
+      } else {
+        webIntegrityError("WEB_FIRESTORE_READ_FAILED", error, {
+          operation: "SUBSCRIBE_LIVE_DEVICES",
+          path,
+        });
+      }
       if (onError) onError(error);
     }
   );
