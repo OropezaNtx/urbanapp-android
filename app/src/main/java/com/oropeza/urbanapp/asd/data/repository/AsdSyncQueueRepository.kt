@@ -29,8 +29,12 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     suspend fun enqueueInstallationRegister(context: android.content.Context) {
         val installation = UrbanPlatformService.buildCurrentInstallation(context)
         val path = UrbanCloudPaths.installationPath(
-            workspaceId = installation.workspaceId ?: "demo_workspace",
-            projectId = installation.projectId ?: "demo_project",
+            workspaceId = installation.workspaceId
+                ?.takeIf { it.isNotBlank() }
+                ?: UrbanPlatformSettings.DEFAULT_ORGANIZATION_ID,
+            projectId = installation.projectId
+                ?.takeIf { it.isNotBlank() }
+                ?: UrbanPlatformSettings.DEFAULT_PROJECT_ID,
             installation.installationId
         )
         enqueue(
@@ -46,8 +50,12 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     suspend fun enqueueHeartbeat(context: android.content.Context, activeTripId: Long? = null) {
         val heartbeat = UrbanPlatformService.buildHeartbeat(context, activeTripId?.toString())
         val path = UrbanCloudPaths.heartbeatPath(
-            workspaceId = heartbeat.workspaceId ?: "demo_workspace",
-            projectId = heartbeat.projectId ?: "demo_project",
+            workspaceId = heartbeat.workspaceId
+                ?.takeIf { it.isNotBlank() }
+                ?: UrbanPlatformSettings.DEFAULT_ORGANIZATION_ID,
+            projectId = heartbeat.projectId
+                ?.takeIf { it.isNotBlank() }
+                ?: UrbanPlatformSettings.DEFAULT_PROJECT_ID,
             installationId = heartbeat.installationId
         )
         enqueue(
@@ -65,8 +73,10 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     }
 
     suspend fun enqueueTripUpsert(context: android.content.Context, operation: String, trip: Trip) {
-        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context).ifBlank { "demo_workspace" }
-        val projId = UrbanPlatformSettings.getProjectId(context).ifBlank { "demo_project" }
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
+            .ifBlank { UrbanPlatformSettings.DEFAULT_ORGANIZATION_ID }
+        val projId = UrbanPlatformSettings.getProjectId(context)
+            .ifBlank { UrbanPlatformSettings.DEFAULT_PROJECT_ID }
         val cloudTripId = getCloudTripId(context, trip.tripId)
         val path = UrbanCloudPaths.tripPath(workspaceId, projId, cloudTripId)
 
@@ -74,8 +84,10 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     }
 
     suspend fun enqueueEventUpsert(context: android.content.Context, event: StopEvent) {
-        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context).ifBlank { "demo_workspace" }
-        val projId = UrbanPlatformSettings.getProjectId(context).ifBlank { "demo_project" }
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
+            .ifBlank { UrbanPlatformSettings.DEFAULT_ORGANIZATION_ID }
+        val projId = UrbanPlatformSettings.getProjectId(context)
+            .ifBlank { UrbanPlatformSettings.DEFAULT_PROJECT_ID }
         val cloudTripId = getCloudTripId(context, event.tripId)
         val cloudEventId = getCloudEventId(context, event.eventId)
         val path = "${UrbanCloudPaths.tripPath(workspaceId, projId, cloudTripId)}/events/$cloudEventId"
@@ -106,7 +118,7 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
                 status = "PENDING"
             )
             dao.insert(item)
-            
+
             // ✅ Phase 6: Trigger cloud sync activation
             com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler.syncNow(AsdGraph.appContext)
         } catch (e: Exception) {
