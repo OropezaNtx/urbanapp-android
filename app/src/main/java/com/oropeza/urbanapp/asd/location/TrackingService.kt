@@ -29,6 +29,8 @@ class TrackingService : Service() {
 
     // Requisito operativo: una muestra persistida cada dos segundos.
     private val fixedCaptureIntervalMs = 2_000L
+    private val roomInsertRetryDelayMs = 150L
+    private val roomInsertMaxAttempts = 2
 
     // La adquisición se alinea con la cadencia de persistencia. Fused Location
     // todavía puede entregar una actualización antes, pero ya no se solicita a 500 ms.
@@ -78,6 +80,13 @@ class TrackingService : Service() {
             val maxRawFixGapMs: Long = 0L,
             val averageRoomInsertMs: Double = 0.0,
             val maxRoomInsertMs: Double = 0.0,
+            val averageTickDriftMs: Double = 0.0,
+            val maxTickDriftMs: Long = 0L,
+            val missedTickCount: Long = 0L,
+            val roomInsertFailureCount: Long = 0L,
+            val consecutiveRoomInsertFailures: Int = 0,
+            val lastRoomInsertError: String? = null,
+            val degraded: Boolean = false,
             val watchdogRestartCount: Int = 0,
             val engineMode: String = "IDLE",
             val updatedAtMs: Long = 0L
@@ -111,6 +120,14 @@ class TrackingService : Service() {
     private var totalRoomInsertNs = 0L
     private var maxRoomInsertNs = 0L
     private var roomInsertCount = 0L
+    private var totalTickDriftMs = 0L
+    private var tickMeasurementCount = 0L
+    private var maxTickDriftMs = 0L
+    private var missedTickCount = 0L
+    private var roomInsertFailureCount = 0L
+    private var consecutiveRoomInsertFailures = 0
+    private var lastRoomInsertError: String? = null
+    private var degraded = false
     private var watchdogRestartCount = 0
     private var lastGpsRestartAtMs = 0L
     private var trackingStartedElapsedMs = 0L
@@ -200,6 +217,14 @@ class TrackingService : Service() {
         totalRoomInsertNs = 0L
         maxRoomInsertNs = 0L
         roomInsertCount = 0L
+        totalTickDriftMs = 0L
+        tickMeasurementCount = 0L
+        maxTickDriftMs = 0L
+        missedTickCount = 0L
+        roomInsertFailureCount = 0L
+        consecutiveRoomInsertFailures = 0
+        lastRoomInsertError = null
+        degraded = false
         watchdogRestartCount = 0
         lastGpsRestartAtMs = 0L
         trackingStartedElapsedMs = SystemClock.elapsedRealtime()
@@ -276,12 +301,28 @@ class TrackingService : Service() {
     private fun startSaverLoop() {
         saverJob?.cancel()
         saverJob = scope.launch {
+            var nextTickElapsedMs = SystemClock.elapsedRealtime() + fixedCaptureIntervalMs
+
             while (true) {
-                delay(fixedCaptureIntervalMs)
+                val waitMs = nextTickElapsedMs - SystemClock.elapsedRealtime()
+                if (waitMs > 0L) delay(waitMs)
+
+                val actualTickElapsedMs = SystemClock.elapsedRealtime()
+                val tickDriftMs = (actualTickElapsedMs - nextTickElapsedMs).coerceAtLeast(0L)
+                recordTickDrift(tickDriftMs)
+
+                if (tickDriftMs >= fixedCaptureIntervalMs) {
+                    val missed = tickDriftMs / fixedCaptureIntervalMs
+                    missedTickCount += missed
+                    nextTickElapsedMs = actualTickElapsedMs + fixedCaptureIntervalMs
+                } else {
+                    nextTickElapsedMs += fixedCaptureIntervalMs
+                }
+
                 val tripId = currentTripId ?: break
 
-                // Room es la fuente de verdad: nunca se escribe un punto si el
-                // recorrido ya no existe o fue finalizado.
+                // Única lectura de Trip por tick. La inserción no vuelve a consultar
+                // el recorrido, evitando dos lecturas por muestra.
                 val trip = AsdGraph.repo.getTripOnce(tripId)
                 if (trip == null || trip.endTime != null) {
                     Log.i(TAG, "Recorrido $tripId inactivo; deteniendo captura GPS")
@@ -293,6 +334,12 @@ class TrackingService : Service() {
                 persistSample(tripId, sample)
             }
         }
+    }
+
+    private fun recordTickDrift(driftMs: Long) {
+        totalTickDriftMs += driftMs
+        tickMeasurementCount++
+        if (driftMs > maxTickDriftMs) maxTickDriftMs = driftMs
     }
 
     private fun startWatchdogLoop() {
@@ -326,43 +373,82 @@ class TrackingService : Service() {
         tripId: Long,
         sample: AforaGpsEngine.CaptureSample
     ) {
-        try {
-            // Segunda defensa ante una carrera entre el cierre y la escritura.
-            val trip = AsdGraph.repo.getTripOnce(tripId)
-            if (trip == null || trip.endTime != null) {
-                Log.i(TAG, "Muestra descartada porque el recorrido $tripId ya terminó")
-                stopTracking()
-                return
-            }
+        if (!insertTrackPointWithRetry(sample)) return
 
-            val insertStartedNs = SystemClock.elapsedRealtimeNanos()
-            AsdGraph.db.trackDao().insert(sample.point)
-            val insertDurationNs = (SystemClock.elapsedRealtimeNanos() - insertStartedNs).coerceAtLeast(0L)
-            totalRoomInsertNs += insertDurationNs
-            roomInsertCount++
-            if (insertDurationNs > maxRoomInsertNs) maxRoomInsertNs = insertDurationNs
+        persistedSampleCount++
+        if (sample.point.sampleStatus == "NO_FIX") {
+            noFixSampleCount++
+        } else {
+            liveSampleCount++
+        }
 
-            persistedSampleCount++
-            if (sample.point.sampleStatus == "NO_FIX") {
-                noFixSampleCount++
-            } else {
-                liveSampleCount++
-            }
+        publishRuntimeState(sample.state)
+        publishMetrics(engineMode = sample.state.mode.name)
 
-            publishRuntimeState(sample.state)
-            publishMetrics(engineMode = sample.state.mode.name)
-
-            if (sample.shouldBackfillEvents) {
+        if (sample.shouldBackfillEvents) {
+            try {
                 val completed = AsdGraph.repo.completePendingGpsEvents(tripId, sample.point)
                 if (completed > 0) Log.i(TAG, "GPS backfill aplicado a $completed evento(s)")
+            } catch (e: Exception) {
+                Log.e(TAG, "TrackPoint persistido, pero falló el backfill GPS", e)
             }
-
-            if (persistedSampleCount % 300L == 0L) {
-                logMetrics("periodic")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error insertando TrackPoint o completando GPS pendiente", e)
         }
+
+        if (persistedSampleCount % 300L == 0L) {
+            logMetrics("periodic")
+        }
+    }
+
+    private suspend fun insertTrackPointWithRetry(
+        sample: AforaGpsEngine.CaptureSample
+    ): Boolean {
+        var lastError: Exception? = null
+
+        repeat(roomInsertMaxAttempts) { attemptIndex ->
+            val insertStartedNs = SystemClock.elapsedRealtimeNanos()
+            try {
+                val rowId = AsdGraph.db.trackDao().insert(sample.point)
+                if (rowId == -1L) {
+                    throw IllegalStateException("Room ignoró TrackPoint sin insertarlo")
+                }
+
+                val insertDurationNs =
+                    (SystemClock.elapsedRealtimeNanos() - insertStartedNs).coerceAtLeast(0L)
+                totalRoomInsertNs += insertDurationNs
+                roomInsertCount++
+                if (insertDurationNs > maxRoomInsertNs) maxRoomInsertNs = insertDurationNs
+
+                consecutiveRoomInsertFailures = 0
+                if (degraded) {
+                    degraded = false
+                    updateNotification("Tracking ASD activo")
+                    Log.i(TAG, "Persistencia Room recuperada")
+                }
+                publishMetrics(engineMode = sample.state.mode.name)
+                return true
+            } catch (e: Exception) {
+                lastError = e
+                roomInsertFailureCount++
+                consecutiveRoomInsertFailures++
+                lastRoomInsertError = e.message ?: e.javaClass.simpleName
+                Log.e(
+                    TAG,
+                    "Fallo Room intento ${attemptIndex + 1}/$roomInsertMaxAttempts",
+                    e
+                )
+                publishMetrics(engineMode = sample.state.mode.name)
+
+                if (attemptIndex + 1 < roomInsertMaxAttempts) {
+                    delay(roomInsertRetryDelayMs)
+                }
+            }
+        }
+
+        degraded = true
+        updateNotification("Tracking degradado: error de almacenamiento")
+        publishMetrics(engineMode = sample.state.mode.name)
+        Log.e(TAG, "No se pudo persistir TrackPoint tras reintento", lastError)
+        return false
     }
 
     private fun publishRuntimeState(
@@ -415,6 +501,11 @@ class TrackingService : Service() {
         } else {
             0.0
         }
+        val averageTickDrift = if (tickMeasurementCount > 0L) {
+            totalTickDriftMs.toDouble() / tickMeasurementCount.toDouble()
+        } else {
+            0.0
+        }
 
         _trackingMetrics.value = TrackingMetricsSnapshot(
             tripId = currentTripId ?: _trackingMetrics.value.tripId,
@@ -428,6 +519,13 @@ class TrackingService : Service() {
             maxRawFixGapMs = maxRawFixGapMs,
             averageRoomInsertMs = averageInsertMs,
             maxRoomInsertMs = maxRoomInsertNs.toDouble() / 1_000_000.0,
+            averageTickDriftMs = averageTickDrift,
+            maxTickDriftMs = maxTickDriftMs,
+            missedTickCount = missedTickCount,
+            roomInsertFailureCount = roomInsertFailureCount,
+            consecutiveRoomInsertFailures = consecutiveRoomInsertFailures,
+            lastRoomInsertError = lastRoomInsertError,
+            degraded = degraded,
             watchdogRestartCount = watchdogRestartCount,
             engineMode = engineMode,
             updatedAtMs = System.currentTimeMillis()
@@ -445,7 +543,12 @@ class TrackingService : Service() {
                 "maxFixGapMs=${metrics.maxRawFixGapMs} " +
                 "avgRoomInsertMs=${"%.3f".format(metrics.averageRoomInsertMs)} " +
                 "maxRoomInsertMs=${"%.3f".format(metrics.maxRoomInsertMs)} " +
-                "watchdogRestarts=${metrics.watchdogRestartCount} mode=${metrics.engineMode}"
+                "avgTickDriftMs=${"%.2f".format(metrics.averageTickDriftMs)} " +
+                "maxTickDriftMs=${metrics.maxTickDriftMs} missedTicks=${metrics.missedTickCount} " +
+                "roomFailures=${metrics.roomInsertFailureCount} " +
+                "consecutiveRoomFailures=${metrics.consecutiveRoomInsertFailures} " +
+                "degraded=${metrics.degraded} watchdogRestarts=${metrics.watchdogRestartCount} " +
+                "mode=${metrics.engineMode}"
         )
     }
 
