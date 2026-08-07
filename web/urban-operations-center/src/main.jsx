@@ -5,7 +5,7 @@ import { fetchDevices, fetchTripDetail, fetchTrips } from './services/firestore'
 import { subscribeLiveDevices } from './services/liveDevices';
 import { subscribeInstallationsHealth } from './services/installations';
 import { downloadTripEventsCsv } from './exporters/csv';
-import TrackSummary, { buildTrackMetrics } from './components/TrackSummary';
+import { buildTrackMetrics } from './components/TrackSummary';
 import TripMap from './components/TripMap';
 import TripInsights from './components/TripInsights';
 import TripExportPanel from './components/TripExportPanel';
@@ -14,6 +14,7 @@ import LiveDevicesPanel from './components/LiveDevicesPanel';
 import LiveDevicesMap from './components/LiveDevicesMap';
 import FleetHealthPanel from './components/FleetHealthPanel';
 import InstallationsPanel from './components/InstallationsPanel';
+import IntegrityDashboard from './components/IntegrityDashboard';
 import './styles.css';
 
 const toMillis = (v) => {
@@ -58,10 +59,6 @@ function eventLabel(e) {
   return type || delay || '—';
 }
 
-function eventStartLat(e) { return e.startLat ?? e.lat ?? e.stopLat; }
-function eventStartLon(e) { return e.startLon ?? e.lon ?? e.stopLon; }
-function eventStopLat(e) { return e.stopLat ?? e.lat ?? e.startLat; }
-function eventStopLon(e) { return e.stopLon ?? e.lon ?? e.startLon; }
 function eventAccuracy(e) { return e.stopAccM ?? e.accuracy ?? e.startAccM; }
 function eventGps(e) { return e.locationStatus ?? e.stopProvider ?? e.provider ?? e.startProvider; }
 
@@ -168,6 +165,7 @@ function App() {
     <nav>
       <button onClick={() => setView('dashboard')}>Dashboard</button>
       <button onClick={() => setView('trips')}>Levantamientos</button>
+      <button onClick={() => setView('integrity')}>Integridad</button>
       <button onClick={() => setView('devices')}>Equipos en Vivo</button>
       <button onClick={() => setView('installations')}>Licencias</button>
       <button onClick={() => setView('fleet')}>Estado de Flota</button>
@@ -187,6 +185,10 @@ function App() {
     {view === 'trips' && <main>
       <h2>Historial de Levantamientos</h2>
       <TripsTable trips={trips} onOpen={openTrip} />
+    </main>}
+
+    {view === 'integrity' && <main>
+      <IntegrityDashboard trips={trips} onOpenTrip={openTrip} />
     </main>}
 
     {view === 'devices' && <main>
