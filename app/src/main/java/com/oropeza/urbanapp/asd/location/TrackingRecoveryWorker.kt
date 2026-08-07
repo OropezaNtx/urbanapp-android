@@ -52,8 +52,10 @@ class TrackingRecoveryWorker(
             if (tripId <= 0L) return
             val appContext = context.applicationContext
             WorkManager.getInstance(appContext).cancelAllWorkByTag(WATCHDOG_TAG)
-            clearAssistedPending(appContext, "tracking_active")
-            TrackingRecoveryNotification.cancel(appContext, "tracking_active")
+            val hadPendingRecovery = clearAssistedPending(appContext, "tracking_active")
+            if (hadPendingRecovery) {
+                TrackingRecoveryNotification.cancel(appContext, "tracking_active")
+            }
             enqueueGeneration(
                 context = appContext,
                 tripId = tripId,
@@ -80,16 +82,18 @@ class TrackingRecoveryWorker(
             Log.w(TAG, "ASSISTED_RECOVERY_PENDING trip=$tripId")
         }
 
-        private fun clearAssistedPending(context: Context, reason: String) {
+        private fun clearAssistedPending(context: Context, reason: String): Boolean {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val wasPending = prefs.getBoolean(PREF_ASSISTED_PENDING, false)
-            if (!wasPending && !prefs.contains(PREF_ASSISTED_TRIP_ID)) return
+            val hadStoredTrip = prefs.contains(PREF_ASSISTED_TRIP_ID)
+            if (!wasPending && !hadStoredTrip) return false
 
             prefs.edit()
                 .remove(PREF_ASSISTED_PENDING)
                 .remove(PREF_ASSISTED_TRIP_ID)
                 .apply()
             Log.i(TAG, "ASSISTED_RECOVERY_CLEARED reason=$reason")
+            return true
         }
 
         private fun enqueueGeneration(
@@ -194,8 +198,10 @@ class TrackingRecoveryWorker(
                     TAG,
                     "WATCHDOG_HEALTHY trip=$markedTripId generation=$generation ageMs=$heartbeatAgeMs"
                 )
-                clearAssistedPending(applicationContext, "tracking_healthy")
-                TrackingRecoveryNotification.cancel(applicationContext, "tracking_healthy")
+                if (assistedPending && assistedTripId == markedTripId) {
+                    clearAssistedPending(applicationContext, "tracking_healthy")
+                    TrackingRecoveryNotification.cancel(applicationContext, "tracking_healthy")
+                }
                 scheduleNext(
                     context = applicationContext,
                     tripId = markedTripId,
