@@ -152,6 +152,7 @@ class TrackingRecoveryWorker(
                         "activeTripCount=${activeTrips.size} activeTripId=${activeTrip?.tripId}"
                 )
                 WorkManager.getInstance(applicationContext).cancelAllWorkByTag(WATCHDOG_TAG)
+                TrackingRecoveryNotification.cancel(applicationContext, "identity_mismatch")
                 return ListenableWorker.Result.success()
             }
 
@@ -167,6 +168,7 @@ class TrackingRecoveryWorker(
                     TAG,
                     "WATCHDOG_HEALTHY trip=$markedTripId generation=$generation ageMs=$heartbeatAgeMs"
                 )
+                TrackingRecoveryNotification.cancel(applicationContext, "tracking_healthy")
                 scheduleNext(
                     context = applicationContext,
                     tripId = markedTripId,
@@ -177,9 +179,6 @@ class TrackingRecoveryWorker(
                 return ListenableWorker.Result.success()
             }
 
-            // El proceso puede haber sido recreado justo antes de esta ejecución y
-            // el último heartbeat todavía estar dentro de la ventana sana. No damos
-            // por terminado el watchdog: programamos una comprobación más cercana.
             if (heartbeatAgeMs < STALE_HEARTBEAT_MS) {
                 Log.i(
                     TAG,
@@ -210,7 +209,6 @@ class TrackingRecoveryWorker(
             try {
                 ContextCompat.startForegroundService(applicationContext, intent)
                 Log.w(TAG, "WATCHDOG_FGS_STARTED trip=$markedTripId generation=$generation")
-                // Si TrackingService confirma el recorrido, arma una cadena nueva.
                 ListenableWorker.Result.success()
             } catch (e: Exception) {
                 val blockedBySystem = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
@@ -230,6 +228,12 @@ class TrackingRecoveryWorker(
                         e
                     )
                 }
+
+                TrackingRecoveryNotification.show(
+                    context = applicationContext,
+                    tripId = markedTripId,
+                    suspensionMs = heartbeatAgeMs
+                )
 
                 scheduleNext(
                     context = applicationContext,
