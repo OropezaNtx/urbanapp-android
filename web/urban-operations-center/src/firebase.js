@@ -1,7 +1,11 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInAnonymously,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { webIntegrity } from "./services/webIntegrity";
+import { webIntegrity, webIntegrityError } from "./services/webIntegrity";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -38,3 +42,41 @@ onAuthStateChanged(auth, (user) => {
     anonymous: user?.isAnonymous ?? null,
   });
 });
+
+export const authReady = (async () => {
+  if (auth.currentUser) {
+    webIntegrity("WEB_AUTH_READY", {
+      outcome: "EXISTING_SESSION",
+      uid: auth.currentUser.uid,
+      anonymous: auth.currentUser.isAnonymous,
+    });
+    return auth.currentUser;
+  }
+
+  webIntegrity("WEB_AUTH_SIGN_IN", {
+    method: "ANONYMOUS",
+    outcome: "ATTEMPT",
+  });
+
+  try {
+    const credential = await signInAnonymously(auth);
+    const user = credential.user;
+    webIntegrity("WEB_AUTH_SIGN_IN", {
+      method: "ANONYMOUS",
+      outcome: "SUCCESS",
+      uid: user.uid,
+      anonymous: user.isAnonymous,
+    });
+    webIntegrity("WEB_AUTH_READY", {
+      outcome: "AUTHENTICATED",
+      uid: user.uid,
+      anonymous: user.isAnonymous,
+    });
+    return user;
+  } catch (error) {
+    webIntegrityError("WEB_AUTH_SIGN_IN_FAILED", error, {
+      method: "ANONYMOUS",
+    });
+    throw error;
+  }
+})();
