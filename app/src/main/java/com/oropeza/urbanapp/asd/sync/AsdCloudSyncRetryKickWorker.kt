@@ -47,7 +47,8 @@ class AsdCloudSyncRetryKickWorker(
 
     override suspend fun doWork(): Result {
         Log.i(TAG, "SYNC_RETRY_KICK_STARTED kickWorkId=$id")
-        AsdCloudSyncWorker.enqueue(applicationContext)
+        // No cancelar este mismo kick mientras está ejecutándose.
+        AsdCloudSyncWorker.enqueue(applicationContext, cancelDeferredRetry = false)
         Log.i(TAG, "SYNC_RETRY_KICK_FINISHED kickWorkId=$id")
         return Result.success()
     }
