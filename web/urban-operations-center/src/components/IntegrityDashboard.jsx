@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { fetchTripDetail } from '../services/firestore';
+import './IntegrityDashboard.css';
 
 const MAX_AUDIT_TRIPS = 12;
 
