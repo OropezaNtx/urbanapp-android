@@ -1,6 +1,7 @@
 package com.oropeza.urbanapp.asd.sync.cloud
 
 import android.util.Log
+import com.google.gson.JsonParser
 import com.oropeza.urbanapp.asd.data.local.AsdSyncQueueItem
 import com.oropeza.urbanapp.asd.data.repository.AsdRepository
 import kotlinx.coroutines.Dispatchers
@@ -15,12 +16,9 @@ class CloudSyncEngine(
 ) {
     private companion object {
         const val TAG = "AsdCloudSync"
+        const val INTEGRITY_TAG = "TrackingIntegrity"
     }
 
-    /**
-     * Processes a batch of pending items from the sync queue.
-     * Returns the number of items successfully processed.
-     */
     suspend fun processNextBatch(): Int = withContext(Dispatchers.IO) {
         repository.recoverStaleSyncItems()
         val pendingItems = repository.getPendingSyncItems(config.maxBatchSize)
@@ -29,31 +27,23 @@ class CloudSyncEngine(
         Log.i(TAG, "Syncing batch of ${pendingItems.size} items...")
         var syncedCount = 0
         for (item in pendingItems) {
-            val success = processItem(item)
-            if (success) syncedCount++
+            if (processItem(item)) syncedCount++
         }
         Log.i(TAG, "Batch sync finished. Success: $syncedCount, Failed: ${pendingItems.size - syncedCount}")
-        return@withContext syncedCount
+        syncedCount
     }
 
     private suspend fun processItem(item: AsdSyncQueueItem): Boolean {
-        // Mark as in progress locally
         repository.updateSyncItem(item.copy(status = "IN_PROGRESS", updatedAt = System.currentTimeMillis()))
-
         Log.d(TAG, "Syncing ${item.entityType} (${item.operation}) to ${item.cloudPath}")
         val domainItem = item.toDomain()
-        
+
         val result = try {
-            if (item.operation == "DELETE") {
-                target.delete(domainItem)
-            } else {
-                target.upsert(domainItem)
-            }
+            if (item.operation == "DELETE") target.delete(domainItem) else target.upsert(domainItem)
         } catch (e: Exception) {
             Log.e(TAG, "Exception during sync for item ${item.id} at ${item.cloudPath}", e)
             CloudSyncResult.RetryableFailure(e.message ?: "Unknown exception")
         }
-
         return handleResult(item, result)
     }
 
@@ -61,8 +51,13 @@ class CloudSyncEngine(
         val now = System.currentTimeMillis()
         return when (result) {
             is CloudSyncResult.Success -> {
-                Log.v(TAG, "Successfully synced item ${item.id}")
                 repository.markSyncItemSynced(item.id)
+                if (item.entityType == "TRACK_CHUNK") {
+                    val pointCount = try {
+                        JsonParser.parseString(item.payloadJson).asJsonObject.get("pointCount")?.asInt ?: -1
+                    } catch (_: Exception) { -1 }
+                    Log.i(INTEGRITY_TAG, "TRACK_CHUNK_CONFIRMED queueId=${item.id} pointCount=$pointCount cloudPath=${item.cloudPath}")
+                }
                 true
             }
             is CloudSyncResult.RetryableFailure -> {
