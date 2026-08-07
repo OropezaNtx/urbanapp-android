@@ -17,15 +17,10 @@ import java.util.concurrent.TimeUnit
 /**
  * Watchdog persistente del tracking ASD.
  *
- * Se arma cuando TrackingService confirma un recorrido activo y queda registrado
- * en WorkManager, por lo que Android puede ejecutar la comprobación aunque el
- * proceso de Urban haya sido destruido. Cada ejecución sana agenda la siguiente
- * generación antes de finalizar.
- *
- * Nunca crea recorridos ni TrackPoints. Para recuperar exige coincidencia entre:
- * - marcador persistido de tracking,
- * - tripId esperado por el watchdog,
- * - exactamente un recorrido activo en Room.
+ * Mantiene una cadena de comprobaciones mientras exista exactamente un recorrido
+ * activo. Si Android impide recuperar silenciosamente el FGS, entra en estado
+ * ASSISTED_RECOVERY_PENDING y reduce la supervisión hasta que el operador toque
+ * la notificación de recuperación.
  */
 class TrackingRecoveryWorker(
     appContext: Context,
@@ -42,19 +37,23 @@ class TrackingRecoveryWorker(
         private const val PREF_SESSION_ACTIVE = "session_active"
         private const val PREF_TRIP_ID = "trip_id"
         private const val PREF_LAST_HEARTBEAT_MS = "last_heartbeat_ms"
+        private const val PREF_ASSISTED_PENDING = "assisted_recovery_pending"
+        private const val PREF_ASSISTED_TRIP_ID = "assisted_recovery_trip_id"
 
-        // El servicio escribe heartbeat aproximadamente cada 10 s.
         private const val STALE_HEARTBEAT_MS = 30_000L
 
-        // No es la cadencia GPS. Solo es la frecuencia de supervisión del proceso.
+        // No es la cadencia GPS. Solo es la frecuencia del supervisor de proceso.
         private const val HEALTHY_CHECK_DELAY_MS = 120_000L
         private const val EARLY_RECHECK_DELAY_MS = 30_000L
-        private const val BLOCKED_RECHECK_DELAY_MS = 60_000L
+        private const val ASSISTED_RECHECK_DELAY_MS = 300_000L
+        private const val FAILURE_RECHECK_DELAY_MS = 60_000L
 
         fun arm(context: Context, tripId: Long) {
             if (tripId <= 0L) return
             val appContext = context.applicationContext
             WorkManager.getInstance(appContext).cancelAllWorkByTag(WATCHDOG_TAG)
+            clearAssistedPending(appContext, "tracking_active")
+            TrackingRecoveryNotification.cancel(appContext, "tracking_active")
             enqueueGeneration(
                 context = appContext,
                 tripId = tripId,
@@ -65,8 +64,32 @@ class TrackingRecoveryWorker(
         }
 
         fun disarm(context: Context, reason: String) {
-            WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag(WATCHDOG_TAG)
+            val appContext = context.applicationContext
+            WorkManager.getInstance(appContext).cancelAllWorkByTag(WATCHDOG_TAG)
+            clearAssistedPending(appContext, reason)
+            TrackingRecoveryNotification.cancel(appContext, reason)
             Log.i(TAG, "WATCHDOG_DISARMED reason=$reason")
+        }
+
+        private fun markAssistedPending(context: Context, tripId: Long) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_ASSISTED_PENDING, true)
+                .putLong(PREF_ASSISTED_TRIP_ID, tripId)
+                .apply()
+            Log.w(TAG, "ASSISTED_RECOVERY_PENDING trip=$tripId")
+        }
+
+        private fun clearAssistedPending(context: Context, reason: String) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val wasPending = prefs.getBoolean(PREF_ASSISTED_PENDING, false)
+            if (!wasPending && !prefs.contains(PREF_ASSISTED_TRIP_ID)) return
+
+            prefs.edit()
+                .remove(PREF_ASSISTED_PENDING)
+                .remove(PREF_ASSISTED_TRIP_ID)
+                .apply()
+            Log.i(TAG, "ASSISTED_RECOVERY_CLEARED reason=$reason")
         }
 
         private fun enqueueGeneration(
@@ -134,6 +157,8 @@ class TrackingRecoveryWorker(
             val markerActive = prefs.getBoolean(PREF_SESSION_ACTIVE, false)
             val markedTripId = prefs.getLong(PREF_TRIP_ID, -1L)
             val lastHeartbeatMs = prefs.getLong(PREF_LAST_HEARTBEAT_MS, 0L)
+            val assistedPending = prefs.getBoolean(PREF_ASSISTED_PENDING, false)
+            val assistedTripId = prefs.getLong(PREF_ASSISTED_TRIP_ID, -1L)
 
             val activeTrips = AsdGraph.db.tripDao().getAllOnce().filter { it.endTime == null }
             val activeTrip = activeTrips.singleOrNull()
@@ -152,6 +177,7 @@ class TrackingRecoveryWorker(
                         "activeTripCount=${activeTrips.size} activeTripId=${activeTrip?.tripId}"
                 )
                 WorkManager.getInstance(applicationContext).cancelAllWorkByTag(WATCHDOG_TAG)
+                clearAssistedPending(applicationContext, "identity_mismatch")
                 TrackingRecoveryNotification.cancel(applicationContext, "identity_mismatch")
                 return ListenableWorker.Result.success()
             }
@@ -168,6 +194,7 @@ class TrackingRecoveryWorker(
                     TAG,
                     "WATCHDOG_HEALTHY trip=$markedTripId generation=$generation ageMs=$heartbeatAgeMs"
                 )
+                clearAssistedPending(applicationContext, "tracking_healthy")
                 TrackingRecoveryNotification.cancel(applicationContext, "tracking_healthy")
                 scheduleNext(
                     context = applicationContext,
@@ -195,6 +222,22 @@ class TrackingRecoveryWorker(
                 return ListenableWorker.Result.success()
             }
 
+            if (assistedPending && assistedTripId == markedTripId) {
+                Log.w(
+                    TAG,
+                    "ASSISTED_RECOVERY_PENDING trip=$markedTripId generation=$generation " +
+                        "ageMs=$heartbeatAgeMs"
+                )
+                scheduleNext(
+                    context = applicationContext,
+                    tripId = markedTripId,
+                    generation = generation,
+                    delayMs = ASSISTED_RECHECK_DELAY_MS,
+                    reason = "ASSISTED_PENDING"
+                )
+                return ListenableWorker.Result.success()
+            }
+
             Log.w(
                 TAG,
                 "WATCHDOG_PROCESS_RECOVERY trip=$markedTripId generation=$generation ageMs=$heartbeatAgeMs"
@@ -215,11 +258,7 @@ class TrackingRecoveryWorker(
                     e.javaClass.simpleName == "ForegroundServiceStartNotAllowedException"
 
                 if (blockedBySystem) {
-                    Log.e(
-                        TAG,
-                        "WATCHDOG_FGS_BLOCKED trip=$markedTripId generation=$generation",
-                        e
-                    )
+                    Log.e(TAG, "WATCHDOG_FGS_BLOCKED trip=$markedTripId generation=$generation", e)
                 } else {
                     Log.e(
                         TAG,
@@ -229,18 +268,18 @@ class TrackingRecoveryWorker(
                     )
                 }
 
+                markAssistedPending(applicationContext, markedTripId)
                 TrackingRecoveryNotification.show(
                     context = applicationContext,
                     tripId = markedTripId,
                     suspensionMs = heartbeatAgeMs
                 )
-
                 scheduleNext(
                     context = applicationContext,
                     tripId = markedTripId,
                     generation = generation,
-                    delayMs = BLOCKED_RECHECK_DELAY_MS,
-                    reason = "FGS_BLOCKED"
+                    delayMs = ASSISTED_RECHECK_DELAY_MS,
+                    reason = "ASSISTED_PENDING"
                 )
                 ListenableWorker.Result.success()
             }
@@ -252,7 +291,7 @@ class TrackingRecoveryWorker(
                     context = applicationContext,
                     tripId = expectedTripId,
                     generation = generation,
-                    delayMs = BLOCKED_RECHECK_DELAY_MS,
+                    delayMs = FAILURE_RECHECK_DELAY_MS,
                     reason = "WORKER_FAILURE"
                 )
             }
