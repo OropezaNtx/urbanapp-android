@@ -16,6 +16,7 @@ import FleetHealthPanel from './components/FleetHealthPanel';
 import InstallationsPanel from './components/InstallationsPanel';
 import IntegrityDashboard from './components/IntegrityDashboard';
 import QualityReport from './components/QualityReport';
+import OperationalAnalyticsPanel from './components/OperationalAnalyticsPanel';
 import './styles.css';
 
 const toMillis = (v) => {
@@ -147,6 +148,7 @@ function App() {
   const track = useMemo(() => buildTrackMetrics(trackChunks), [trackChunks]);
   const completeness = detail?.completeness;
   const quality = detail?.quality;
+  const operationalAnalytics = detail?.operationalAnalytics;
 
   const pax = allEvents.reduce((a, e) => ({
     up: a.up + totalUp(e),
@@ -225,6 +227,7 @@ function App() {
       </section>
 
       <QualityReport report={quality} />
+      <OperationalAnalyticsPanel analytics={operationalAnalytics} />
 
       {completeness && <section className="card">
         <h3><ShieldCheck size={18} /> Integridad Cloud</h3>
