@@ -17,9 +17,6 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Procesa la cola cloud sin bloquear las operaciones locales de ASD.
- *
- * Room y sync_queue se confirman antes de programar este worker. WorkManager
- * espera conectividad y ejecuta el motor real cuando la red está disponible.
  */
 class AsdCloudSyncWorker(
     appContext: Context,
@@ -38,11 +35,7 @@ class AsdCloudSyncWorker(
 
             val request = OneTimeWorkRequestBuilder<AsdCloudSyncWorker>()
                 .setConstraints(constraints)
-                .setBackoffCriteria(
-                    BackoffPolicy.EXPONENTIAL,
-                    30,
-                    TimeUnit.SECONDS
-                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
 
             WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
@@ -55,9 +48,11 @@ class AsdCloudSyncWorker(
 
     override suspend fun doWork(): ListenableWorker.Result {
         return try {
-            // Defensa adicional para cold starts iniciados por WorkManager.
             AsdGraph.init(applicationContext)
             AsdGraph.repo.recoverStaleSyncItems()
+
+            // Fotografía read-only antes de tocar la cola.
+            TrackingPipelineIntegrityAuditor.logRelevantTrips("BEFORE_CLOUD_DRAIN")
 
             val engine = CloudSyncEngine(
                 repository = AsdGraph.repo,
@@ -71,28 +66,22 @@ class AsdCloudSyncWorker(
                 totalSynced += syncedInBatch
             }
 
+            // Fotografía posterior: permite distinguir pérdida local, cola pendiente
+            // y confirmación cloud sin modificar el pipeline.
+            TrackingPipelineIntegrityAuditor.logRelevantTrips("AFTER_CLOUD_DRAIN")
+
             val outstanding = AsdGraph.repo.getOutstandingSyncCount()
-            Log.i(
-                TAG,
-                "Background sync finished. Synced=$totalSynced, outstanding=$outstanding"
-            )
+            Log.i(TAG, "Background sync finished. Synced=$totalSynced, outstanding=$outstanding")
 
             if (outstanding > 0) {
-                Log.w(
-                    TAG,
-                    "Quedan $outstanding elementos por resolver; WorkManager continuará automáticamente con backoff"
-                )
+                Log.w(TAG, "Quedan $outstanding elementos por resolver; WorkManager continuará automáticamente con backoff")
                 ListenableWorker.Result.retry()
             } else {
                 ListenableWorker.Result.success()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Falló la sincronización en background", e)
-            if (runAttemptCount < 5) {
-                ListenableWorker.Result.retry()
-            } else {
-                ListenableWorker.Result.failure()
-            }
+            if (runAttemptCount < 5) ListenableWorker.Result.retry() else ListenableWorker.Result.failure()
         }
     }
 }
