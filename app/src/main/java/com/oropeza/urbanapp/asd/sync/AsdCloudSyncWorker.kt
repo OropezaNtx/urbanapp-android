@@ -19,9 +19,9 @@ import java.util.concurrent.TimeUnit
 /**
  * Procesa la cola cloud sin bloquear las operaciones locales de ASD.
  *
- * Sprint 2.2.3: toda la vida del WorkRequest queda trazada bajo
- * CloudSyncIntegrity para poder distinguir programación, ejecución, drenado,
- * retry y finalización sin depender de dumpsys JobScheduler.
+ * Sprint 2.2.3: WorkManager ya no aplica un retry infinito por elementos que
+ * tienen su propio nextAttemptAt. El backoff normal vive en sync_queue y un
+ * RetryKick separado despierta un nuevo drenado cuando corresponde.
  */
 class AsdCloudSyncWorker(
     appContext: Context,
@@ -31,11 +31,13 @@ class AsdCloudSyncWorker(
     companion object {
         private const val TAG = "AsdCloudSyncWorker"
         private const val INTEGRITY_TAG = "CloudSyncIntegrity"
-        private const val WORK_NAME = "AsdCloudSyncWork"
+        private const val WORK_NAME = "AsdCloudSyncWorkV2"
+        private const val LEGACY_WORK_NAME = "AsdCloudSyncWork"
         private const val MAX_ITEMS_PER_RUN = 2_000
         private val DIRECT_EXECUTOR = Executor { command -> command.run() }
 
-        fun enqueue(context: Context) {
+        fun enqueue(context: Context, cancelDeferredRetry: Boolean = true) {
+            val appContext = context.applicationContext
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
@@ -43,8 +45,15 @@ class AsdCloudSyncWorker(
             val request = OneTimeWorkRequestBuilder<AsdCloudSyncWorker>()
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .addTag("ASD_CLOUD_SYNC")
+                .addTag("ASD_CLOUD_SYNC_V2")
                 .build()
+
+            val workManager = WorkManager.getInstance(appContext)
+
+            // Migración segura: elimina el unique work legado que podía quedar
+            // atrapado durante horas en Result.retry() y bloquear KEEP.
+            workManager.cancelUniqueWork(LEGACY_WORK_NAME)
+            if (cancelDeferredRetry) AsdCloudSyncRetryKickWorker.cancel(appContext)
 
             Log.i(
                 INTEGRITY_TAG,
@@ -52,7 +61,6 @@ class AsdCloudSyncWorker(
                     "requiresNetwork=true policy=KEEP"
             )
 
-            val workManager = WorkManager.getInstance(context.applicationContext)
             val operation = workManager.enqueueUniqueWork(
                 WORK_NAME,
                 ExistingWorkPolicy.KEEP,
@@ -96,9 +104,7 @@ class AsdCloudSyncWorker(
                             return@addListener
                         }
 
-                        val active = infos.firstOrNull { !it.state.isFinished }
-                            ?: infos.lastOrNull()
-
+                        val active = infos.firstOrNull { !it.state.isFinished } ?: infos.lastOrNull()
                         infos.forEach { info ->
                             Log.i(
                                 INTEGRITY_TAG,
@@ -127,19 +133,13 @@ class AsdCloudSyncWorker(
         val runId = id.toString()
         val startedAt = System.currentTimeMillis()
 
-        Log.i(
-            INTEGRITY_TAG,
-            "SYNC_WORK_STARTED runId=$runId attempt=$runAttemptCount"
-        )
+        Log.i(INTEGRITY_TAG, "SYNC_WORK_STARTED runId=$runId attempt=$runAttemptCount")
 
         return try {
             AsdGraph.init(applicationContext)
             val recoveredStale = AsdGraph.repo.recoverStaleSyncItems()
             if (recoveredStale > 0) {
-                Log.w(
-                    INTEGRITY_TAG,
-                    "SYNC_STALE_RECOVERED runId=$runId count=$recoveredStale"
-                )
+                Log.w(INTEGRITY_TAG, "SYNC_STALE_RECOVERED runId=$runId count=$recoveredStale")
             }
 
             TrackingPipelineIntegrityAuditor.logRelevantTrips("BEFORE_CLOUD_DRAIN")
@@ -165,17 +165,17 @@ class AsdCloudSyncWorker(
             val elapsedMs = System.currentTimeMillis() - startedAt
 
             if (outstanding > 0) {
-                Log.w(
+                val delayMs = CloudSyncRetryPlanner.nextDelayMs()
+                AsdCloudSyncRetryKickWorker.schedule(applicationContext, delayMs)
+                Log.i(
                     INTEGRITY_TAG,
-                    "SYNC_FINISHED runId=$runId result=RETRY synced=$totalSynced " +
-                        "outstanding=$outstanding batches=$batchNumber elapsedMs=$elapsedMs"
+                    "SYNC_FINISHED runId=$runId result=DEFERRED synced=$totalSynced " +
+                        "outstanding=$outstanding batches=$batchNumber elapsedMs=$elapsedMs retryInMs=$delayMs"
                 )
-                Log.w(
-                    TAG,
-                    "Quedan $outstanding elementos por resolver; WorkManager continuará automáticamente con backoff"
-                )
-                ListenableWorker.Result.retry()
+                // Éxito deliberado: evita que WorkManager añada un segundo backoff.
+                ListenableWorker.Result.success()
             } else {
+                AsdCloudSyncRetryKickWorker.cancel(applicationContext)
                 Log.i(INTEGRITY_TAG, "SYNC_QUEUE_EMPTY runId=$runId")
                 Log.i(
                     INTEGRITY_TAG,
@@ -194,6 +194,7 @@ class AsdCloudSyncWorker(
                 e
             )
             Log.e(TAG, "Falló la sincronización en background", e)
+            // Solo excepciones del Worker usan backoff de WorkManager.
             if (runAttemptCount < 5) ListenableWorker.Result.retry() else ListenableWorker.Result.failure()
         }
     }
