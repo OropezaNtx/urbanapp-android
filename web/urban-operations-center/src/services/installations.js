@@ -1,6 +1,9 @@
 import { collection, onSnapshot, doc, writeBatch } from "firebase/firestore";
-import { db } from "../firebase";
+import { authReady, db } from "../firebase";
 import { webIntegrity, webIntegrityError } from "./webIntegrity";
+
+const ORG_ID = import.meta.env.VITE_URBAN_ORG_ID || "afora";
+const PROJECT_ID = import.meta.env.VITE_URBAN_PROJECT_ID || "urban_operations";
 
 function mapDocs(snapshot) {
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -22,44 +25,94 @@ function sortByLastSeenDesc(a, b) {
 }
 
 export function subscribeInstallationsHealth(onInstallations, onError) {
-  const path = "installations";
+  const path = `asd_organizations/${ORG_ID}/projects/${PROJECT_ID}/installations`;
   webIntegrity("WEB_COLLECTION_PATH", { operation: "SUBSCRIBE_INSTALLATIONS", path });
-  webIntegrity("WEB_FIRESTORE_READ", { operation: "SUBSCRIBE_INSTALLATIONS", path, outcome: "SUBSCRIBE" });
+  webIntegrity("WEB_FIRESTORE_READ", {
+    operation: "SUBSCRIBE_INSTALLATIONS",
+    path,
+    outcome: "WAITING_FOR_AUTH",
+  });
 
-  const ref = collection(db, path);
-  return onSnapshot(
-    ref,
-    (snapshot) => {
-      const installations = mapDocs(snapshot).sort(sortByLastSeenDesc);
-      webIntegrity("WEB_QUERY_RESULT", {
+  let unsubscribe = null;
+  let cancelled = false;
+
+  authReady
+    .then((user) => {
+      if (cancelled) return;
+
+      webIntegrity("WEB_FIRESTORE_READ", {
         operation: "SUBSCRIBE_INSTALLATIONS",
         path,
-        outcome: "SUCCESS",
-        count: installations.length,
+        outcome: "SUBSCRIBE",
+        uid: user?.uid ?? null,
+        anonymous: user?.isAnonymous ?? null,
       });
-      onInstallations(installations);
-    },
-    (error) => {
-      if (error?.code === "permission-denied") {
-        webIntegrityError("WEB_FIRESTORE_PERMISSION_DENIED", error, {
-          operation: "SUBSCRIBE_INSTALLATIONS",
-          path,
-        });
-      } else {
-        webIntegrityError("WEB_FIRESTORE_READ_FAILED", error, {
-          operation: "SUBSCRIBE_INSTALLATIONS",
-          path,
-        });
-      }
+
+      const ref = collection(
+        db,
+        "asd_organizations",
+        ORG_ID,
+        "projects",
+        PROJECT_ID,
+        "installations"
+      );
+
+      unsubscribe = onSnapshot(
+        ref,
+        (snapshot) => {
+          const installations = mapDocs(snapshot).sort(sortByLastSeenDesc);
+          webIntegrity("WEB_QUERY_RESULT", {
+            operation: "SUBSCRIBE_INSTALLATIONS",
+            path,
+            outcome: "SUCCESS",
+            count: installations.length,
+          });
+          onInstallations(installations);
+        },
+        (error) => {
+          if (error?.code === "permission-denied") {
+            webIntegrityError("WEB_FIRESTORE_PERMISSION_DENIED", error, {
+              operation: "SUBSCRIBE_INSTALLATIONS",
+              path,
+            });
+          } else {
+            webIntegrityError("WEB_FIRESTORE_READ_FAILED", error, {
+              operation: "SUBSCRIBE_INSTALLATIONS",
+              path,
+            });
+          }
+          if (onError) onError(error);
+        }
+      );
+    })
+    .catch((error) => {
+      webIntegrityError("WEB_FIRESTORE_READ_FAILED", error, {
+        operation: "SUBSCRIBE_INSTALLATIONS",
+        path,
+        phase: "AUTH",
+      });
       if (onError) onError(error);
-    }
-  );
+    });
+
+  return () => {
+    cancelled = true;
+    if (unsubscribe) unsubscribe();
+  };
 }
 
 export async function updateInstallationStatus(installationId, status, extraFields = {}, ownerUid = null) {
+  await authReady;
   const batch = writeBatch(db);
 
-  const instRef = doc(db, "installations", installationId);
+  const instRef = doc(
+    db,
+    "asd_organizations",
+    ORG_ID,
+    "projects",
+    PROJECT_ID,
+    "installations",
+    installationId
+  );
   batch.update(instRef, {
     status,
     ...extraFields,
