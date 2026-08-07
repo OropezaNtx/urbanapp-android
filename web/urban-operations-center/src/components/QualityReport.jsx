@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle2, CircleAlert, ShieldCheck, Sparkles } from 'lucide-react';
+import './QualityReport.css';
 
 const val = (v) => v === null || v === undefined || v === '' ? '—' : String(v);
 
