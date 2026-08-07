@@ -11,6 +11,7 @@ import { authReady, db } from "../firebase";
 import { webIntegrity, webIntegrityError } from "./webIntegrity";
 import { logCloudCompleteness } from "./cloudCompleteness";
 import { logWebCompleteness } from "./webCompleteness";
+import { logTripQuality } from "./qualityEngine";
 
 const ORG_ID = import.meta.env.VITE_URBAN_ORG_ID || "afora";
 const PROJECT_ID = import.meta.env.VITE_URBAN_PROJECT_ID || "urban_operations";
@@ -200,6 +201,12 @@ export async function fetchTripDetail(tripDocId, tripId) {
     events: resolvedEvents,
     trackChunks: resolvedTrack,
   });
+  const quality = logTripQuality({
+    tripDocId,
+    trip,
+    events: resolvedEvents,
+    trackChunks: resolvedTrack,
+  });
 
   return {
     trip,
@@ -209,5 +216,6 @@ export async function fetchTripDetail(tripDocId, tripId) {
     trackChunks,
     completeness,
     webCompleteness,
+    quality,
   };
 }
