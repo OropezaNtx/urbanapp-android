@@ -1,11 +1,9 @@
-import { collection, onSnapshot, doc, updateDoc, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, doc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
+import { webIntegrity, webIntegrityError } from "./webIntegrity";
 
 function mapDocs(snapshot) {
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
 function toMillis(value) {
@@ -24,16 +22,35 @@ function sortByLastSeenDesc(a, b) {
 }
 
 export function subscribeInstallationsHealth(onInstallations, onError) {
-  const ref = collection(db, "installations");
+  const path = "installations";
+  webIntegrity("WEB_COLLECTION_PATH", { operation: "SUBSCRIBE_INSTALLATIONS", path });
+  webIntegrity("WEB_FIRESTORE_READ", { operation: "SUBSCRIBE_INSTALLATIONS", path, outcome: "SUBSCRIBE" });
 
+  const ref = collection(db, path);
   return onSnapshot(
     ref,
     (snapshot) => {
       const installations = mapDocs(snapshot).sort(sortByLastSeenDesc);
+      webIntegrity("WEB_QUERY_RESULT", {
+        operation: "SUBSCRIBE_INSTALLATIONS",
+        path,
+        outcome: "SUCCESS",
+        count: installations.length,
+      });
       onInstallations(installations);
     },
     (error) => {
-      console.error("Error escuchando installations", error);
+      if (error?.code === "permission-denied") {
+        webIntegrityError("WEB_FIRESTORE_PERMISSION_DENIED", error, {
+          operation: "SUBSCRIBE_INSTALLATIONS",
+          path,
+        });
+      } else {
+        webIntegrityError("WEB_FIRESTORE_READ_FAILED", error, {
+          operation: "SUBSCRIBE_INSTALLATIONS",
+          path,
+        });
+      }
       if (onError) onError(error);
     }
   );
@@ -49,8 +66,7 @@ export async function updateInstallationStatus(installationId, status, extraFiel
     updatedAt: Date.now()
   });
 
-  const accessRef = doc(db, "installation_access", ownerUid); // Keyed by UID for direct secure rules
-  // On approval/revocation, we sync the core fields to installation_access
+  const accessRef = doc(db, "installation_access", ownerUid);
   batch.set(accessRef, {
     installationId,
     ownerUid,
