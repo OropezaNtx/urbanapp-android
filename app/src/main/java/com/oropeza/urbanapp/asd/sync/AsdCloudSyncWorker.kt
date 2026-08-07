@@ -142,6 +142,14 @@ class AsdCloudSyncWorker(
                 Log.w(INTEGRITY_TAG, "SYNC_STALE_RECOVERED runId=$runId count=$recoveredStale")
             }
 
+            val legacyMigration = LegacyCloudPathMigrator.migrateIfNeeded(applicationContext)
+            Log.i(
+                INTEGRITY_TAG,
+                "SYNC_LEGACY_PATH_MIGRATION runId=$runId eligible=${legacyMigration.eligible} " +
+                    "migrated=${legacyMigration.migrated} skipped=${legacyMigration.skipped} " +
+                    "reason=${legacyMigration.reason ?: "NONE"}"
+            )
+
             TrackingPipelineIntegrityAuditor.logRelevantTrips("BEFORE_CLOUD_DRAIN")
 
             val engine = CloudSyncEngine(
