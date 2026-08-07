@@ -41,7 +41,7 @@ object TrackingRecoveryNotification {
         val serviceIntent = Intent(appContext, TrackingService::class.java).apply {
             action = TrackingService.ACTION_START
             putExtra(TrackingService.EXTRA_TRIP_ID, tripId)
-            putExtra(EXTRA_RECOVERY_ASSISTED, true)
+            putExtra(EXTRA_RECOVERY_SUPERVISOR, true)
         }
 
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -107,5 +107,3 @@ object TrackingRecoveryNotification {
         }
     }
 }
-
-const val EXTRA_RECOVERY_ASSISTED = "recovery_assisted"
