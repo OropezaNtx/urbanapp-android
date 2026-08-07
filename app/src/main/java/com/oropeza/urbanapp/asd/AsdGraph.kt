@@ -19,15 +19,27 @@ object AsdGraph {
     lateinit var appContext: Context
         private set
 
+    @Synchronized
     fun init(context: Context) {
+        if (
+            ::appContext.isInitialized &&
+            ::db.isInitialized &&
+            ::repo.isInitialized &&
+            ::syncQueue.isInitialized
+        ) {
+            return
+        }
+
         appContext = context.applicationContext
         db = DbProvider.getInstance(appContext)
         repo = AsdRepository(db)
-        syncQueue = com.oropeza.urbanapp.asd.data.repository.AsdSyncQueueRepository(db.asdSyncQueueDao())
+        syncQueue = com.oropeza.urbanapp.asd.data.repository.AsdSyncQueueRepository(
+            db.asdSyncQueueDao()
+        )
     }
 
     /**
-     * Factory for the cloud sync target. 
+     * Factory for the cloud sync target.
      * In the future, this could return different implementations based on config.
      */
     fun getCloudSyncTarget(): com.oropeza.urbanapp.asd.sync.cloud.CloudSyncTarget {
