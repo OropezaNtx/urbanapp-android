@@ -19,7 +19,8 @@ import java.util.concurrent.TimeUnit
  *
  * Se arma cuando TrackingService confirma un recorrido activo y queda registrado
  * en WorkManager, por lo que Android puede ejecutar la comprobación aunque el
- * proceso de Urban haya sido destruido. Cada ejecución sana agenda la siguiente.
+ * proceso de Urban haya sido destruido. Cada ejecución sana agenda la siguiente
+ * generación antes de finalizar.
  *
  * Nunca crea recorridos ni TrackPoints. Para recuperar exige coincidencia entre:
  * - marcador persistido de tracking,
@@ -58,9 +59,9 @@ class TrackingRecoveryWorker(
                 context = appContext,
                 tripId = tripId,
                 generation = 0,
-                delayMs = HEALTHY_CHECK_DELAY_MS
+                delayMs = HEALTHY_CHECK_DELAY_MS,
+                reason = "INITIAL_ARM"
             )
-            Log.i(TAG, "WATCHDOG_ARMED trip=$tripId delayMs=$HEALTHY_CHECK_DELAY_MS")
         }
 
         fun disarm(context: Context, reason: String) {
@@ -72,7 +73,8 @@ class TrackingRecoveryWorker(
             context: Context,
             tripId: Long,
             generation: Int,
-            delayMs: Long
+            delayMs: Long,
+            reason: String
         ) {
             val input = Data.Builder()
                 .putLong(INPUT_TRIP_ID, tripId)
@@ -86,19 +88,32 @@ class TrackingRecoveryWorker(
                 .build()
 
             WorkManager.getInstance(context.applicationContext).enqueue(request)
+            Log.i(
+                TAG,
+                "WATCHDOG_ARMED trip=$tripId generation=$generation delayMs=$delayMs " +
+                    "reason=$reason workId=${request.id}"
+            )
         }
 
         private fun scheduleNext(
             context: Context,
             tripId: Long,
             generation: Int,
-            delayMs: Long
+            delayMs: Long,
+            reason: String
         ) {
+            val nextGeneration = generation + 1
+            Log.i(
+                TAG,
+                "WATCHDOG_REARMED trip=$tripId fromGeneration=$generation " +
+                    "toGeneration=$nextGeneration delayMs=$delayMs reason=$reason"
+            )
             enqueueGeneration(
                 context = context,
                 tripId = tripId,
-                generation = generation + 1,
-                delayMs = delayMs
+                generation = nextGeneration,
+                delayMs = delayMs,
+                reason = reason
             )
         }
     }
@@ -156,7 +171,8 @@ class TrackingRecoveryWorker(
                     context = applicationContext,
                     tripId = markedTripId,
                     generation = generation,
-                    delayMs = HEALTHY_CHECK_DELAY_MS
+                    delayMs = HEALTHY_CHECK_DELAY_MS,
+                    reason = "HEALTHY"
                 )
                 return ListenableWorker.Result.success()
             }
@@ -174,7 +190,8 @@ class TrackingRecoveryWorker(
                     context = applicationContext,
                     tripId = markedTripId,
                     generation = generation,
-                    delayMs = EARLY_RECHECK_DELAY_MS
+                    delayMs = EARLY_RECHECK_DELAY_MS,
+                    reason = "HEARTBEAT_FRESH_SERVICE_DOWN"
                 )
                 return ListenableWorker.Result.success()
             }
@@ -193,7 +210,7 @@ class TrackingRecoveryWorker(
             try {
                 ContextCompat.startForegroundService(applicationContext, intent)
                 Log.w(TAG, "WATCHDOG_FGS_STARTED trip=$markedTripId generation=$generation")
-                // TrackingService arma una nueva cadena cuando confirma el recorrido.
+                // Si TrackingService confirma el recorrido, arma una cadena nueva.
                 ListenableWorker.Result.success()
             } catch (e: Exception) {
                 val blockedBySystem = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
@@ -218,7 +235,8 @@ class TrackingRecoveryWorker(
                     context = applicationContext,
                     tripId = markedTripId,
                     generation = generation,
-                    delayMs = BLOCKED_RECHECK_DELAY_MS
+                    delayMs = BLOCKED_RECHECK_DELAY_MS,
+                    reason = "FGS_BLOCKED"
                 )
                 ListenableWorker.Result.success()
             }
@@ -230,7 +248,8 @@ class TrackingRecoveryWorker(
                     context = applicationContext,
                     tripId = expectedTripId,
                     generation = generation,
-                    delayMs = BLOCKED_RECHECK_DELAY_MS
+                    delayMs = BLOCKED_RECHECK_DELAY_MS,
+                    reason = "WORKER_FAILURE"
                 )
             }
             ListenableWorker.Result.success()
