@@ -7,7 +7,7 @@ import {
   orderBy,
   query,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { authReady, db } from "../firebase";
 import { webIntegrity, webIntegrityError } from "./webIntegrity";
 
 const ORG_ID = import.meta.env.VITE_URBAN_ORG_ID || "afora";
@@ -46,9 +46,18 @@ function logPath(operation, path) {
 
 async function tracedRead(operation, path, readFn) {
   logPath(operation, path);
-  webIntegrity("WEB_FIRESTORE_READ", { operation, path, outcome: "ATTEMPT" });
+  webIntegrity("WEB_FIRESTORE_READ", { operation, path, outcome: "WAITING_FOR_AUTH" });
 
   try {
+    const user = await authReady;
+    webIntegrity("WEB_FIRESTORE_READ", {
+      operation,
+      path,
+      outcome: "ATTEMPT",
+      uid: user?.uid ?? null,
+      anonymous: user?.isAnonymous ?? null,
+    });
+
     const result = await readFn();
     const count = result?.docs?.length ?? (result?.exists?.() ? 1 : 0);
     webIntegrity("WEB_QUERY_RESULT", { operation, path, outcome: "SUCCESS", count });
