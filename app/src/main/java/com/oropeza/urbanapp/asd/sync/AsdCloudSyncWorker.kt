@@ -50,8 +50,6 @@ class AsdCloudSyncWorker(
 
             val workManager = WorkManager.getInstance(appContext)
 
-            // Migración segura: elimina el unique work legado que podía quedar
-            // atrapado durante horas en Result.retry() y bloquear KEEP.
             workManager.cancelUniqueWork(LEGACY_WORK_NAME)
             if (cancelDeferredRetry) AsdCloudSyncRetryKickWorker.cancel(appContext)
 
@@ -169,6 +167,24 @@ class AsdCloudSyncWorker(
 
             TrackingPipelineIntegrityAuditor.logRelevantTrips("AFTER_CLOUD_DRAIN")
 
+            // Sprint 2.3.1: solo auditamos cloud cuando este Worker realmente
+            // confirmó datos. El auditor es read-only y nunca cambia la cola.
+            if (totalSynced > 0) {
+                try {
+                    CloudDataIntegrityAuditor.auditRelevantTrips(
+                        stage = "AFTER_CLOUD_DRAIN",
+                        runId = runId
+                    )
+                } catch (auditError: Exception) {
+                    Log.e(
+                        "DataIntegrity",
+                        "DATA_AUDIT_MISMATCH stage=AFTER_CLOUD_DRAIN runId=$runId " +
+                            "reason=AUDITOR_FAILURE error=${auditError.javaClass.simpleName}:${auditError.message}",
+                        auditError
+                    )
+                }
+            }
+
             val outstanding = AsdGraph.repo.getOutstandingSyncCount()
             val elapsedMs = System.currentTimeMillis() - startedAt
 
@@ -180,7 +196,6 @@ class AsdCloudSyncWorker(
                     "SYNC_FINISHED runId=$runId result=DEFERRED synced=$totalSynced " +
                         "outstanding=$outstanding batches=$batchNumber elapsedMs=$elapsedMs retryInMs=$delayMs"
                 )
-                // Éxito deliberado: evita que WorkManager añada un segundo backoff.
                 ListenableWorker.Result.success()
             } else {
                 AsdCloudSyncRetryKickWorker.cancel(applicationContext)
@@ -202,7 +217,6 @@ class AsdCloudSyncWorker(
                 e
             )
             Log.e(TAG, "Falló la sincronización en background", e)
-            // Solo excepciones del Worker usan backoff de WorkManager.
             if (runAttemptCount < 5) ListenableWorker.Result.retry() else ListenableWorker.Result.failure()
         }
     }
