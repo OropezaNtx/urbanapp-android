@@ -145,6 +145,7 @@ class TrackingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        AsdGraph.init(this)
         gps = LocationProvider(this)
         createNotificationChannel()
         startForeground(notificationId, buildNotification("Validando recorrido activo…"))
@@ -152,18 +153,42 @@ class TrackingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val isRedelivery = flags and START_FLAG_REDELIVERY != 0
+
         if (intent == null) {
             Log.w(TAG, "Servicio recreado por Android sin Intent; iniciando reconciliación local")
-            recoverAfterProcessRecreation()
-            return START_STICKY
+            recoverAfterProcessRecreation(expectedTripId = null, source = "NULL_INTENT")
+            return START_REDELIVER_INTENT
         }
 
         when (intent.action) {
             ACTION_START -> {
                 val tripId = intent.getLongExtra(EXTRA_TRIP_ID, -1L)
+                val isSupervisorRecovery = intent.getBooleanExtra(EXTRA_RECOVERY_SUPERVISOR, false)
+
                 if (tripId > 0L) {
-                    if (currentTripId != null && currentTripId != tripId) resetTrackingState()
-                    startTracking(tripId, recovered = false, recoveryGapMs = 0L)
+                    when {
+                        isRedelivery -> {
+                            Log.w(TAG, "TRACK_START redeliverado por Android para trip=$tripId")
+                            recoverAfterProcessRecreation(
+                                expectedTripId = tripId,
+                                source = "REDELIVERED_INTENT"
+                            )
+                        }
+
+                        isSupervisorRecovery -> {
+                            Log.w(TAG, "TRACK_START solicitado por supervisor para trip=$tripId")
+                            recoverAfterProcessRecreation(
+                                expectedTripId = tripId,
+                                source = "PERSISTENT_WATCHDOG"
+                            )
+                        }
+
+                        else -> {
+                            if (currentTripId != null && currentTripId != tripId) resetTrackingState()
+                            startTracking(tripId, recovered = false, recoveryGapMs = 0L)
+                        }
+                    }
                 } else {
                     Log.w(TAG, "ACTION_START sin tripId válido")
                     stopTracking(clearRecoveryMarker = true)
@@ -177,10 +202,10 @@ class TrackingService : Service() {
             }
         }
 
-        return START_STICKY
+        return START_REDELIVER_INTENT
     }
 
-    private fun recoverAfterProcessRecreation() {
+    private fun recoverAfterProcessRecreation(expectedTripId: Long?, source: String) {
         if (recoveryInProgress || mainJob?.isActive == true || isRunning) return
         recoveryInProgress = true
 
@@ -192,20 +217,24 @@ class TrackingService : Service() {
 
             val activeTrips = AsdGraph.db.tripDao().getAllOnce().filter { it.endTime == null }
             val activeTrip = activeTrips.singleOrNull()
+            val expectedTripMatches = expectedTripId == null || expectedTripId == markedTripId
 
             val canRecover = markerActive &&
                 markedTripId > 0L &&
+                expectedTripMatches &&
                 activeTrip != null &&
                 activeTrip.tripId == markedTripId
 
             if (!canRecover) {
                 Log.w(
                     TAG,
-                    "Recuperación rechazada: markerActive=$markerActive markedTripId=$markedTripId " +
+                    "Recuperación rechazada: source=$source markerActive=$markerActive " +
+                        "markedTripId=$markedTripId expectedTripId=$expectedTripId " +
                         "activeTripCount=${activeTrips.size} activeTripId=${activeTrip?.tripId}"
                 )
                 recoveryInProgress = false
                 clearSessionMarker()
+                TrackingRecoveryWorker.disarm(this@TrackingService, "recovery_rejected")
                 stopTracking(clearRecoveryMarker = false)
                 return@launch
             }
@@ -217,7 +246,10 @@ class TrackingService : Service() {
                 0L
             }
 
-            Log.w(TAG, "Recuperando tracking trip=${activeTrip.tripId} suspensiónMs=$gapMs")
+            Log.w(
+                TAG,
+                "Recuperando tracking source=$source trip=${activeTrip.tripId} suspensiónMs=$gapMs"
+            )
             recoveryInProgress = false
             startTracking(activeTrip.tripId, recovered = true, recoveryGapMs = gapMs)
         }
@@ -251,6 +283,7 @@ class TrackingService : Service() {
             isRunning = true
             engine.start()
             writeSessionHeartbeat(tripId)
+            TrackingRecoveryWorker.arm(this@TrackingService, tripId)
             publishRuntimeState(engineState = null, modeOverride = "ACQUIRE")
             publishMetrics(engineMode = "ACQUIRE")
             updateNotification(
@@ -642,7 +675,10 @@ class TrackingService : Service() {
         if (shuttingDown) return
         shuttingDown = true
         isRunning = false
-        if (clearRecoveryMarker) clearSessionMarker()
+        if (clearRecoveryMarker) {
+            clearSessionMarker()
+            TrackingRecoveryWorker.disarm(this, "tracking_finished")
+        }
         publishMetrics(activeOverride = false)
         logMetrics("stop")
         currentTripId = null
