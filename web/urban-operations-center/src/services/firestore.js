@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { authReady, db } from "../firebase";
 import { webIntegrity, webIntegrityError } from "./webIntegrity";
+import { logCloudCompleteness } from "./cloudCompleteness";
 
 const ORG_ID = import.meta.env.VITE_URBAN_ORG_ID || "afora";
 const PROJECT_ID = import.meta.env.VITE_URBAN_PROJECT_ID || "urban_operations";
@@ -132,6 +133,7 @@ export async function fetchTripTrackChunks(tripDocId) {
 }
 
 export async function fetchTripTrackSummary(tripDocId) {
+  if (!USE_LEGACY) return [];
   const path = subcollectionPath(tripDocId, "track_summary");
   try {
     const snap = await tracedRead(
@@ -146,6 +148,7 @@ export async function fetchTripTrackSummary(tripDocId) {
 }
 
 export async function fetchBackupEventsByTripId(tripId) {
+  if (!USE_LEGACY) return [];
   const path = "urbanapp_asd_backups";
   const snap = await tracedRead(
     "FETCH_BACKUP_EVENTS",
@@ -165,18 +168,38 @@ export async function fetchTripDetail(tripDocId, tripId) {
   const trip = tripSnap.exists() ? { id: tripSnap.id, ...tripSnap.data() } : null;
   const effectiveTripId = tripId ?? trip?.tripId ?? tripDocId;
 
-  const [events, backupEvents, trackChunks, trackSummary] = await Promise.all([
+  const primaryReads = [
     fetchTripEvents(tripDocId).catch(() => []),
-    fetchBackupEventsByTripId(effectiveTripId).catch(() => []),
     fetchTripTrackChunks(tripDocId).catch(() => []),
-    fetchTripTrackSummary(tripDocId).catch(() => []),
+  ];
+
+  const legacyReads = USE_LEGACY
+    ? [
+        fetchBackupEventsByTripId(effectiveTripId).catch(() => []),
+        fetchTripTrackSummary(tripDocId).catch(() => []),
+      ]
+    : [Promise.resolve([]), Promise.resolve([])];
+
+  const [events, trackChunks, backupEvents, trackSummary] = await Promise.all([
+    ...primaryReads,
+    ...legacyReads,
   ]);
+
+  const resolvedEvents = events.length ? events : backupEvents;
+  const resolvedTrack = trackChunks.length ? trackChunks : trackSummary;
+  const completeness = logCloudCompleteness({
+    tripDocId,
+    trip,
+    events: resolvedEvents,
+    trackChunks: resolvedTrack,
+  });
 
   return {
     trip,
-    events: events.length ? events : backupEvents,
+    events: resolvedEvents,
     backupEvents,
-    trackSummary: trackChunks.length ? trackChunks : trackSummary,
+    trackSummary: resolvedTrack,
     trackChunks,
+    completeness,
   };
 }
