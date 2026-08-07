@@ -29,16 +29,30 @@ function isClosed(trip) {
   return Boolean(trip?.endTime);
 }
 
+function qualityKind(state) {
+  if (state === 'VERIFIED') return 'ok';
+  if (state === 'WARNING') return 'warning';
+  if (state === 'CRITICAL') return 'error';
+  return 'neutral';
+}
+
 function severity(row) {
   if (row.error) return 'error';
-  if (row.web?.state === 'WEB_MISMATCH' || row.cloud?.state?.startsWith('MISSING') || row.cloud?.state === 'POINT_COUNT_MISMATCH') return 'error';
+  if (row.quality?.primaryState === 'CRITICAL') return 'error';
+  if (row.quality?.primaryState === 'WARNING') return isClosed(row.trip) ? 'warning' : 'pending';
   if (!isClosed(row.trip) || row.cloud?.state === 'SYNC_PENDING' || row.web?.state === 'CLOUD_INCOMPLETE') return 'pending';
-  if ((row.cloud?.invalidGpsPointCount || 0) > 0) return 'warning';
   return 'ok';
 }
 
 function StatusBadge({ state, kind = 'neutral' }) {
   return <span className={`integrity-badge integrity-${kind}`}>{val(state)}</span>;
+}
+
+function QualityStates({ quality }) {
+  if (!quality?.states?.length) return <span>—</span>;
+  return <div className="quality-state-stack">
+    {quality.states.map((state) => <StatusBadge key={state} state={state} kind={qualityKind(state)} />)}
+  </div>;
 }
 
 function HealthStat({ label, value, hint, tone = 'neutral' }) {
@@ -56,6 +70,7 @@ async function auditTrip(trip) {
       trip,
       cloud: detail?.completeness || null,
       web: detail?.webCompleteness || null,
+      quality: detail?.quality || null,
       auditedAt: Date.now(),
       error: null,
     };
@@ -64,6 +79,7 @@ async function auditTrip(trip) {
       trip,
       cloud: null,
       web: null,
+      quality: null,
       auditedAt: Date.now(),
       error: error?.message || String(error),
     };
@@ -87,7 +103,6 @@ export default function IntegrityDashboard({ trips = [], onOpenTrip }) {
     setAuditing(true);
     try {
       const results = [];
-      // Secuencial a propósito: evita una ráfaga innecesaria de lecturas a Firestore.
       for (const trip of candidates) {
         results.push(await auditTrip(trip));
       }
@@ -107,18 +122,23 @@ export default function IntegrityDashboard({ trips = [], onOpenTrip }) {
   const summary = useMemo(() => {
     const audited = rows.length;
     const complete = rows.filter((r) => r.web?.complete === true).length;
+    const verified = rows.filter((r) => r.quality?.primaryState === 'VERIFIED').length;
     const pending = rows.filter((r) => severity(r) === 'pending').length;
-    const issues = rows.filter((r) => severity(r) === 'error').length;
+    const issues = rows.filter((r) => ['warning', 'error'].includes(severity(r))).length;
     const filteredGps = rows.reduce((sum, r) => sum + Number(r.cloud?.invalidGpsPointCount || 0), 0);
     const rawPoints = rows.reduce((sum, r) => sum + Number(r.cloud?.rawPointCount || 0), 0);
-    return { audited, complete, pending, issues, filteredGps, rawPoints };
+    const scored = rows.filter((r) => Number.isFinite(Number(r.quality?.score)));
+    const avgScore = scored.length
+      ? Math.round(scored.reduce((sum, r) => sum + Number(r.quality.score), 0) / scored.length)
+      : 0;
+    return { audited, complete, verified, pending, issues, filteredGps, rawPoints, avgScore };
   }, [rows]);
 
   const systemState = summary.issues > 0
     ? 'ATTENTION_REQUIRED'
     : summary.pending > 0
       ? 'SYNC_IN_PROGRESS'
-      : summary.audited > 0 && summary.complete === summary.audited
+      : summary.audited > 0 && summary.verified === summary.audited
         ? 'HEALTHY'
         : 'WAITING_FOR_AUDIT';
 
@@ -126,7 +146,7 @@ export default function IntegrityDashboard({ trips = [], onOpenTrip }) {
     <section className="integrity-hero">
       <div>
         <div className="integrity-title"><ShieldCheck size={22} /><span>Integrity Dashboard</span></div>
-        <p>Salud extremo a extremo de los levantamientos recientes: Firestore, Cloud Completeness y consumidores Web.</p>
+        <p>Salud extremo a extremo enriquecida con Quality Engine 3.1: integridad, score y observaciones no destructivas.</p>
       </div>
       <div className="integrity-actions">
         <StatusBadge
@@ -140,20 +160,22 @@ export default function IntegrityDashboard({ trips = [], onOpenTrip }) {
       </div>
     </section>
 
-    <section className="integrity-summary-grid">
+    <section className="integrity-summary-grid quality-summary-grid">
       <HealthStat label="Auditados" value={summary.audited} hint={`de ${candidates.length} recientes`} />
+      <HealthStat label="Verified" value={summary.verified} hint="Quality Engine" tone="ok" />
+      <HealthStat label="Quality promedio" value={`${summary.avgScore}/100`} hint="Score explicable" tone={summary.avgScore >= 90 ? 'ok' : 'warning'} />
       <HealthStat label="Web completos" value={summary.complete} hint="WEB_COMPLETE" tone="ok" />
       <HealthStat label="En proceso" value={summary.pending} hint="Activos / sync pendiente" tone="pending" />
-      <HealthStat label="Incidencias" value={summary.issues} hint="Mismatch o lectura fallida" tone={summary.issues ? 'error' : 'ok'} />
+      <HealthStat label="Incidencias" value={summary.issues} hint="WARNING / CRITICAL" tone={summary.issues ? 'error' : 'ok'} />
       <HealthStat label="Puntos cloud" value={summary.rawPoints} hint="Raw confirmados" />
-      <HealthStat label="GPS filtrados" value={summary.filteredGps} hint="Conservados en cloud, excluidos de geometría" tone={summary.filteredGps ? 'warning' : 'ok'} />
+      <HealthStat label="Auto-cleaned" value={summary.filteredGps} hint="GPS inválido conservado en cloud" tone="ok" />
     </section>
 
     <section className="card integrity-card">
       <div className="integrity-card-head">
         <div>
           <h3><ShieldCheck size={18} /> Recorridos auditados</h3>
-          <span>Últimos {MAX_AUDIT_TRIPS} recorridos como máximo. Abrir un recorrido conserva el detalle técnico existente.</span>
+          <span>Cloud y Web se conservan intactos; Quality Engine añade score, estados y observaciones.</span>
         </div>
         <small>Última auditoría: {lastAuditAt ? fmt(lastAuditAt) : '—'}</small>
       </div>
@@ -168,31 +190,34 @@ export default function IntegrityDashboard({ trips = [], onOpenTrip }) {
           <th>Operación</th>
           <th>Cloud</th>
           <th>Web</th>
+          <th>Quality</th>
+          <th>Score</th>
           <th>Eventos</th>
           <th>Chunks</th>
           <th>Puntos raw</th>
           <th>GPS útiles</th>
-          <th>Filtrados</th>
+          <th>Auto-cleaned</th>
           <th>Delta</th>
           <th>Resultado</th>
         </tr></thead>
         <tbody>{rows.map((row) => {
           const level = severity(row);
+          const observations = row.quality?.observations?.map((o) => o.code) || [];
           const issues = row.error
             ? row.error
-            : row.web?.mismatches?.length
-              ? row.web.mismatches.join(', ')
-              : level === 'warning'
-                ? 'GPS_POINTS_FILTERED'
-                : level === 'pending'
-                  ? 'SINCRONIZACIÓN EN PROCESO'
-                  : 'NONE';
+            : row.quality?.failedChecks > 0
+              ? `${row.quality.failedChecks} CHECK(S) FAILED`
+              : observations.length
+                ? observations.join(' · ')
+                : 'VERIFIED';
           return <tr key={row.trip.id} className={`integrity-row integrity-row-${level}`} onClick={() => onOpenTrip?.(row.trip)}>
             <td><b>{val(row.trip.localTripId ?? row.trip.tripId ?? row.trip.id)}</b><br/><small>{fmt(row.trip.startTime)}</small></td>
             <td>{val(row.trip.routeName)}<br/><small>{val(row.trip.direction)}</small></td>
             <td><StatusBadge state={isClosed(row.trip) ? 'CLOSED' : 'ACTIVE'} kind={isClosed(row.trip) ? 'neutral' : 'pending'} /></td>
             <td><StatusBadge state={row.cloud?.state || (row.error ? 'ERROR' : '—')} kind={row.cloud?.complete ? 'ok' : level === 'error' ? 'error' : 'pending'} /></td>
             <td><StatusBadge state={row.web?.state || (row.error ? 'ERROR' : '—')} kind={row.web?.complete ? 'ok' : level === 'error' ? 'error' : 'pending'} /></td>
+            <td><QualityStates quality={row.quality} /></td>
+            <td><b className={`quality-score quality-score-${qualityKind(row.quality?.primaryState)}`}>{val(row.quality?.score)}</b></td>
             <td>{val(row.cloud?.eventCount)}</td>
             <td>{val(row.cloud?.chunkCount)}</td>
             <td>{val(row.cloud?.rawPointCount)}</td>
