@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { RefreshCw, Download, ArrowLeft, Bus, Users, MapPin, Activity } from 'lucide-react';
+import { RefreshCw, Download, ArrowLeft, Bus, Users, MapPin, Activity, ShieldCheck } from 'lucide-react';
 import { fetchDevices, fetchTripDetail, fetchTrips } from './services/firestore';
 import { subscribeLiveDevices } from './services/liveDevices';
 import { subscribeInstallationsHealth } from './services/installations';
@@ -147,6 +147,7 @@ function App() {
   const allEvents = detail?.events || [];
   const trackChunks = detail?.trackChunks || detail?.trackSummary || [];
   const track = useMemo(() => buildTrackMetrics(trackChunks), [trackChunks]);
+  const completeness = detail?.completeness;
 
   const pax = allEvents.reduce((a, e) => ({
     up: a.up + totalUp(e),
@@ -216,8 +217,22 @@ function App() {
         <Stat label="Eventos" value={allEvents.length} />
         <Stat label="Subidas" value={pax.up} />
         <Stat label="Bajadas" value={pax.down} />
-        <Stat label="Registros GPS" value={track.totalPoints} />
+        <Stat label="Registros GPS utilizables" value={track.totalPoints} />
       </section>
+
+      {completeness && <section className="card">
+        <h3><ShieldCheck size={18} /> Integridad Cloud</h3>
+        <div className="fields">
+          <Field label="Estado" value={completeness.state} />
+          <Field label="Eventos" value={completeness.eventCount} />
+          <Field label="Chunks" value={completeness.chunkCount} />
+          <Field label="Puntos cloud" value={completeness.rawPointCount} />
+          <Field label="GPS utilizables" value={completeness.validGpsPointCount} />
+          <Field label="GPS filtrados" value={completeness.invalidGpsPointCount} />
+          <Field label="Delta payload" value={completeness.pointPayloadDelta} />
+          <Field label="Calidad GPS" value={completeness.qualityState} />
+        </div>
+      </section>}
 
       <section className="card"><h3><Bus size={18} /> Datos de Cabecera</h3><div className="fields">
         <Field label="Ruta" value={selected?.routeName} />
