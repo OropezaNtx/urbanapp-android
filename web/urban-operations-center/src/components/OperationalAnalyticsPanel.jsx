@@ -74,33 +74,39 @@ export default function OperationalAnalyticsPanel({ analytics }) {
         <Metric label="Precisión promedio" value={fmtNumber(gps.averageAccuracyM, 1, ' m')} />
         <Metric label="Mejor precisión" value={fmtNumber(gps.minAccuracyM, 1, ' m')} />
         <Metric label="Peor precisión" value={fmtNumber(gps.maxAccuracyM, 1, ' m')} />
-        <Metric label="Tiempo sin GPS inferido" value={fmtDuration(gps.noGpsMs)} />
+        <Metric label="Tiempo sin GPS inferido" value={fmtDuration(gps.noGpsMs)} hint="Exceso sobre la cadencia esperada" />
         <Metric label="Cobertura GPS" value={fmtNumber(gps.coveragePct, 2, '%')} />
         <Metric label="Intervalo mediano" value={fmtDuration(gps.medianIntervalMs)} hint="Cadencia observada" />
         <Metric label="Puntos utilizables" value={gps.points ?? 0} />
+        <Metric label="Segmentos atípicos" value={gps.rejectedSegments ?? 0} hint="Conservados en datos; excluidos de cinemática" />
       </Section>
 
       <Section icon={<MapPinned size={17} />} title="Recorrido">
         <Metric label="Duración" value={fmtDuration(trip.durationMs)} />
-        <Metric label="Distancia" value={fmtNumber(trip.distanceKm, 3, ' km')} />
+        <Metric label="Distancia analítica" value={fmtNumber(trip.distanceKm, 3, ' km')} hint="Sin segmentos físicamente atípicos" />
+        <Metric label="Distancia raw" value={fmtNumber(trip.rawDistanceKm, 3, ' km')} hint="Geometría completa recibida" />
+        <Metric label="Ajuste por outliers" value={fmtNumber(trip.distanceAdjustmentKm, 3, ' km')} />
         <Metric label="Velocidad promedio" value={fmtNumber(trip.averageSpeedKmh, 1, ' km/h')} />
-        <Metric label="Velocidad máxima" value={fmtNumber(trip.maxSpeedKmh, 1, ' km/h')} hint="Derivada entre fixes GPS" />
-        <Metric label="Velocidad mínima" value={fmtNumber(trip.minSpeedKmh, 1, ' km/h')} hint="Derivada entre fixes GPS" />
+        <Metric label="Velocidad máxima" value={fmtNumber(trip.maxSpeedKmh, 1, ' km/h')} hint="Solo segmentos analíticamente confiables" />
+        <Metric label="Velocidad mínima" value={fmtNumber(trip.minSpeedKmh, 1, ' km/h')} hint="Solo segmentos analíticamente confiables" />
       </Section>
 
       <Section icon={<Gauge size={17} />} title="Eventos">
         <Metric label="Eventos" value={events.total ?? 0} />
-        <Metric label="Demoras" value={events.delays ?? 0} />
+        <Metric label="Demoras puras" value={events.delays ?? 0} hint="Tipo DEMORA / DELAY" />
         <Metric label="Banderas" value={events.flags ?? 0} />
+        <Metric label="Con código de demora" value={events.codedDelayEvents ?? 0} hint="Campo delayCodes informado" />
+        <Metric label="Incidencias" value={events.incidents ?? 0} hint="Unión sin duplicados de demora/bandera/código" />
         <Metric label="Con observaciones" value={events.observations ?? 0} />
         <Metric label="Eventos por km" value={fmtNumber(events.eventsPerKm, 2)} />
         <Metric label="Eventos por minuto" value={fmtNumber(events.eventsPerMinute, 3)} />
       </Section>
 
       <Section icon={<TimerReset size={17} />} title="Calidad del operador">
-        <Metric label="Tiempo en movimiento" value={fmtDuration(operator.movingMs)} hint="Segmentos > 2 km/h" />
-        <Metric label="Tiempo detenido" value={fmtDuration(operator.stoppedMs)} hint="Duración total - movimiento" />
-        <Metric label="Eficiencia de movimiento" value={fmtNumber(operator.efficiencyPct, 2, '%')} />
+        <Metric label="Tiempo en movimiento" value={fmtDuration(operator.movingMs)} hint="Segmentos confiables > 2 km/h" />
+        <Metric label="Tiempo detenido" value={fmtDuration(operator.stoppedMs)} hint="Tiempo observado sin movimiento" />
+        <Metric label="Tiempo no observado" value={fmtDuration(operator.unobservedMs)} hint="Huecos inferidos de GPS" />
+        <Metric label="Eficiencia de movimiento" value={fmtNumber(operator.efficiencyPct, 2, '%')} hint="Movimiento / tiempo con cobertura" />
         <Metric label="Cobertura GPS" value={fmtNumber(operator.gpsCoveragePct, 2, '%')} />
       </Section>
 
@@ -120,6 +126,6 @@ export default function OperationalAnalyticsPanel({ analytics }) {
       </Section>
     </div>
 
-    <div className="ops-note"><WifiOff size={16} /> Las pérdidas de señal son inferidas mediante huecos temporales entre fixes GPS; no sustituyen todavía una señal explícita de disponibilidad del proveedor.</div>
+    <div className="ops-note"><WifiOff size={16} /> Las pérdidas de señal siguen siendo inferidas por huecos temporales. Los segmentos atípicos no se eliminan del dato fuente: solo se excluyen de distancia/velocidad analítica.</div>
   </section>;
 }
