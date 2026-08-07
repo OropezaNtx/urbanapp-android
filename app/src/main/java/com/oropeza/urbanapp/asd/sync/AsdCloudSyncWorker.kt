@@ -55,6 +55,8 @@ class AsdCloudSyncWorker(
 
     override suspend fun doWork(): ListenableWorker.Result {
         return try {
+            // Defensa adicional para cold starts iniciados por WorkManager.
+            AsdGraph.init(applicationContext)
             AsdGraph.repo.recoverStaleSyncItems()
 
             val engine = CloudSyncEngine(
