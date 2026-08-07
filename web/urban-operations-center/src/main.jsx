@@ -15,6 +15,7 @@ import LiveDevicesMap from './components/LiveDevicesMap';
 import FleetHealthPanel from './components/FleetHealthPanel';
 import InstallationsPanel from './components/InstallationsPanel';
 import IntegrityDashboard from './components/IntegrityDashboard';
+import QualityReport from './components/QualityReport';
 import './styles.css';
 
 const toMillis = (v) => {
@@ -145,6 +146,7 @@ function App() {
   const trackChunks = detail?.trackChunks || detail?.trackSummary || [];
   const track = useMemo(() => buildTrackMetrics(trackChunks), [trackChunks]);
   const completeness = detail?.completeness;
+  const quality = detail?.quality;
 
   const pax = allEvents.reduce((a, e) => ({
     up: a.up + totalUp(e),
@@ -221,6 +223,8 @@ function App() {
         <Stat label="Bajadas" value={pax.down} />
         <Stat label="Registros GPS utilizables" value={track.totalPoints} />
       </section>
+
+      <QualityReport report={quality} />
 
       {completeness && <section className="card">
         <h3><ShieldCheck size={18} /> Integridad Cloud</h3>
