@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.sync.cloud.CloudSyncEngine
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
 /**
@@ -32,6 +33,7 @@ class AsdCloudSyncWorker(
         private const val INTEGRITY_TAG = "CloudSyncIntegrity"
         private const val WORK_NAME = "AsdCloudSyncWork"
         private const val MAX_ITEMS_PER_RUN = 2_000
+        private val DIRECT_EXECUTOR = Executor { command -> command.run() }
 
         fun enqueue(context: Context) {
             val constraints = Constraints.Builder()
@@ -46,14 +48,77 @@ class AsdCloudSyncWorker(
 
             Log.i(
                 INTEGRITY_TAG,
-                "SYNC_WORK_CREATED workId=${request.id} uniqueName=$WORK_NAME " +
+                "SYNC_WORK_REQUESTED requestedWorkId=${request.id} uniqueName=$WORK_NAME " +
                     "requiresNetwork=true policy=KEEP"
             )
 
-            WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+            val workManager = WorkManager.getInstance(context.applicationContext)
+            val operation = workManager.enqueueUniqueWork(
                 WORK_NAME,
                 ExistingWorkPolicy.KEEP,
                 request
+            )
+
+            operation.result.addListener(
+                {
+                    try {
+                        operation.result.get()
+                        Log.i(
+                            INTEGRITY_TAG,
+                            "SYNC_WORK_ENQUEUE_COMPLETED requestedWorkId=${request.id} uniqueName=$WORK_NAME"
+                        )
+                        logUniqueWorkState(workManager, request.id.toString())
+                    } catch (e: Exception) {
+                        Log.e(
+                            INTEGRITY_TAG,
+                            "SYNC_WORK_ENQUEUE_FAILED requestedWorkId=${request.id} " +
+                                "error=${e.javaClass.simpleName}:${e.message}",
+                            e
+                        )
+                    }
+                },
+                DIRECT_EXECUTOR
+            )
+        }
+
+        private fun logUniqueWorkState(workManager: WorkManager, requestedWorkId: String) {
+            val future = workManager.getWorkInfosForUniqueWork(WORK_NAME)
+            future.addListener(
+                {
+                    try {
+                        val infos = future.get()
+                        if (infos.isEmpty()) {
+                            Log.w(
+                                INTEGRITY_TAG,
+                                "SYNC_UNIQUE_WORK_STATE requestedWorkId=$requestedWorkId actualWorkId=NONE " +
+                                    "state=NONE runAttemptCount=0 requestedAccepted=false"
+                            )
+                            return@addListener
+                        }
+
+                        val active = infos.firstOrNull { !it.state.isFinished }
+                            ?: infos.lastOrNull()
+
+                        infos.forEach { info ->
+                            Log.i(
+                                INTEGRITY_TAG,
+                                "SYNC_UNIQUE_WORK_STATE requestedWorkId=$requestedWorkId " +
+                                    "actualWorkId=${info.id} state=${info.state} " +
+                                    "runAttemptCount=${info.runAttemptCount} " +
+                                    "requestedAccepted=${info.id.toString() == requestedWorkId} " +
+                                    "selectedActive=${active?.id == info.id}"
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.e(
+                            INTEGRITY_TAG,
+                            "SYNC_UNIQUE_WORK_STATE_FAILED requestedWorkId=$requestedWorkId " +
+                                "error=${e.javaClass.simpleName}:${e.message}",
+                            e
+                        )
+                    }
+                },
+                DIRECT_EXECUTOR
             )
         }
     }
