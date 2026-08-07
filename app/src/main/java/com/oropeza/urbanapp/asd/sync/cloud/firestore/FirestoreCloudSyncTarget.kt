@@ -44,8 +44,8 @@ class FirestoreCloudSyncTarget : CloudSyncTarget {
 
         Log.i(
             PERMISSION_TAG,
-            "FIRESTORE_PERMISSION_CONTEXT operation=$operation$" +
-                "suffix uid=${user?.uid ?: "NONE"} anonymous=${user?.isAnonymous ?: false} " +
+            "FIRESTORE_PERMISSION_CONTEXT operation=$operation$suffix " +
+                "uid=${user?.uid ?: "NONE"} anonymous=${user?.isAnonymous ?: false} " +
                 "firebaseProject=${firebaseProjectId ?: "UNKNOWN"} " +
                 "workspace=${workspace.organization.workspaceId} project=${workspace.project.projectId} " +
                 "entityType=${item.entityType} queueId=${item.queueId} cloudPath=${item.cloudPath}"
