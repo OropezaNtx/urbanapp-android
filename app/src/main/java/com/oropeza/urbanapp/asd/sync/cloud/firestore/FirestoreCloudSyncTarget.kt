@@ -13,6 +13,7 @@ import com.oropeza.urbanapp.asd.sync.cloud.CloudSyncItem
 import com.oropeza.urbanapp.asd.sync.cloud.CloudSyncResult
 import com.oropeza.urbanapp.asd.sync.cloud.CloudSyncTarget
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
 class FirestoreCloudSyncTarget : CloudSyncTarget {
@@ -69,6 +70,9 @@ class FirestoreCloudSyncTarget : CloudSyncTarget {
 
             logPermissionContext("UPSERT", item, "SUCCESS")
             CloudSyncResult.Success
+        } catch (e: CancellationException) {
+            Log.w(PERMISSION_TAG, "FIRESTORE_OPERATION_CANCELLED operation=UPSERT cloudPath=$path")
+            throw e
         } catch (e: FirebaseFirestoreException) {
             Log.e(
                 PERMISSION_TAG,
@@ -98,6 +102,9 @@ class FirestoreCloudSyncTarget : CloudSyncTarget {
 
             logPermissionContext("DELETE", item, "SUCCESS")
             CloudSyncResult.Success
+        } catch (e: CancellationException) {
+            Log.w(PERMISSION_TAG, "FIRESTORE_OPERATION_CANCELLED operation=DELETE cloudPath=$path")
+            throw e
         } catch (e: FirebaseFirestoreException) {
             Log.e(
                 PERMISSION_TAG,
