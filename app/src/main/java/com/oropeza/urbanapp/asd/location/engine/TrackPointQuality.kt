@@ -4,7 +4,11 @@ import com.oropeza.urbanapp.asd.data.local.TrackPoint
 
 object TrackPointQuality {
     private val cleanSampleStatuses = setOf("LIVE")
-    private val cleanQualityStatuses = setOf("GOOD_ACCURACY", "USABLE_ACCURACY", "LOW_ACCURACY")
+
+    // Clean/display geometry must represent points we can reasonably defend spatially.
+    // LOW_ACCURACY points (45-80 m in AforaGpsEngine) remain fully preserved in Room,
+    // cloud payloads and audit exports, but no longer distort the user-facing route.
+    private val cleanQualityStatuses = setOf("GOOD_ACCURACY", "USABLE_ACCURACY")
     private val cleanGeometryStatuses = setOf("GEOMETRY_OK")
 
     fun isCoordinateUsable(point: TrackPoint): Boolean {
