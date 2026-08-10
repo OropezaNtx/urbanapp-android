@@ -78,17 +78,26 @@ export default function OperationalAnalyticsPanel({ analytics }) {
         <Metric label="Cobertura GPS" value={fmtNumber(gps.coveragePct, 2, '%')} />
         <Metric label="Intervalo mediano" value={fmtDuration(gps.medianIntervalMs)} hint="Cadencia observada" />
         <Metric label="Puntos utilizables" value={gps.points ?? 0} />
+        <Metric label="Segmentos totales" value={gps.totalSegments ?? 0} />
+        <Metric label="Segmentos aceptados" value={gps.acceptedSegments ?? 0} />
+        <Metric label="Segmentos atípicos" value={gps.rejectedSegments ?? 0} hint="Conservados en datos; excluidos de cinemática" />
+        <Metric label="Tasa de outliers" value={fmtNumber(gps.outlierRatePct, 2, '%')} hint="Atípicos / segmentos totales" />
+        <Metric label="Atípicos por NO_FIX" value={gps.rejectedNoFixOnlySegments ?? 0} />
+        <Metric label="Atípicos por velocidad extrema" value={gps.rejectedImpossibleSpeedOnlySegments ?? 0} hint="> 160 km/h" />
+        <Metric label="Atípicos por ambas causas" value={gps.rejectedBothSegments ?? 0} />
         <Metric label="Segmentos sospechosos Android" value={gps.engineSuspectSegments ?? 0} hint="Diagnóstico; no se eliminan automáticamente" />
-        <Metric label="Segmentos descartados" value={gps.rejectedSegments ?? 0} hint="Solo NO_FIX o velocidad > 160 km/h" />
       </Section>
 
       <Section icon={<MapPinned size={17} />} title="Recorrido">
         <Metric label="Duración" value={fmtDuration(trip.durationMs)} />
         <Metric label="Distancia analítica" value={fmtNumber(trip.distanceKm, 3, ' km')} />
         <Metric label="Distancia raw" value={fmtNumber(trip.rawDistanceKm, 3, ' km')} />
+        <Metric label="Ajuste por outliers" value={fmtNumber(trip.distanceAdjustmentKm, 3, ' km')} />
         <Metric label="Corrección geométrica" value={fmtNumber(trip.distanceCorrectionPct, 2, '%')} hint="Raw - segmentos físicamente imposibles" />
         <Metric label="Velocidad promedio" value={fmtNumber(trip.averageSpeedKmh, 1, ' km/h')} />
-        <Metric label="Velocidad máxima" value={fmtNumber(trip.maxSpeedKmh, 1, ' km/h')} hint="Solo segmentos analíticos válidos" />
+        <Metric label="Máxima observada" value={fmtNumber(trip.maxObservedSpeedKmh ?? trip.maxSpeedKmh, 1, ' km/h')} hint="Mayor segmento analítico válido" />
+        <Metric label="Máxima sostenida" value={fmtNumber(trip.maxSustainedSpeedKmh, 1, ' km/h')} hint={`Ventana continua ≥ ${fmtDuration(trip.sustainedSpeedWindowMs)}`} />
+        <Metric label="Velocidad P95" value={fmtNumber(trip.p95SpeedKmh, 1, ' km/h')} hint="95% de los segmentos válidos están por debajo" />
         <Metric label="Velocidad mínima" value={fmtNumber(trip.minSpeedKmh, 1, ' km/h')} hint="Solo segmentos analíticos válidos" />
       </Section>
 
@@ -128,6 +137,6 @@ export default function OperationalAnalyticsPanel({ analytics }) {
       </Section>
     </div>
 
-    <div className="ops-note"><WifiOff size={16} /> Las pérdidas de señal son inferidas mediante huecos temporales entre fixes GPS. Los estados de geometría Android se conservan como diagnóstico y no eliminan automáticamente la trayectoria analítica.</div>
+    <div className="ops-note"><WifiOff size={16} /> Las pérdidas de señal son inferidas mediante huecos temporales entre fixes GPS. Máxima observada conserva el pico válido; máxima sostenida exige continuidad temporal y P95 describe el rango alto habitual.</div>
   </section>;
 }
