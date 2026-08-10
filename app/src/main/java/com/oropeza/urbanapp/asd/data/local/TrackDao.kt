@@ -21,15 +21,29 @@ interface TrackDao {
     @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs DESC LIMIT 1")
     suspend fun getLatest(tripId: Long): TrackPoint?
 
-    // ✅ NUEVO: último punto como Flow (para UI)
-    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs DESC LIMIT 1")
+    // The event-capture UI must not consume a point already classified by the GPS
+    // engine as stale, synthetic, low-confidence or geometrically suspect. Raw and
+    // rejected points remain fully persisted and available through getByTrip* for
+    // audit/completeness/export diagnostics.
+    @Query("""
+        SELECT * FROM TrackPoint
+        WHERE tripId = :tripId
+          AND sampleStatus = 'LIVE'
+          AND qualityStatus IN ('GOOD_ACCURACY', 'USABLE_ACCURACY')
+          AND geometryStatus = 'GEOMETRY_OK'
+          AND isStale = 0
+          AND isSynthetic = 0
+          AND lat BETWEEN -90.0 AND 90.0
+          AND lon BETWEEN -180.0 AND 180.0
+          AND NOT (lat = 0.0 AND lon = 0.0)
+        ORDER BY timeMs DESC
+        LIMIT 1
+    """)
     fun getLatestFlow(tripId: Long): Flow<TrackPoint?>
 
-    // ✅ NUEVO: conteo como Flow (para UI)
     @Query("SELECT COUNT(*) FROM TrackPoint WHERE tripId = :tripId")
     fun countFlow(tripId: Long): Flow<Int>
 
-    // ✅ NUEVO: puntos por rango (para cálculos: distancia, etc.)
     @Query("""
         SELECT * FROM TrackPoint
         WHERE tripId = :tripId AND timeMs BETWEEN :fromMs AND :toMs
