@@ -27,6 +27,7 @@ class TripTelemetryWorker(
         private const val TAG = "TripTelemetry"
         private const val INPUT_TRIP_ID = "telemetry_trip_id"
         private const val INPUT_GENERATION = "telemetry_generation"
+        private const val INPUT_FORCE_FINAL = "telemetry_force_final"
         private const val SAMPLE_INTERVAL_MS = 60_000L
         private const val CLOUD_FLUSH_EVERY_GENERATIONS = 5
 
@@ -34,19 +35,26 @@ class TripTelemetryWorker(
 
         fun arm(context: Context, tripId: Long) {
             if (tripId <= 0L) return
-            enqueue(context.applicationContext, tripId, 0, 0L)
+            enqueue(context.applicationContext, tripId, 0, 0L, false)
             Log.i(TAG, "TELEMETRY_ARMED trip=$tripId")
         }
 
-        fun disarm(context: Context, tripId: Long) {
-            if (tripId > 0L) WorkManager.getInstance(context.applicationContext).cancelUniqueWork(workName(tripId))
-            Log.i(TAG, "TELEMETRY_DISARMED trip=$tripId")
+        fun finish(context: Context, tripId: Long) {
+            if (tripId <= 0L) return
+            enqueue(context.applicationContext, tripId, 0, 0L, true)
+            Log.i(TAG, "TELEMETRY_FINISH_REQUESTED trip=$tripId")
         }
 
-        private fun enqueue(context: Context, tripId: Long, generation: Int, delayMs: Long) {
+        fun cancel(context: Context, tripId: Long) {
+            if (tripId > 0L) WorkManager.getInstance(context.applicationContext).cancelUniqueWork(workName(tripId))
+            Log.i(TAG, "TELEMETRY_CANCELLED trip=$tripId")
+        }
+
+        private fun enqueue(context: Context, tripId: Long, generation: Int, delayMs: Long, forceFinal: Boolean) {
             val input = Data.Builder()
                 .putLong(INPUT_TRIP_ID, tripId)
                 .putInt(INPUT_GENERATION, generation)
+                .putBoolean(INPUT_FORCE_FINAL, forceFinal)
                 .build()
             val request = OneTimeWorkRequestBuilder<TripTelemetryWorker>()
                 .setInputData(input)
@@ -64,6 +72,7 @@ class TripTelemetryWorker(
     override suspend fun doWork(): ListenableWorker.Result {
         val tripId = inputData.getLong(INPUT_TRIP_ID, -1L)
         val generation = inputData.getInt(INPUT_GENERATION, 0)
+        val forceFinal = inputData.getBoolean(INPUT_FORCE_FINAL, false)
         if (tripId <= 0L) return ListenableWorker.Result.success()
 
         return try {
@@ -72,7 +81,7 @@ class TripTelemetryWorker(
             TripTelemetryRecorder.ensureStarted(applicationContext, tripId)
             val battery = readBattery(applicationContext)
             val network = readNetwork(applicationContext)
-            val finished = trip.endTime != null
+            val finished = forceFinal || trip.endTime != null
             TripTelemetryRecorder.sampleDevice(
                 context = applicationContext,
                 tripId = tripId,
@@ -89,14 +98,14 @@ class TripTelemetryWorker(
             }
 
             if (!finished) {
-                enqueue(applicationContext, tripId, generation + 1, SAMPLE_INTERVAL_MS)
+                enqueue(applicationContext, tripId, generation + 1, SAMPLE_INTERVAL_MS, false)
             } else {
                 Log.i(TAG, "TELEMETRY_FINALIZED trip=$tripId generation=$generation")
             }
             ListenableWorker.Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "TELEMETRY_SAMPLE_FAILED trip=$tripId generation=$generation", e)
-            if (tripId > 0L) enqueue(applicationContext, tripId, generation + 1, SAMPLE_INTERVAL_MS)
+            Log.e(TAG, "TELEMETRY_SAMPLE_FAILED trip=$tripId generation=$generation forceFinal=$forceFinal", e)
+            if (tripId > 0L && !forceFinal) enqueue(applicationContext, tripId, generation + 1, SAMPLE_INTERVAL_MS, false)
             ListenableWorker.Result.success()
         }
     }
