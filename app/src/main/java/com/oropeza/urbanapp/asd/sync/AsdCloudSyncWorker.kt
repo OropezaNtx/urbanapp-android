@@ -97,7 +97,7 @@ class AsdCloudSyncWorker(
             val chunkReconciliation = TrackChunkQueueReconciler.reconcileRecentClosedTrips()
             Log.i(
                 INTEGRITY_TAG,
-                "SYNC_TRACK_RECONCILIATION runId=$runId scannedTrips=${chunkReconciliation.scannedTrips} " +
+                "SYNC_TRACK_RECONCILIATION runId=$runId phase=PRE_DRAIN scannedTrips=${chunkReconciliation.scannedTrips} " +
                     "expectedChunks=${chunkReconciliation.expectedChunks} requeued=${chunkReconciliation.requeuedChunks} " +
                     "missing=${chunkReconciliation.missingChunks} changed=${chunkReconciliation.changedChunks}"
             )
@@ -110,6 +110,7 @@ class AsdCloudSyncWorker(
 
             var totalSynced = 0
             var batchNumber = 0
+
             while (totalSynced < MAX_ITEMS_PER_RUN) {
                 batchNumber++
                 val syncedInBatch = engine.processNextBatch(batchNumber)
@@ -117,8 +118,34 @@ class AsdCloudSyncWorker(
                 totalSynced += syncedInBatch
             }
 
+            // Final stabilization pass. A closed trip may have been marked ended while the
+            // saver coroutine was finishing its last Room insert. Re-read Room only after
+            // the first queue drain, then enqueue any late/missing/changed chunks before
+            // running Cloud Data Integrity. This keeps the close boundary lossless without
+            // changing the capture pipeline or deleting raw data.
+            val finalReconciliation = TrackChunkQueueReconciler.reconcileRecentClosedTrips()
+            Log.i(
+                INTEGRITY_TAG,
+                "SYNC_TRACK_RECONCILIATION runId=$runId phase=POST_DRAIN scannedTrips=${finalReconciliation.scannedTrips} " +
+                    "expectedChunks=${finalReconciliation.expectedChunks} requeued=${finalReconciliation.requeuedChunks} " +
+                    "missing=${finalReconciliation.missingChunks} changed=${finalReconciliation.changedChunks}"
+            )
+
+            if (finalReconciliation.requeuedChunks > 0 && totalSynced < MAX_ITEMS_PER_RUN) {
+                Log.w(
+                    INTEGRITY_TAG,
+                    "SYNC_TRACK_FINAL_DRAIN runId=$runId requeued=${finalReconciliation.requeuedChunks} reason=ROOM_CHANGED_AFTER_INITIAL_RECONCILIATION"
+                )
+                while (totalSynced < MAX_ITEMS_PER_RUN) {
+                    batchNumber++
+                    val syncedInBatch = engine.processNextBatch(batchNumber)
+                    if (syncedInBatch <= 0) break
+                    totalSynced += syncedInBatch
+                }
+            }
+
             TrackingPipelineIntegrityAuditor.logRelevantTrips("AFTER_CLOUD_DRAIN")
-            if (totalSynced > 0) {
+            if (totalSynced > 0 || finalReconciliation.requeuedChunks > 0) {
                 try {
                     CloudDataIntegrityAuditor.auditRelevantTrips(stage = "AFTER_CLOUD_DRAIN", runId = runId)
                 } catch (auditError: Exception) {
