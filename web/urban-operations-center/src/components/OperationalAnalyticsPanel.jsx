@@ -1,5 +1,6 @@
 import React from 'react';
 import { Activity, Clock3, Gauge, MapPinned, Radio, Smartphone, TimerReset, WifiOff } from 'lucide-react';
+import OperationalHealthPanel from './OperationalHealthPanel';
 import './OperationalAnalyticsPanel.css';
 
 function finite(value) {
@@ -69,6 +70,8 @@ export default function OperationalAnalyticsPanel({ analytics }) {
       </div>
       <span className="ops-version">Engine {analytics.version}{telemetryAvailable ? ' + Telemetry 1' : ''}</span>
     </div>
+
+    <OperationalHealthPanel analytics={analytics} />
 
     <div className="ops-layout">
       <Section icon={<Radio size={17} />} title="GPS">
