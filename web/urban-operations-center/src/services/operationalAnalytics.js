@@ -1,12 +1,13 @@
 import { buildTrackMetrics } from "../components/TrackSummary";
 import { webIntegrity } from "./webIntegrity";
 
-export const OPERATIONAL_ANALYTICS_VERSION = "3.2.2";
+export const OPERATIONAL_ANALYTICS_VERSION = "3.2.3";
 
 const NOT_AVAILABLE = "NOT_AVAILABLE";
 const MOVING_THRESHOLD_KMH = 2;
 const MIN_GAP_THRESHOLD_MS = 10_000;
 const MAX_PLAUSIBLE_SEGMENT_SPEED_KMH = 160;
+const SUSTAINED_SPEED_WINDOW_MS = 10_000;
 const NEUTRAL_OPERATION_CODES = new Set(["AD", "INICIO", "FINAL"]);
 
 function num(value) {
@@ -45,6 +46,18 @@ function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function percentile(values, fraction) {
+  const safe = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!safe.length) return null;
+  if (safe.length === 1) return safe[0];
+  const position = Math.max(0, Math.min(1, fraction)) * (safe.length - 1);
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return safe[lower];
+  const weight = position - lower;
+  return safe[lower] * (1 - weight) + safe[upper] * weight;
 }
 
 function accuracyStats(points) {
@@ -108,6 +121,61 @@ function buildSegments(points) {
   return segments;
 }
 
+function maxSustainedSpeedKmh(segments, minWindowMs = SUSTAINED_SPEED_WINDOW_MS) {
+  let best = null;
+  let run = [];
+
+  const evaluateRun = () => {
+    if (!run.length) return;
+    let left = 0;
+    let durationMs = 0;
+    let distanceMeters = 0;
+
+    for (let right = 0; right < run.length; right += 1) {
+      durationMs += run[right].dtMs;
+      distanceMeters += run[right].meters;
+
+      while (left < right && durationMs - run[left].dtMs >= minWindowMs) {
+        durationMs -= run[left].dtMs;
+        distanceMeters -= run[left].meters;
+        left += 1;
+      }
+
+      if (durationMs >= minWindowMs) {
+        const kmh = (distanceMeters / durationMs) * 3600;
+        if (Number.isFinite(kmh) && (best == null || kmh > best)) best = kmh;
+      }
+    }
+  };
+
+  for (const segment of segments) {
+    if (segment.trusted) {
+      run.push(segment);
+    } else {
+      evaluateRun();
+      run = [];
+    }
+  }
+  evaluateRun();
+  return best;
+}
+
+function outlierBreakdown(segments) {
+  const rejected = segments.filter((segment) => !segment.trusted);
+  const noFixOnly = rejected.filter((segment) => segment.noFix && !segment.impossibleSpeed).length;
+  const impossibleSpeedOnly = rejected.filter((segment) => !segment.noFix && segment.impossibleSpeed).length;
+  const both = rejected.filter((segment) => segment.noFix && segment.impossibleSpeed).length;
+  return {
+    totalSegments: segments.length,
+    acceptedSegments: segments.length - rejected.length,
+    rejectedSegments: rejected.length,
+    outlierRatePct: segments.length ? (rejected.length / segments.length) * 100 : 0,
+    noFixOnly,
+    impossibleSpeedOnly,
+    both,
+  };
+}
+
 function normalizeType(event) {
   return String(event?.eventType ?? event?.stopType ?? "").trim().toUpperCase();
 }
@@ -169,6 +237,7 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
   const segments = buildSegments(points);
   const trustedSegments = segments.filter((segment) => segment.trusted);
   const rejectedSegments = segments.filter((segment) => !segment.trusted);
+  const outliers = outlierBreakdown(segments);
 
   const tripStartMs = timestamp(trip?.startTime) || track.startTime || 0;
   const tripEndMs = timestamp(trip?.endTime) || track.endTime || 0;
@@ -197,7 +266,9 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
   const observedOperationalMs = Math.max(0, durationMs - noGpsMs);
   const stoppedMs = Math.max(0, observedOperationalMs - movingMs);
   const averageSpeedKmh = durationMs > 0 ? distanceKm / (durationMs / 3_600_000) : null;
-  const maxSpeedKmh = speeds.length ? Math.max(...speeds) : null;
+  const maxObservedSpeedKmh = speeds.length ? Math.max(...speeds) : null;
+  const maxSustainedSpeed = maxSustainedSpeedKmh(segments);
+  const p95SpeedKmh = percentile(speeds, 0.95);
   const minSpeedKmh = speeds.length ? Math.min(...speeds) : null;
   const movementRatioPct = observedOperationalMs > 0
     ? Math.max(0, Math.min(100, (movingMs / observedOperationalMs) * 100))
@@ -225,9 +296,15 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
       averageAccuracyM: accuracy.averageM,
       minAccuracyM: accuracy.minM,
       maxAccuracyM: accuracy.maxM,
-      rejectedSegments: rejectedSegments.length,
+      totalSegments: outliers.totalSegments,
+      acceptedSegments: outliers.acceptedSegments,
+      rejectedSegments: outliers.rejectedSegments,
+      outlierRatePct: outliers.outlierRatePct,
       rejectedNoFixSegments: rejectedSegments.filter((segment) => segment.noFix).length,
       rejectedImpossibleSpeedSegments: rejectedSegments.filter((segment) => segment.impossibleSpeed).length,
+      rejectedNoFixOnlySegments: outliers.noFixOnly,
+      rejectedImpossibleSpeedOnlySegments: outliers.impossibleSpeedOnly,
+      rejectedBothSegments: outliers.both,
       engineSuspectSegments: segments.filter((segment) => segment.engineSuspect).length,
       geometryStatusHistogram: countBy(points.map((point) => pointStatus(point, "geometryStatus"))),
       sampleStatusHistogram: countBy(points.map((point) => pointStatus(point, "sampleStatus"))),
@@ -240,7 +317,11 @@ export function evaluateOperationalAnalytics({ trip, events = [], trackChunks = 
       distanceAdjustmentKm,
       distanceCorrectionPct,
       averageSpeedKmh,
-      maxSpeedKmh,
+      maxSpeedKmh: maxObservedSpeedKmh,
+      maxObservedSpeedKmh,
+      maxSustainedSpeedKmh: maxSustainedSpeed,
+      sustainedSpeedWindowMs: SUSTAINED_SPEED_WINDOW_MS,
+      p95SpeedKmh,
       minSpeedKmh,
     },
     events: {
@@ -291,14 +372,19 @@ export function logOperationalAnalytics({ tripDocId, trip, events, trackChunks }
     gpsNoSignalMs: result.gps.noGpsMs,
     gpsCoveragePct: result.gps.coveragePct == null ? null : result.gps.coveragePct.toFixed(2),
     avgAccuracyM: result.gps.averageAccuracyM == null ? null : result.gps.averageAccuracyM.toFixed(2),
+    totalSegments: result.gps.totalSegments,
+    acceptedSegments: result.gps.acceptedSegments,
     rejectedSegments: result.gps.rejectedSegments,
+    outlierRatePct: result.gps.outlierRatePct.toFixed(2),
     engineSuspectSegments: result.gps.engineSuspectSegments,
     durationMs: result.trip.durationMs,
     distanceKm: result.trip.distanceKm.toFixed(3),
     rawDistanceKm: result.trip.rawDistanceKm.toFixed(3),
     distanceCorrectionPct: result.trip.distanceCorrectionPct.toFixed(2),
     avgSpeedKmh: result.trip.averageSpeedKmh == null ? null : result.trip.averageSpeedKmh.toFixed(2),
-    maxSpeedKmh: result.trip.maxSpeedKmh == null ? null : result.trip.maxSpeedKmh.toFixed(2),
+    maxObservedSpeedKmh: result.trip.maxObservedSpeedKmh == null ? null : result.trip.maxObservedSpeedKmh.toFixed(2),
+    maxSustainedSpeedKmh: result.trip.maxSustainedSpeedKmh == null ? null : result.trip.maxSustainedSpeedKmh.toFixed(2),
+    p95SpeedKmh: result.trip.p95SpeedKmh == null ? null : result.trip.p95SpeedKmh.toFixed(2),
     events: result.events.total,
     delays: result.events.delays,
     explicitDelays: result.events.explicitDelays,
@@ -320,8 +406,26 @@ export function logOperationalAnalytics({ tripDocId, trip, events, trackChunks }
     sampleStatus: compactHistogram(result.gps.sampleStatusHistogram),
     qualityStatus: compactHistogram(result.gps.qualityStatusHistogram),
     engineSuspectSegments: result.gps.engineSuspectSegments,
-    rejectedNoFixSegments: result.gps.rejectedNoFixSegments,
-    rejectedImpossibleSpeedSegments: result.gps.rejectedImpossibleSpeedSegments,
+    totalSegments: result.gps.totalSegments,
+    acceptedSegments: result.gps.acceptedSegments,
+    rejectedSegments: result.gps.rejectedSegments,
+    outlierRatePct: result.gps.outlierRatePct.toFixed(2),
+    rejectedNoFixOnly: result.gps.rejectedNoFixOnlySegments,
+    rejectedImpossibleSpeedOnly: result.gps.rejectedImpossibleSpeedOnlySegments,
+    rejectedBoth: result.gps.rejectedBothSegments,
+  });
+
+  webIntegrity("OPERATIONAL_SPEED_DIAGNOSTICS", {
+    tripDocId: id,
+    averageKmh: result.trip.averageSpeedKmh == null ? null : result.trip.averageSpeedKmh.toFixed(2),
+    maxObservedKmh: result.trip.maxObservedSpeedKmh == null ? null : result.trip.maxObservedSpeedKmh.toFixed(2),
+    maxSustainedKmh: result.trip.maxSustainedSpeedKmh == null ? null : result.trip.maxSustainedSpeedKmh.toFixed(2),
+    sustainedWindowMs: result.trip.sustainedSpeedWindowMs,
+    p95Kmh: result.trip.p95SpeedKmh == null ? null : result.trip.p95SpeedKmh.toFixed(2),
+    rawDistanceKm: result.trip.rawDistanceKm.toFixed(3),
+    analyticDistanceKm: result.trip.distanceKm.toFixed(3),
+    correctionKm: result.trip.distanceAdjustmentKm.toFixed(3),
+    correctionPct: result.trip.distanceCorrectionPct.toFixed(2),
   });
 
   webIntegrity("OPERATIONAL_EVENT_SEMANTICS", {
