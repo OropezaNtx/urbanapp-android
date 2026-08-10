@@ -1,0 +1,2151 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 24,
+    "identityHash": "2c5c562f7116978b474fb2de2d6c4d21",
+    "entities": [
+      {
+        "tableName": "Trip",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`tripId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `planningRouteId` TEXT NOT NULL, `routeName` TEXT NOT NULL, `company` TEXT, `vehicleEco` TEXT, `direction` TEXT NOT NULL, `startTime` INTEGER NOT NULL, `endTime` INTEGER, `notes` TEXT, `nextWaypointId` INTEGER NOT NULL, `routeNumber` INTEGER, `esFs` TEXT, `baseStart` TEXT, `baseEnd` TEXT, `plateNumber` TEXT, `vehicleType` TEXT, `seatCapacity` INTEGER, `aforador` TEXT, `supervisor` TEXT, `deviceNumber` TEXT, `observerSex` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "tripId",
+            "columnName": "tripId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "planningRouteId",
+            "columnName": "planningRouteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeName",
+            "columnName": "routeName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "company",
+            "columnName": "company",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "vehicleEco",
+            "columnName": "vehicleEco",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "direction",
+            "columnName": "direction",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startTime",
+            "columnName": "startTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endTime",
+            "columnName": "endTime",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "nextWaypointId",
+            "columnName": "nextWaypointId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeNumber",
+            "columnName": "routeNumber",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "esFs",
+            "columnName": "esFs",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "baseStart",
+            "columnName": "baseStart",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "baseEnd",
+            "columnName": "baseEnd",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "plateNumber",
+            "columnName": "plateNumber",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "vehicleType",
+            "columnName": "vehicleType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "seatCapacity",
+            "columnName": "seatCapacity",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "aforador",
+            "columnName": "aforador",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "supervisor",
+            "columnName": "supervisor",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deviceNumber",
+            "columnName": "deviceNumber",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "observerSex",
+            "columnName": "observerSex",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "tripId"
+          ]
+        }
+      },
+      {
+        "tableName": "StopEvent",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`eventId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `tripId` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `stopType` TEXT NOT NULL, `count` INTEGER NOT NULL, `stopName` TEXT, `notes` TEXT, `waypointStopId` INTEGER NOT NULL, `waypointStartId` INTEGER NOT NULL, `stopTime` INTEGER NOT NULL, `startTime` INTEGER NOT NULL, `stopLat` REAL NOT NULL, `stopLon` REAL NOT NULL, `stopAltM` REAL NOT NULL, `startLat` REAL NOT NULL, `startLon` REAL NOT NULL, `startAltM` REAL NOT NULL, `stopAccM` REAL NOT NULL, `stopProvider` TEXT NOT NULL, `stopFixTime` INTEGER NOT NULL, `startAccM` REAL NOT NULL, `startProvider` TEXT NOT NULL, `startFixTime` INTEGER NOT NULL, `locationStatus` TEXT NOT NULL, `paxMenUp` INTEGER NOT NULL, `paxWomenUp` INTEGER NOT NULL, `paxMenDown` INTEGER NOT NULL, `paxWomenDown` INTEGER NOT NULL, `hasLuggage` INTEGER NOT NULL, `delayCodes` TEXT, `otherDelayDesc` TEXT, FOREIGN KEY(`tripId`) REFERENCES `Trip`(`tripId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tripId",
+            "columnName": "tripId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopType",
+            "columnName": "stopType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "count",
+            "columnName": "count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopName",
+            "columnName": "stopName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "waypointStopId",
+            "columnName": "waypointStopId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "waypointStartId",
+            "columnName": "waypointStartId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopTime",
+            "columnName": "stopTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startTime",
+            "columnName": "startTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopLat",
+            "columnName": "stopLat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopLon",
+            "columnName": "stopLon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopAltM",
+            "columnName": "stopAltM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startLat",
+            "columnName": "startLat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startLon",
+            "columnName": "startLon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startAltM",
+            "columnName": "startAltM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopAccM",
+            "columnName": "stopAccM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopProvider",
+            "columnName": "stopProvider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopFixTime",
+            "columnName": "stopFixTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startAccM",
+            "columnName": "startAccM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startProvider",
+            "columnName": "startProvider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startFixTime",
+            "columnName": "startFixTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationStatus",
+            "columnName": "locationStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paxMenUp",
+            "columnName": "paxMenUp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paxWomenUp",
+            "columnName": "paxWomenUp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paxMenDown",
+            "columnName": "paxMenDown",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paxWomenDown",
+            "columnName": "paxWomenDown",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hasLuggage",
+            "columnName": "hasLuggage",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "delayCodes",
+            "columnName": "delayCodes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "otherDelayDesc",
+            "columnName": "otherDelayDesc",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "eventId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_StopEvent_tripId",
+            "unique": false,
+            "columnNames": [
+              "tripId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_StopEvent_tripId` ON `${TABLE_NAME}` (`tripId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "Trip",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "tripId"
+            ],
+            "referencedColumns": [
+              "tripId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "DelayEvent",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`delayId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `tripId` INTEGER NOT NULL, `timestampStart` INTEGER NOT NULL, `timestampEnd` INTEGER, `delayType` TEXT NOT NULL, `notes` TEXT, `startLat` REAL NOT NULL, `startLon` REAL NOT NULL, `endLat` REAL, `endLon` REAL, FOREIGN KEY(`tripId`) REFERENCES `Trip`(`tripId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "delayId",
+            "columnName": "delayId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tripId",
+            "columnName": "tripId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampStart",
+            "columnName": "timestampStart",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampEnd",
+            "columnName": "timestampEnd",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "delayType",
+            "columnName": "delayType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "startLat",
+            "columnName": "startLat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startLon",
+            "columnName": "startLon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endLat",
+            "columnName": "endLat",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "endLon",
+            "columnName": "endLon",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "delayId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_DelayEvent_tripId",
+            "unique": false,
+            "columnNames": [
+              "tripId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_DelayEvent_tripId` ON `${TABLE_NAME}` (`tripId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "Trip",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "tripId"
+            ],
+            "referencedColumns": [
+              "tripId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "TrackPoint",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `tripId` INTEGER NOT NULL, `timeMs` INTEGER NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `altM` REAL NOT NULL, `accM` REAL NOT NULL, `provider` TEXT NOT NULL, `rawLat` REAL NOT NULL, `rawLon` REAL NOT NULL, `rawAltM` REAL NOT NULL, `filteredLat` REAL NOT NULL, `filteredLon` REAL NOT NULL, `sourceFixTimeMs` INTEGER NOT NULL, `receivedAtMs` INTEGER NOT NULL, `savedAtMs` INTEGER NOT NULL, `sampleStatus` TEXT NOT NULL, `qualityStatus` TEXT NOT NULL, `geometryStatus` TEXT NOT NULL, `filterStatus` TEXT NOT NULL, `engineMode` TEXT NOT NULL, `armStatus` TEXT NOT NULL, `isStale` INTEGER NOT NULL, `isBackfillEligible` INTEGER NOT NULL, `isSynthetic` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tripId",
+            "columnName": "tripId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timeMs",
+            "columnName": "timeMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lon",
+            "columnName": "lon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "altM",
+            "columnName": "altM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accM",
+            "columnName": "accM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawLat",
+            "columnName": "rawLat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawLon",
+            "columnName": "rawLon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawAltM",
+            "columnName": "rawAltM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "filteredLat",
+            "columnName": "filteredLat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "filteredLon",
+            "columnName": "filteredLon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceFixTimeMs",
+            "columnName": "sourceFixTimeMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receivedAtMs",
+            "columnName": "receivedAtMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "savedAtMs",
+            "columnName": "savedAtMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sampleStatus",
+            "columnName": "sampleStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "qualityStatus",
+            "columnName": "qualityStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "geometryStatus",
+            "columnName": "geometryStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "filterStatus",
+            "columnName": "filterStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "engineMode",
+            "columnName": "engineMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "armStatus",
+            "columnName": "armStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isStale",
+            "columnName": "isStale",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isBackfillEligible",
+            "columnName": "isBackfillEligible",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSynthetic",
+            "columnName": "isSynthetic",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_TrackPoint_tripId",
+            "unique": false,
+            "columnNames": [
+              "tripId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_TrackPoint_tripId` ON `${TABLE_NAME}` (`tripId`)"
+          },
+          {
+            "name": "index_TrackPoint_timeMs",
+            "unique": false,
+            "columnNames": [
+              "timeMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_TrackPoint_timeMs` ON `${TABLE_NAME}` (`timeMs`)"
+          },
+          {
+            "name": "index_TrackPoint_sampleStatus",
+            "unique": false,
+            "columnNames": [
+              "sampleStatus"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_TrackPoint_sampleStatus` ON `${TABLE_NAME}` (`sampleStatus`)"
+          },
+          {
+            "name": "index_TrackPoint_qualityStatus",
+            "unique": false,
+            "columnNames": [
+              "qualityStatus"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_TrackPoint_qualityStatus` ON `${TABLE_NAME}` (`qualityStatus`)"
+          },
+          {
+            "name": "index_TrackPoint_geometryStatus",
+            "unique": false,
+            "columnNames": [
+              "geometryStatus"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_TrackPoint_geometryStatus` ON `${TABLE_NAME}` (`geometryStatus`)"
+          }
+        ]
+      },
+      {
+        "tableName": "CcSession",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `planningId` TEXT NOT NULL, `locationName` TEXT NOT NULL, `aforador` TEXT NOT NULL, `dateDayMs` INTEGER NOT NULL, `base` TEXT NOT NULL, `terminalOrigin` TEXT NOT NULL, `terminalDestination` TEXT NOT NULL, `direction` TEXT NOT NULL, `companyName` TEXT NOT NULL, `derrotero` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `endedAt` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "planningId",
+            "columnName": "planningId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationName",
+            "columnName": "locationName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aforador",
+            "columnName": "aforador",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateDayMs",
+            "columnName": "dateDayMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "base",
+            "columnName": "base",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "terminalOrigin",
+            "columnName": "terminalOrigin",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "terminalDestination",
+            "columnName": "terminalDestination",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "direction",
+            "columnName": "direction",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "companyName",
+            "columnName": "companyName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "derrotero",
+            "columnName": "derrotero",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAt",
+            "columnName": "endedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "sessionId"
+          ]
+        }
+      },
+      {
+        "tableName": "CcEvent",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`eventId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sessionId` INTEGER NOT NULL, `seqInSession` INTEGER NOT NULL, `eventType` TEXT NOT NULL, `timeMs` INTEGER NOT NULL, `timeIsManual` INTEGER NOT NULL, `plate` TEXT, `eco` TEXT, `vehicleType` TEXT, `pax` INTEGER NOT NULL, `luggageCount` INTEGER, `notes` TEXT, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `accM` REAL NOT NULL, `provider` TEXT NOT NULL, `fixTime` INTEGER NOT NULL, `locationStatus` TEXT NOT NULL, FOREIGN KEY(`sessionId`) REFERENCES `CcSession`(`sessionId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seqInSession",
+            "columnName": "seqInSession",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventType",
+            "columnName": "eventType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timeMs",
+            "columnName": "timeMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timeIsManual",
+            "columnName": "timeIsManual",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plate",
+            "columnName": "plate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "eco",
+            "columnName": "eco",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "vehicleType",
+            "columnName": "vehicleType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pax",
+            "columnName": "pax",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "luggageCount",
+            "columnName": "luggageCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lon",
+            "columnName": "lon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accM",
+            "columnName": "accM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fixTime",
+            "columnName": "fixTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationStatus",
+            "columnName": "locationStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "eventId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_CcEvent_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_CcEvent_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          },
+          {
+            "name": "index_CcEvent_timeMs",
+            "unique": false,
+            "columnNames": [
+              "timeMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_CcEvent_timeMs` ON `${TABLE_NAME}` (`timeMs`)"
+          },
+          {
+            "name": "index_CcEvent_seqInSession",
+            "unique": false,
+            "columnNames": [
+              "seqInSession"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_CcEvent_seqInSession` ON `${TABLE_NAME}` (`seqInSession`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "CcSession",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "sessionId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "FovSession",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `estacion` TEXT NOT NULL, `ubicacion` TEXT NOT NULL, `sentido` TEXT NOT NULL, `dateDayMs` INTEGER NOT NULL, `esFs` TEXT, `supervisor` TEXT, `aforador` TEXT, `poiKey` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `endedAt` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "estacion",
+            "columnName": "estacion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ubicacion",
+            "columnName": "ubicacion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sentido",
+            "columnName": "sentido",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateDayMs",
+            "columnName": "dateDayMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "esFs",
+            "columnName": "esFs",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "supervisor",
+            "columnName": "supervisor",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "aforador",
+            "columnName": "aforador",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "poiKey",
+            "columnName": "poiKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAt",
+            "columnName": "endedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "sessionId"
+          ]
+        }
+      },
+      {
+        "tableName": "FovRouteMaster",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`routeUid` TEXT NOT NULL, `ruta` TEXT NOT NULL, `numeroRutaEmpresa` TEXT NOT NULL, `derroteroLetrero` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `createdBy` TEXT, PRIMARY KEY(`routeUid`))",
+        "fields": [
+          {
+            "fieldPath": "routeUid",
+            "columnName": "routeUid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ruta",
+            "columnName": "ruta",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numeroRutaEmpresa",
+            "columnName": "numeroRutaEmpresa",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "derroteroLetrero",
+            "columnName": "derroteroLetrero",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdBy",
+            "columnName": "createdBy",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "routeUid"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_FovRouteMaster_ruta",
+            "unique": false,
+            "columnNames": [
+              "ruta"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovRouteMaster_ruta` ON `${TABLE_NAME}` (`ruta`)"
+          },
+          {
+            "name": "index_FovRouteMaster_numeroRutaEmpresa",
+            "unique": false,
+            "columnNames": [
+              "numeroRutaEmpresa"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovRouteMaster_numeroRutaEmpresa` ON `${TABLE_NAME}` (`numeroRutaEmpresa`)"
+          }
+        ]
+      },
+      {
+        "tableName": "FovPoiCatalogItem",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`poiKey` TEXT NOT NULL, `observableId` INTEGER NOT NULL, `routeUid` TEXT NOT NULL, `active` INTEGER NOT NULL, PRIMARY KEY(`poiKey`, `observableId`))",
+        "fields": [
+          {
+            "fieldPath": "poiKey",
+            "columnName": "poiKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "observableId",
+            "columnName": "observableId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeUid",
+            "columnName": "routeUid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "poiKey",
+            "observableId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_FovPoiCatalogItem_poiKey",
+            "unique": false,
+            "columnNames": [
+              "poiKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovPoiCatalogItem_poiKey` ON `${TABLE_NAME}` (`poiKey`)"
+          },
+          {
+            "name": "index_FovPoiCatalogItem_routeUid",
+            "unique": false,
+            "columnNames": [
+              "routeUid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovPoiCatalogItem_routeUid` ON `${TABLE_NAME}` (`routeUid`)"
+          }
+        ]
+      },
+      {
+        "tableName": "FovObservation",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`obsId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sessionId` INTEGER NOT NULL, `folio` TEXT NOT NULL, `seqInSession` INTEGER NOT NULL, `timeMs` INTEGER NOT NULL, `poiKey` TEXT NOT NULL, `observableId` INTEGER NOT NULL, `routeUid` TEXT NOT NULL, `ruta` TEXT NOT NULL, `numeroRutaEmpresa` TEXT NOT NULL, `derroteroLetrero` TEXT NOT NULL, `eco` TEXT, `placa` TEXT, `gradoOcupacion` TEXT, `tipoVehiculo` TEXT, `descTipoVehiculo` TEXT, `observaciones` TEXT, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `accM` REAL NOT NULL, `provider` TEXT NOT NULL, `fixTime` INTEGER NOT NULL, `locationStatus` TEXT NOT NULL, FOREIGN KEY(`sessionId`) REFERENCES `FovSession`(`sessionId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "obsId",
+            "columnName": "obsId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "folio",
+            "columnName": "folio",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seqInSession",
+            "columnName": "seqInSession",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timeMs",
+            "columnName": "timeMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "poiKey",
+            "columnName": "poiKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "observableId",
+            "columnName": "observableId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeUid",
+            "columnName": "routeUid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ruta",
+            "columnName": "ruta",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numeroRutaEmpresa",
+            "columnName": "numeroRutaEmpresa",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "derroteroLetrero",
+            "columnName": "derroteroLetrero",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eco",
+            "columnName": "eco",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "placa",
+            "columnName": "placa",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "gradoOcupacion",
+            "columnName": "gradoOcupacion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tipoVehiculo",
+            "columnName": "tipoVehiculo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "descTipoVehiculo",
+            "columnName": "descTipoVehiculo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "observaciones",
+            "columnName": "observaciones",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lon",
+            "columnName": "lon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accM",
+            "columnName": "accM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fixTime",
+            "columnName": "fixTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationStatus",
+            "columnName": "locationStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "obsId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_FovObservation_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovObservation_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          },
+          {
+            "name": "index_FovObservation_timeMs",
+            "unique": false,
+            "columnNames": [
+              "timeMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovObservation_timeMs` ON `${TABLE_NAME}` (`timeMs`)"
+          },
+          {
+            "name": "index_FovObservation_seqInSession",
+            "unique": false,
+            "columnNames": [
+              "seqInSession"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovObservation_seqInSession` ON `${TABLE_NAME}` (`seqInSession`)"
+          },
+          {
+            "name": "index_FovObservation_folio",
+            "unique": false,
+            "columnNames": [
+              "folio"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovObservation_folio` ON `${TABLE_NAME}` (`folio`)"
+          },
+          {
+            "name": "index_FovObservation_routeUid",
+            "unique": false,
+            "columnNames": [
+              "routeUid"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovObservation_routeUid` ON `${TABLE_NAME}` (`routeUid`)"
+          },
+          {
+            "name": "index_FovObservation_observableId",
+            "unique": false,
+            "columnNames": [
+              "observableId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_FovObservation_observableId` ON `${TABLE_NAME}` (`observableId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "FovSession",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "sessionId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "AsdRouteCatalogItem",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `catalogId` TEXT NOT NULL, `direction` TEXT NOT NULL, `routeName` TEXT NOT NULL, `company` TEXT, `derrotero` TEXT, `cromatica` TEXT, `baseStart` TEXT, `baseEnd` TEXT, `observacion` TEXT, `active` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "catalogId",
+            "columnName": "catalogId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "direction",
+            "columnName": "direction",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeName",
+            "columnName": "routeName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "company",
+            "columnName": "company",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "derrotero",
+            "columnName": "derrotero",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cromatica",
+            "columnName": "cromatica",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "baseStart",
+            "columnName": "baseStart",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "baseEnd",
+            "columnName": "baseEnd",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "observacion",
+            "columnName": "observacion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_AsdRouteCatalogItem_catalogId_direction",
+            "unique": true,
+            "columnNames": [
+              "catalogId",
+              "direction"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_AsdRouteCatalogItem_catalogId_direction` ON `${TABLE_NAME}` (`catalogId`, `direction`)"
+          },
+          {
+            "name": "index_AsdRouteCatalogItem_routeName",
+            "unique": false,
+            "columnNames": [
+              "routeName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_AsdRouteCatalogItem_routeName` ON `${TABLE_NAME}` (`routeName`)"
+          },
+          {
+            "name": "index_AsdRouteCatalogItem_company",
+            "unique": false,
+            "columnNames": [
+              "company"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_AsdRouteCatalogItem_company` ON `${TABLE_NAME}` (`company`)"
+          },
+          {
+            "name": "index_AsdRouteCatalogItem_active",
+            "unique": false,
+            "columnNames": [
+              "active"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_AsdRouteCatalogItem_active` ON `${TABLE_NAME}` (`active`)"
+          }
+        ]
+      },
+      {
+        "tableName": "AsdFieldPersonCatalogItem",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `personId` TEXT NOT NULL, `name` TEXT NOT NULL, `role` TEXT NOT NULL, `defaultSex` TEXT, `active` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "personId",
+            "columnName": "personId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defaultSex",
+            "columnName": "defaultSex",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_AsdFieldPersonCatalogItem_personId",
+            "unique": true,
+            "columnNames": [
+              "personId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_AsdFieldPersonCatalogItem_personId` ON `${TABLE_NAME}` (`personId`)"
+          },
+          {
+            "name": "index_AsdFieldPersonCatalogItem_name",
+            "unique": false,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_AsdFieldPersonCatalogItem_name` ON `${TABLE_NAME}` (`name`)"
+          },
+          {
+            "name": "index_AsdFieldPersonCatalogItem_role",
+            "unique": false,
+            "columnNames": [
+              "role"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_AsdFieldPersonCatalogItem_role` ON `${TABLE_NAME}` (`role`)"
+          },
+          {
+            "name": "index_AsdFieldPersonCatalogItem_active",
+            "unique": false,
+            "columnNames": [
+              "active"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_AsdFieldPersonCatalogItem_active` ON `${TABLE_NAME}` (`active`)"
+          }
+        ]
+      },
+      {
+        "tableName": "AsdVehicleTypeCatalogItem",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `vehicleTypeId` TEXT NOT NULL, `name` TEXT NOT NULL, `displayName` TEXT NOT NULL, `defaultSeatCapacity` INTEGER NOT NULL, `capacityApplies` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL, `active` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vehicleTypeId",
+            "columnName": "vehicleTypeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defaultSeatCapacity",
+            "columnName": "defaultSeatCapacity",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capacityApplies",
+            "columnName": "capacityApplies",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_AsdVehicleTypeCatalogItem_vehicleTypeId",
+            "unique": true,
+            "columnNames": [
+              "vehicleTypeId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_AsdVehicleTypeCatalogItem_vehicleTypeId` ON `${TABLE_NAME}` (`vehicleTypeId`)"
+          },
+          {
+            "name": "index_AsdVehicleTypeCatalogItem_name",
+            "unique": false,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_AsdVehicleTypeCatalogItem_name` ON `${TABLE_NAME}` (`name`)"
+          },
+          {
+            "name": "index_AsdVehicleTypeCatalogItem_active",
+            "unique": false,
+            "columnNames": [
+              "active"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_AsdVehicleTypeCatalogItem_active` ON `${TABLE_NAME}` (`active`)"
+          },
+          {
+            "name": "index_AsdVehicleTypeCatalogItem_sortOrder",
+            "unique": false,
+            "columnNames": [
+              "sortOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_AsdVehicleTypeCatalogItem_sortOrder` ON `${TABLE_NAME}` (`sortOrder`)"
+          }
+        ]
+      },
+      {
+        "tableName": "AsdCatalogSyncState",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `version` TEXT, `lastSyncAt` INTEGER, `source` TEXT, `routesCount` INTEGER NOT NULL, `peopleCount` INTEGER NOT NULL, `vehicleTypesCount` INTEGER NOT NULL, `status` TEXT NOT NULL, `message` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSyncAt",
+            "columnName": "lastSyncAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "routesCount",
+            "columnName": "routesCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "peopleCount",
+            "columnName": "peopleCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vehicleTypesCount",
+            "columnName": "vehicleTypesCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "sync_queue",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `entityType` TEXT NOT NULL, `operation` TEXT NOT NULL, `entityLocalId` INTEGER NOT NULL, `parentTripId` INTEGER, `cloudPath` TEXT, `payloadJson` TEXT NOT NULL, `status` TEXT NOT NULL, `priority` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, `lastError` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `nextAttemptAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entityType",
+            "columnName": "entityType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operation",
+            "columnName": "operation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entityLocalId",
+            "columnName": "entityLocalId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentTripId",
+            "columnName": "parentTripId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "cloudPath",
+            "columnName": "cloudPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payloadJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextAttemptAt",
+            "columnName": "nextAttemptAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sync_queue_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_sync_queue_nextAttemptAt",
+            "unique": false,
+            "columnNames": [
+              "nextAttemptAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_nextAttemptAt` ON `${TABLE_NAME}` (`nextAttemptAt`)"
+          },
+          {
+            "name": "index_sync_queue_entityType",
+            "unique": false,
+            "columnNames": [
+              "entityType"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_entityType` ON `${TABLE_NAME}` (`entityType`)"
+          },
+          {
+            "name": "index_sync_queue_parentTripId",
+            "unique": false,
+            "columnNames": [
+              "parentTripId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_parentTripId` ON `${TABLE_NAME}` (`parentTripId`)"
+          },
+          {
+            "name": "index_sync_queue_priority",
+            "unique": false,
+            "columnNames": [
+              "priority"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_priority` ON `${TABLE_NAME}` (`priority`)"
+          },
+          {
+            "name": "index_sync_queue_createdAt",
+            "unique": false,
+            "columnNames": [
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
+          }
+        ]
+      },
+      {
+        "tableName": "trip_telemetry",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`tripId` INTEGER NOT NULL, `schemaVersion` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, `finishedAt` INTEGER, `updatedAt` INTEGER NOT NULL, `batterySampleCount` INTEGER NOT NULL, `batterySumPct` INTEGER NOT NULL, `batteryStartPct` INTEGER, `batteryEndPct` INTEGER, `batteryMinPct` INTEGER, `batteryMaxPct` INTEGER, `chargingSampleCount` INTEGER NOT NULL, `heartbeatSampleCount` INTEGER NOT NULL, `heartbeatAgeSumMs` INTEGER NOT NULL, `heartbeatMaxAgeMs` INTEGER NOT NULL, `heartbeatStaleSamples` INTEGER NOT NULL, `lastHeartbeatAt` INTEGER, `networkSampleCount` INTEGER NOT NULL, `connectedSampleCount` INTEGER NOT NULL, `offlineDurationMs` INTEGER NOT NULL, `networkTransitionCount` INTEGER NOT NULL, `reconnectionCount` INTEGER NOT NULL, `lastNetworkConnected` INTEGER, `lastNetworkType` TEXT, `lastSampleAt` INTEGER, `recoveryCount` INTEGER NOT NULL, `assistedRecoveryCount` INTEGER NOT NULL, `fgsBlockedCount` INTEGER NOT NULL, `watchdogHealthyCount` INTEGER NOT NULL, `lastRecoveryAt` INTEGER, `lastRecoveryGapMs` INTEGER NOT NULL, `syncRunCount` INTEGER NOT NULL, `syncRetryCount` INTEGER NOT NULL, `syncFailedItemCount` INTEGER NOT NULL, `syncConfirmedItemCount` INTEGER NOT NULL, `syncPayloadBytes` INTEGER NOT NULL, `firstUploadStartedAt` INTEGER, `lastUploadFinishedAt` INTEGER, `lastCloudConfirmedAt` INTEGER, `lastSyncRunStartedAt` INTEGER, `lastSyncRunFinishedAt` INTEGER, `lastSyncRunDurationMs` INTEGER, `totalSyncRunDurationMs` INTEGER NOT NULL, `maxSyncRunDurationMs` INTEGER NOT NULL, `completedSyncRunCount` INTEGER NOT NULL, `totalCloudRoundTripMs` INTEGER NOT NULL, `maxCloudRoundTripMs` INTEGER NOT NULL, `lastSyncResult` TEXT, PRIMARY KEY(`tripId`), FOREIGN KEY(`tripId`) REFERENCES `Trip`(`tripId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "tripId",
+            "columnName": "tripId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finishedAt",
+            "columnName": "finishedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batterySampleCount",
+            "columnName": "batterySampleCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batterySumPct",
+            "columnName": "batterySumPct",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batteryStartPct",
+            "columnName": "batteryStartPct",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "batteryEndPct",
+            "columnName": "batteryEndPct",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "batteryMinPct",
+            "columnName": "batteryMinPct",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "batteryMaxPct",
+            "columnName": "batteryMaxPct",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "chargingSampleCount",
+            "columnName": "chargingSampleCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "heartbeatSampleCount",
+            "columnName": "heartbeatSampleCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "heartbeatAgeSumMs",
+            "columnName": "heartbeatAgeSumMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "heartbeatMaxAgeMs",
+            "columnName": "heartbeatMaxAgeMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "heartbeatStaleSamples",
+            "columnName": "heartbeatStaleSamples",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastHeartbeatAt",
+            "columnName": "lastHeartbeatAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "networkSampleCount",
+            "columnName": "networkSampleCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "connectedSampleCount",
+            "columnName": "connectedSampleCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "offlineDurationMs",
+            "columnName": "offlineDurationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "networkTransitionCount",
+            "columnName": "networkTransitionCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reconnectionCount",
+            "columnName": "reconnectionCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastNetworkConnected",
+            "columnName": "lastNetworkConnected",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastNetworkType",
+            "columnName": "lastNetworkType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSampleAt",
+            "columnName": "lastSampleAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "recoveryCount",
+            "columnName": "recoveryCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assistedRecoveryCount",
+            "columnName": "assistedRecoveryCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fgsBlockedCount",
+            "columnName": "fgsBlockedCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "watchdogHealthyCount",
+            "columnName": "watchdogHealthyCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRecoveryAt",
+            "columnName": "lastRecoveryAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastRecoveryGapMs",
+            "columnName": "lastRecoveryGapMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncRunCount",
+            "columnName": "syncRunCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncRetryCount",
+            "columnName": "syncRetryCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncFailedItemCount",
+            "columnName": "syncFailedItemCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncConfirmedItemCount",
+            "columnName": "syncConfirmedItemCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncPayloadBytes",
+            "columnName": "syncPayloadBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstUploadStartedAt",
+            "columnName": "firstUploadStartedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastUploadFinishedAt",
+            "columnName": "lastUploadFinishedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastCloudConfirmedAt",
+            "columnName": "lastCloudConfirmedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastSyncRunStartedAt",
+            "columnName": "lastSyncRunStartedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastSyncRunFinishedAt",
+            "columnName": "lastSyncRunFinishedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastSyncRunDurationMs",
+            "columnName": "lastSyncRunDurationMs",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "totalSyncRunDurationMs",
+            "columnName": "totalSyncRunDurationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxSyncRunDurationMs",
+            "columnName": "maxSyncRunDurationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedSyncRunCount",
+            "columnName": "completedSyncRunCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalCloudRoundTripMs",
+            "columnName": "totalCloudRoundTripMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxCloudRoundTripMs",
+            "columnName": "maxCloudRoundTripMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSyncResult",
+            "columnName": "lastSyncResult",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "tripId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_trip_telemetry_tripId",
+            "unique": false,
+            "columnNames": [
+              "tripId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trip_telemetry_tripId` ON `${TABLE_NAME}` (`tripId`)"
+          },
+          {
+            "name": "index_trip_telemetry_updatedAt",
+            "unique": false,
+            "columnNames": [
+              "updatedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trip_telemetry_updatedAt` ON `${TABLE_NAME}` (`updatedAt`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "Trip",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "tripId"
+            ],
+            "referencedColumns": [
+              "tripId"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2c5c562f7116978b474fb2de2d6c4d21')"
+    ]
+  }
+}
