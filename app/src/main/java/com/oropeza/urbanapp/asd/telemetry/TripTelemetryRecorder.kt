@@ -97,24 +97,14 @@ object TripTelemetryRecorder {
             lastSampleAt = now
         )
         dao.upsert(updated)
-        Log.i(
-            TAG,
-            "TELEMETRY_SAMPLE trip=$tripId battery=${validBattery ?: -1} charging=$charging " +
-                "network=$networkType connected=$networkConnected heartbeatAgeMs=${heartbeatAge ?: -1L} " +
-                "reconnections=${updated.reconnectionCount} offlineMs=${updated.offlineDurationMs} finished=$finished"
-        )
+        Log.i(TAG, "TELEMETRY_SAMPLE trip=$tripId battery=${validBattery ?: -1} charging=$charging network=$networkType connected=$networkConnected heartbeatAgeMs=${heartbeatAge ?: -1L} reconnections=${updated.reconnectionCount} offlineMs=${updated.offlineDurationMs} finished=$finished")
     }
 
     suspend fun recordWatchdogHealthy(tripId: Long) = mutex.withLock {
-        mutate(tripId) { it.copy(watchdogHealthyCount = it.watchdogHealthyCount + 1) }
+        mutate(tripId) { it.copy(watchdogHealthyCount = it.watchdogHealthyCount + 1, updatedAt = System.currentTimeMillis()) }
     }
 
-    suspend fun recordRecovery(
-        tripId: Long,
-        gapMs: Long,
-        assisted: Boolean = false,
-        fgsBlocked: Boolean = false
-    ) = mutex.withLock {
+    suspend fun recordRecovery(tripId: Long, gapMs: Long, assisted: Boolean = false, fgsBlocked: Boolean = false) = mutex.withLock {
         val now = System.currentTimeMillis()
         mutate(tripId) {
             it.copy(
@@ -154,14 +144,10 @@ object TripTelemetryRecorder {
             )
         }
         touchedSyncTrips.add(tripId)
+        Log.i(TAG, "TELEMETRY_SYNC_STARTED trip=$tripId runId=$runId")
     }
 
-    suspend fun recordSyncConfirmed(
-        tripId: Long,
-        elapsedMs: Long,
-        payloadBytes: Long,
-        finishedAt: Long
-    ) = mutex.withLock {
+    suspend fun recordSyncConfirmed(tripId: Long, elapsedMs: Long, payloadBytes: Long, finishedAt: Long) = mutex.withLock {
         if (tripId <= 0L) return@withLock
         mutate(tripId) {
             it.copy(
@@ -176,6 +162,7 @@ object TripTelemetryRecorder {
             )
         }
         touchedSyncTrips.add(tripId)
+        Log.i(TAG, "TELEMETRY_SYNC_CONFIRMED trip=$tripId elapsedMs=$elapsedMs bytes=$payloadBytes")
     }
 
     suspend fun recordSyncFailure(tripId: Long, result: String, now: Long) = mutex.withLock {
@@ -190,12 +177,16 @@ object TripTelemetryRecorder {
             )
         }
         touchedSyncTrips.add(tripId)
+        Log.w(TAG, "TELEMETRY_SYNC_FAILED trip=$tripId result=$result")
     }
 
-    suspend fun flushTouchedSyncTelemetry(context: Context) {
+    suspend fun flushTouchedSyncTelemetry(context: Context): Int {
         val trips = touchedSyncTrips.toList()
         touchedSyncTrips.removeAll(trips.toSet())
         trips.forEach { enqueueCloudSnapshot(context, it) }
+        seenRunTripKeys.clear()
+        if (trips.isNotEmpty()) Log.i(TAG, "TELEMETRY_SYNC_FLUSH trips=${trips.size}")
+        return trips.size
     }
 
     suspend fun enqueueCloudSnapshot(context: Context, tripId: Long) = mutex.withLock {
