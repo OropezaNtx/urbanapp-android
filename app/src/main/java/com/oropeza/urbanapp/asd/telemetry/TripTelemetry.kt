@@ -8,9 +8,7 @@ import com.oropeza.urbanapp.asd.data.local.Trip
 
 /**
  * Resumen persistente y acumulativo de telemetría de un recorrido.
- *
- * Android/Room es la fuente de verdad. La nube recibe una proyección de esta fila.
- * No contiene muestras GPS; esas siguen perteneciendo a TrackPoint.
+ * Android/Room es la fuente de verdad; Firestore recibe una proyección.
  */
 @Entity(
     tableName = "trip_telemetry",
@@ -31,7 +29,6 @@ data class TripTelemetry(
     val finishedAt: Long? = null,
     val updatedAt: Long = System.currentTimeMillis(),
 
-    // Battery
     val batterySampleCount: Long = 0L,
     val batterySumPct: Long = 0L,
     val batteryStartPct: Int? = null,
@@ -40,14 +37,12 @@ data class TripTelemetry(
     val batteryMaxPct: Int? = null,
     val chargingSampleCount: Long = 0L,
 
-    // Tracking heartbeat
     val heartbeatSampleCount: Long = 0L,
     val heartbeatAgeSumMs: Long = 0L,
     val heartbeatMaxAgeMs: Long = 0L,
     val heartbeatStaleSamples: Long = 0L,
     val lastHeartbeatAt: Long? = null,
 
-    // Network
     val networkSampleCount: Long = 0L,
     val connectedSampleCount: Long = 0L,
     val offlineDurationMs: Long = 0L,
@@ -57,7 +52,6 @@ data class TripTelemetry(
     val lastNetworkType: String? = null,
     val lastSampleAt: Long? = null,
 
-    // Recovery / watchdog
     val recoveryCount: Int = 0,
     val assistedRecoveryCount: Int = 0,
     val fgsBlockedCount: Int = 0,
@@ -65,15 +59,26 @@ data class TripTelemetry(
     val lastRecoveryAt: Long? = null,
     val lastRecoveryGapMs: Long = 0L,
 
-    // Cloud sync
     val syncRunCount: Int = 0,
     val syncRetryCount: Int = 0,
     val syncFailedItemCount: Int = 0,
     val syncConfirmedItemCount: Int = 0,
     val syncPayloadBytes: Long = 0L,
+
+    // Activity span across the whole trip. This is not a single upload duration.
     val firstUploadStartedAt: Long? = null,
     val lastUploadFinishedAt: Long? = null,
     val lastCloudConfirmedAt: Long? = null,
+
+    // Actual WorkManager sync-run timing.
+    val lastSyncRunStartedAt: Long? = null,
+    val lastSyncRunFinishedAt: Long? = null,
+    val lastSyncRunDurationMs: Long? = null,
+    val totalSyncRunDurationMs: Long = 0L,
+    val maxSyncRunDurationMs: Long = 0L,
+    val completedSyncRunCount: Int = 0,
+
+    // Per-item client ↔ Firestore round-trip timing.
     val totalCloudRoundTripMs: Long = 0L,
     val maxCloudRoundTripMs: Long = 0L,
     val lastSyncResult: String? = null
@@ -89,4 +94,7 @@ data class TripTelemetry(
 
     val averageCloudRoundTripMs: Double?
         get() = if (syncConfirmedItemCount > 0) totalCloudRoundTripMs.toDouble() / syncConfirmedItemCount else null
+
+    val averageSyncRunDurationMs: Double?
+        get() = if (completedSyncRunCount > 0) totalSyncRunDurationMs.toDouble() / completedSyncRunCount else null
 }
