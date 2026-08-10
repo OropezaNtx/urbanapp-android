@@ -5,8 +5,6 @@ import android.net.Uri
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
-import com.oropeza.urbanapp.asd.location.LatLng
-import com.oropeza.urbanapp.asd.location.PolylineSmoother
 import com.oropeza.urbanapp.asd.location.engine.TrackPointQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -57,8 +55,6 @@ object KmlExporter {
         os.bufferedWriter(Charsets.UTF_8).use { out ->
             val tripName = "${trip.routeName} - ${trip.direction} (Trip ${trip.tripId})"
             val orderedPts = TrackPointQuality.cleanRoutePoints(points)
-            val raw = orderedPts.map { LatLng(it.filteredLat, it.filteredLon) }
-            val smooth = if (raw.size >= 3) PolylineSmoother.movingAverage(raw, window = 3) else raw
 
             out.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
             out.appendLine("""<kml xmlns="http://www.opengis.net/kml/2.2">""")
@@ -77,9 +73,11 @@ object KmlExporter {
             out.appendLine("<altitudeMode>relativeToGround</altitudeMode>")
             out.appendLine("<tessellate>1</tessellate>")
             out.appendLine("<coordinates>")
-            smooth.forEachIndexed { i, p ->
-                val orig = orderedPts[i]
-                out.appendLine("${p.lon},${p.lat},${if (orig.altM > 0.0) orig.altM else 0.0}")
+            orderedPts.forEach { p ->
+                // filteredLat/filteredLon are already the canonical analytical
+                // coordinates produced by AforaGpsEngine. Do not smooth a second
+                // time here: a moving average can cut corners and shift the route.
+                out.appendLine("${p.filteredLon},${p.filteredLat},${if (p.altM > 0.0) p.altM else 0.0}")
             }
             out.appendLine("</coordinates>")
             out.appendLine("</LineString>")
