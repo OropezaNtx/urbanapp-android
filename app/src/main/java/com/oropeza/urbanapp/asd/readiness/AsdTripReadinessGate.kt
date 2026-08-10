@@ -105,11 +105,20 @@ fun AsdTripReadinessGate(
         }
     }
 
+    @Composable
+    fun tripDetail() {
+        // Key the complete detail subtree by tripId so transient UI values such as
+        // calculated distance can never leak from a previously opened trip.
+        key(tripId) {
+            AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
+        }
+    }
+
     when {
         trip == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        trip?.endTime != null -> AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
-        trackingThisTrip -> AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
-        accepted -> AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
+        trip?.endTime != null -> tripDetail()
+        trackingThisTrip -> tripDetail()
+        accepted -> tripDetail()
         else -> FieldReadinessDialog(
             report = report.copy(checks = report.blockers),
             onRefresh = { evaluateAndContinue() },
