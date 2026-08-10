@@ -1,11 +1,6 @@
 package com.oropeza.urbanapp.asd.telemetry
 
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import android.os.BatteryManager
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -15,8 +10,11 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker
-import java.util.concurrent.TimeUnit
 
+/**
+ * One-shot lifecycle worker. Periodic samples are piggybacked on the existing
+ * persistent tracking watchdog; this worker only captures the initial/final edge.
+ */
 class TripTelemetryWorker(
     appContext: Context,
     params: WorkerParameters
@@ -25,10 +23,7 @@ class TripTelemetryWorker(
     companion object {
         private const val TAG = "TripTelemetry"
         private const val INPUT_TRIP_ID = "telemetry_trip_id"
-        private const val INPUT_GENERATION = "telemetry_generation"
         private const val INPUT_FORCE_FINAL = "telemetry_force_final"
-        private const val SAMPLE_INTERVAL_MS = 60_000L
-        private const val CLOUD_FLUSH_EVERY_GENERATIONS = 5
 
         private fun tripTag(tripId: Long) = "ASD_TRIP_TELEMETRY_$tripId"
 
@@ -36,15 +31,15 @@ class TripTelemetryWorker(
             if (tripId <= 0L) return
             val appContext = context.applicationContext
             WorkManager.getInstance(appContext).cancelAllWorkByTag(tripTag(tripId))
-            enqueue(appContext, tripId, 0, 0L, false)
-            Log.i(TAG, "TELEMETRY_ARMED trip=$tripId")
+            enqueue(appContext, tripId, false)
+            Log.i(TAG, "TELEMETRY_ARMED trip=$tripId mode=INITIAL_ONLY")
         }
 
         fun finish(context: Context, tripId: Long) {
             if (tripId <= 0L) return
             val appContext = context.applicationContext
             WorkManager.getInstance(appContext).cancelAllWorkByTag(tripTag(tripId))
-            enqueue(appContext, tripId, 0, 0L, true)
+            enqueue(appContext, tripId, true)
             Log.i(TAG, "TELEMETRY_FINISH_REQUESTED trip=$tripId")
         }
 
@@ -53,15 +48,13 @@ class TripTelemetryWorker(
             Log.i(TAG, "TELEMETRY_CANCELLED trip=$tripId")
         }
 
-        private fun enqueue(context: Context, tripId: Long, generation: Int, delayMs: Long, forceFinal: Boolean) {
+        private fun enqueue(context: Context, tripId: Long, forceFinal: Boolean) {
             val input = Data.Builder()
                 .putLong(INPUT_TRIP_ID, tripId)
-                .putInt(INPUT_GENERATION, generation)
                 .putBoolean(INPUT_FORCE_FINAL, forceFinal)
                 .build()
             val request = OneTimeWorkRequestBuilder<TripTelemetryWorker>()
                 .setInputData(input)
-                .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
                 .addTag("ASD_TRIP_TELEMETRY")
                 .addTag(tripTag(tripId))
                 .build()
@@ -71,7 +64,6 @@ class TripTelemetryWorker(
 
     override suspend fun doWork(): ListenableWorker.Result {
         val tripId = inputData.getLong(INPUT_TRIP_ID, -1L)
-        val generation = inputData.getInt(INPUT_GENERATION, 0)
         val forceFinal = inputData.getBoolean(INPUT_FORCE_FINAL, false)
         if (tripId <= 0L) return ListenableWorker.Result.success()
 
@@ -79,60 +71,20 @@ class TripTelemetryWorker(
             AsdGraph.init(applicationContext)
             val trip = AsdGraph.db.tripDao().getByIdOnce(tripId) ?: return ListenableWorker.Result.success()
             TripTelemetryRecorder.ensureStarted(applicationContext, tripId)
-            val battery = readBattery(applicationContext)
-            val network = readNetwork(applicationContext)
             val finished = forceFinal || trip.endTime != null
-            TripTelemetryRecorder.sampleDevice(
-                context = applicationContext,
-                tripId = tripId,
-                batteryPct = battery.first,
-                charging = battery.second,
-                networkConnected = network.first,
-                networkType = network.second,
-                finished = finished
-            )
+            TripTelemetrySystemSampler.sample(applicationContext, tripId, finished = finished)
 
-            if (finished || generation % CLOUD_FLUSH_EVERY_GENERATIONS == 0) {
-                TripTelemetryRecorder.enqueueCloudSnapshot(applicationContext, tripId)
-                AsdCloudSyncWorker.enqueue(applicationContext)
-            }
+            // Initial sample creates the first cloud-visible telemetry snapshot;
+            // final sample always closes and flushes the last one.
+            TripTelemetryRecorder.enqueueCloudSnapshot(applicationContext, tripId)
+            AsdCloudSyncWorker.enqueue(applicationContext)
 
-            if (!finished) {
-                enqueue(applicationContext, tripId, generation + 1, SAMPLE_INTERVAL_MS, false)
-            } else {
-                Log.i(TAG, "TELEMETRY_FINALIZED trip=$tripId generation=$generation")
-            }
+            Log.i(TAG, "TELEMETRY_LIFECYCLE_SAMPLE trip=$tripId final=$finished")
+            if (finished) Log.i(TAG, "TELEMETRY_FINALIZED trip=$tripId")
             ListenableWorker.Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "TELEMETRY_SAMPLE_FAILED trip=$tripId generation=$generation forceFinal=$forceFinal", e)
-            if (tripId > 0L && !forceFinal) enqueue(applicationContext, tripId, generation + 1, SAMPLE_INTERVAL_MS, false)
+            Log.e(TAG, "TELEMETRY_SAMPLE_FAILED trip=$tripId forceFinal=$forceFinal", e)
             ListenableWorker.Result.success()
         }
-    }
-
-    private fun readBattery(context: Context): Pair<Int?, Boolean> {
-        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-        val pct = if (level >= 0 && scale > 0) ((level * 100f) / scale).toInt().coerceIn(0, 100) else null
-        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-        return pct to charging
-    }
-
-    private fun readNetwork(context: Context): Pair<Boolean, String> {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = cm.activeNetwork ?: return false to "NONE"
-        val caps = cm.getNetworkCapabilities(network) ?: return false to "UNKNOWN"
-        val connected = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        val type = when {
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "CELLULAR"
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ETHERNET"
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
-            else -> "OTHER"
-        }
-        return connected to type
     }
 }
