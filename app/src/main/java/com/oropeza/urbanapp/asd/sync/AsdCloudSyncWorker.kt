@@ -132,18 +132,36 @@ class AsdCloudSyncWorker(
                 Log.i(INTEGRITY_TAG, "SYNC_TELEMETRY_DRAIN runId=$runId enqueued=$telemetryFlushed confirmed=$telemetryConfirmed")
             }
 
-            val outstanding = AsdGraph.repo.getOutstandingSyncCount()
+            val queueHealth = SyncQueueHealth.snapshot()
             val elapsedMs = System.currentTimeMillis() - startedAt
-            if (outstanding > 0) {
-                val delayMs = CloudSyncRetryPlanner.nextDelayMs()
-                AsdCloudSyncRetryKickWorker.schedule(applicationContext, delayMs)
-                Log.i(INTEGRITY_TAG, "SYNC_FINISHED runId=$runId result=DEFERRED synced=$totalSynced outstanding=$outstanding batches=$batchNumber elapsedMs=$elapsedMs retryInMs=$delayMs")
-                ListenableWorker.Result.success()
-            } else {
-                AsdCloudSyncRetryKickWorker.cancel(applicationContext)
-                Log.i(INTEGRITY_TAG, "SYNC_QUEUE_EMPTY runId=$runId")
-                Log.i(INTEGRITY_TAG, "SYNC_FINISHED runId=$runId result=SUCCESS synced=$totalSynced outstanding=0 batches=$batchNumber elapsedMs=$elapsedMs")
-                ListenableWorker.Result.success()
+            when {
+                queueHealth.retryable > 0 -> {
+                    val delayMs = CloudSyncRetryPlanner.nextDelayMs()
+                    AsdCloudSyncRetryKickWorker.schedule(applicationContext, delayMs)
+                    Log.i(
+                        INTEGRITY_TAG,
+                        "SYNC_FINISHED runId=$runId result=DEFERRED synced=$totalSynced " +
+                            "retryable=${queueHealth.retryable} deadLetters=${queueHealth.deadLetter} unresolved=${queueHealth.unresolved} " +
+                            "batches=$batchNumber elapsedMs=$elapsedMs retryInMs=$delayMs"
+                    )
+                    ListenableWorker.Result.success()
+                }
+                queueHealth.deadLetter > 0 -> {
+                    AsdCloudSyncRetryKickWorker.cancel(applicationContext)
+                    Log.w(
+                        INTEGRITY_TAG,
+                        "SYNC_FINISHED runId=$runId result=ATTENTION_REQUIRED synced=$totalSynced " +
+                            "retryable=0 deadLetters=${queueHealth.deadLetter} unresolved=${queueHealth.unresolved} " +
+                            "batches=$batchNumber elapsedMs=$elapsedMs"
+                    )
+                    ListenableWorker.Result.success()
+                }
+                else -> {
+                    AsdCloudSyncRetryKickWorker.cancel(applicationContext)
+                    Log.i(INTEGRITY_TAG, "SYNC_QUEUE_EMPTY runId=$runId")
+                    Log.i(INTEGRITY_TAG, "SYNC_FINISHED runId=$runId result=SUCCESS synced=$totalSynced unresolved=0 batches=$batchNumber elapsedMs=$elapsedMs")
+                    ListenableWorker.Result.success()
+                }
             }
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
