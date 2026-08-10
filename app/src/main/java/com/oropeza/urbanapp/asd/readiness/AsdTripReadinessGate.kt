@@ -34,10 +34,10 @@ fun AsdTripReadinessGate(
 
     fun composeReport(): FieldReadinessReport {
         val base = FieldReadiness.evaluate(context)
-        val syncCheck = if (pendingSync > 0) {
-            ReadinessCheck("SYNC_BACKLOG", "Pendientes de sincronización", ReadinessSeverity.WARNING, "Hay datos locales pendientes. Puedes iniciar offline, pero sincroniza cuando tengas conexión.", pendingSync.toString())
+        val syncCheck = if (pendingSync >= 25) {
+            ReadinessCheck("SYNC_BACKLOG", "Pendientes de sincronización", ReadinessSeverity.WARNING, "Existe un backlog importante de datos locales. Puedes continuar offline, pero conviene sincronizar antes de acumular otra jornada.", pendingSync.toString())
         } else {
-            ReadinessCheck("SYNC_BACKLOG", "Pendientes de sincronización", ReadinessSeverity.PASS, "No hay deuda de sincronización pendiente.", "0")
+            ReadinessCheck("SYNC_BACKLOG", "Pendientes de sincronización", ReadinessSeverity.PASS, if (pendingSync == 0) "No hay deuda de sincronización pendiente." else "La cola local tiene pocos elementos y puede continuar operando normalmente.", pendingSync.toString())
         }
         val missing = buildList {
             if (trip?.routeName.isNullOrBlank()) add("ruta")
