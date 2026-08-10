@@ -5,8 +5,6 @@ import android.net.Uri
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.data.local.Trip
-import com.oropeza.urbanapp.asd.location.LatLng
-import com.oropeza.urbanapp.asd.location.PolylineSmoother
 import com.oropeza.urbanapp.asd.location.engine.TrackPointQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -152,8 +150,6 @@ object GpxExporter {
 
             val orderedPts = TrackPointQuality.cleanRoutePoints(points)
             if (orderedPts.isNotEmpty()) {
-                val raw = orderedPts.map { LatLng(it.filteredLat, it.filteredLon) }
-                val smooth = if (raw.size >= 3) PolylineSmoother.movingAverage(raw, window = 3) else raw
                 val gapMs = 12_000L
 
                 out.appendLine("<trkseg>")
@@ -167,8 +163,10 @@ object GpxExporter {
                     }
 
                     val p = orderedPts[i]
-                    val s = smooth[i]
-                    out.appendLine("""<trkpt lat="${s.lat}" lon="${s.lon}">""")
+                    // filteredLat/filteredLon already contain AforaGpsEngine's canonical
+                    // analytical point. Avoid a second moving average that can move the
+                    // route off the actual road, especially through curves/intersections.
+                    out.appendLine("""<trkpt lat="${p.filteredLat}" lon="${p.filteredLon}">""")
                     if (p.altM > 0.0) out.appendLine("<ele>${p.altM}</ele>")
                     out.appendLine("<time>${esc(fmtIso(p.timeMs))}</time>")
                     out.appendLine("<desc>${esc(TrackPointQuality.auditLabel(p))}</desc>")
@@ -182,4 +180,3 @@ object GpxExporter {
         }
     }
 }
-
