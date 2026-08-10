@@ -29,9 +29,8 @@ function fmtBytes(bytes) {
   return `${(value / 1024 ** 2).toFixed(2)} MB`;
 }
 
-function availabilityMetric(metric) {
-  if (!metric || metric.availability === 'NOT_AVAILABLE') return 'No disponible todavía';
-  return metric.value ?? 'No disponible todavía';
+function available(metric) {
+  return metric && metric.availability !== 'NOT_AVAILABLE';
 }
 
 function Metric({ label, value, hint }) {
@@ -58,14 +57,16 @@ export default function OperationalAnalyticsPanel({ analytics }) {
   const operator = analytics.operator || {};
   const device = analytics.device || {};
   const sync = analytics.sync || {};
+  const recovery = analytics.recovery || {};
+  const telemetryAvailable = Boolean(analytics.telemetry);
 
   return <section className="card ops-analytics-card">
     <div className="ops-head">
       <div>
         <h3><Activity size={18} /> Operational Analytics</h3>
-        <p>Métricas calculadas sobre el recorrido sincronizado. Se conservan los datos raw y se separan las correcciones analíticas para mantener trazabilidad.</p>
+        <p>Métricas calculadas sobre el recorrido sincronizado. La telemetría Android se incorpora cuando existe, sin sustituir las métricas GPS ni los datos raw.</p>
       </div>
-      <span className="ops-version">Engine {analytics.version}</span>
+      <span className="ops-version">Engine {analytics.version}{telemetryAvailable ? ' + Telemetry 1' : ''}</span>
     </div>
 
     <div className="ops-layout">
@@ -123,20 +124,43 @@ export default function OperationalAnalyticsPanel({ analytics }) {
 
       <Section icon={<Smartphone size={17} />} title="Calidad del dispositivo">
         <Metric label="Cobertura GPS" value={fmtNumber(device.gpsCoveragePct, 2, '%')} />
-        <Metric label="Precisión promedio" value={fmtNumber(device.averageAccuracyM, 1, ' m')} />
-        <Metric label="Batería histórica" value={availabilityMetric(device.battery)} hint="Requiere instrumentación por recorrido" />
-        <Metric label="Heartbeat histórico" value={availabilityMetric(device.heartbeat)} hint="Requiere persistencia temporal" />
-        <Metric label="Reconexiones" value={availabilityMetric(device.reconnections)} hint="Requiere contador por recorrido" />
+        <Metric label="Precisión promedio GPS" value={fmtNumber(device.averageAccuracyM, 1, ' m')} />
+        <Metric label="Batería promedio" value={available(device.battery) ? fmtNumber(device.battery.value, 1, '%') : 'No disponible todavía'} />
+        <Metric label="Batería inicio / fin" value={available(device.battery) ? `${device.battery.startPct ?? '—'}% / ${device.battery.endPct ?? '—'}%` : 'No disponible todavía'} />
+        <Metric label="Batería mínima" value={available(device.battery) ? fmtNumber(device.battery.minPct, 0, '%') : 'No disponible todavía'} />
+        <Metric label="Heartbeat promedio" value={available(device.heartbeat) ? fmtDuration(device.heartbeat.averageAgeMs) : 'No disponible todavía'} />
+        <Metric label="Heartbeat máximo" value={available(device.heartbeat) ? fmtDuration(device.heartbeat.maxAgeMs) : 'No disponible todavía'} />
+        <Metric label="Heartbeats vencidos" value={available(device.heartbeat) ? device.heartbeat.staleSamples : 'No disponible todavía'} hint="Muestras con edad ≥ 30 s" />
+        <Metric label="Cobertura de red" value={fmtNumber(device.networkCoveragePct, 2, '%')} />
+        <Metric label="Tiempo sin red" value={fmtDuration(device.networkOfflineDurationMs)} />
+        <Metric label="Reconexiones" value={available(device.reconnections) ? device.reconnections.value : 'No disponible todavía'} />
+        <Metric label="Cambios de red" value={telemetryAvailable ? device.networkTransitions ?? 0 : 'No disponible todavía'} />
+        <Metric label="Última red" value={telemetryAvailable ? device.lastNetworkType ?? '—' : 'No disponible todavía'} />
+      </Section>
+
+      <Section icon={<Activity size={17} />} title="Recovery / Watchdog">
+        <Metric label="Recoveries" value={telemetryAvailable ? recovery.count ?? 0 : 'No disponible todavía'} />
+        <Metric label="Recuperaciones asistidas" value={telemetryAvailable ? recovery.assistedCount ?? 0 : 'No disponible todavía'} />
+        <Metric label="FGS bloqueados" value={telemetryAvailable ? recovery.fgsBlockedCount ?? 0 : 'No disponible todavía'} />
+        <Metric label="Watchdogs saludables" value={telemetryAvailable ? recovery.watchdogHealthyCount ?? 0 : 'No disponible todavía'} />
+        <Metric label="Último gap de recovery" value={telemetryAvailable ? fmtDuration(recovery.lastRecoveryGapMs) : 'No disponible todavía'} />
       </Section>
 
       <Section icon={<Clock3 size={17} />} title="Calidad de sincronización">
-        <Metric label="Payload estimado" value={fmtBytes(sync.payloadBytesEstimated)} hint="Trip + eventos + chunks recibidos" />
-        <Metric label="Tiempo de subida" value={availabilityMetric(sync.uploadDurationMs)} hint="Aún no persistido" />
-        <Metric label="Tiempo cloud" value={availabilityMetric(sync.cloudDurationMs)} hint="Aún no persistido" />
+        <Metric label="Payload estimado Web" value={fmtBytes(sync.payloadBytesEstimated)} hint="Trip + eventos + chunks recibidos" />
+        <Metric label="Payload confirmado Android" value={fmtBytes(sync.payloadBytesActual)} />
+        <Metric label="Runs de sincronización" value={telemetryAvailable ? sync.syncRuns ?? 0 : 'No disponible todavía'} />
+        <Metric label="Reintentos" value={telemetryAvailable ? sync.retries ?? 0 : 'No disponible todavía'} />
+        <Metric label="Items confirmados" value={telemetryAvailable ? sync.confirmedItems ?? 0 : 'No disponible todavía'} />
+        <Metric label="Items fallidos" value={telemetryAvailable ? sync.failedItems ?? 0 : 'No disponible todavía'} />
+        <Metric label="Tiempo de subida" value={available(sync.uploadDurationMs) ? fmtDuration(sync.uploadDurationMs.value) : 'No disponible todavía'} hint="Primera subida → última confirmación" />
+        <Metric label="Round-trip cloud promedio" value={available(sync.cloudDurationMs) ? fmtNumber(sync.cloudDurationMs.value, 1, ' ms') : 'No disponible todavía'} />
+        <Metric label="Round-trip cloud máximo" value={fmtNumber(sync.maxCloudRoundTripMs, 1, ' ms')} />
+        <Metric label="Último resultado" value={telemetryAvailable ? sync.lastResult ?? '—' : 'No disponible todavía'} />
         <Metric label="Tiempo análisis web" value={fmtNumber(sync.webAnalysisMs, 3, ' ms')} />
       </Section>
     </div>
 
-    <div className="ops-note"><WifiOff size={16} /> Las pérdidas de señal son inferidas mediante huecos temporales entre fixes GPS. Máxima observada conserva el pico válido; máxima sostenida exige continuidad temporal y P95 describe el rango alto habitual.</div>
+    <div className="ops-note"><WifiOff size={16} /> GPS y cinemática siguen calculándose desde track_chunks. Batería, heartbeat, red, recoveries y sync provienen de telemetría persistida por Android cuando el recorrido fue capturado con Telemetry v1.</div>
   </section>;
 }
