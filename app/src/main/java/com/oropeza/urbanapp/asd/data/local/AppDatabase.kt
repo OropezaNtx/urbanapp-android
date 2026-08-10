@@ -2,6 +2,8 @@ package com.oropeza.urbanapp.asd.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import com.oropeza.urbanapp.asd.telemetry.TripTelemetry
+import com.oropeza.urbanapp.asd.telemetry.TripTelemetryDao
 import com.oropeza.urbanapp.dashboard.OperationalDashboardDao
 
 @Database(
@@ -20,9 +22,12 @@ import com.oropeza.urbanapp.dashboard.OperationalDashboardDao
         AsdFieldPersonCatalogItem::class,
         AsdVehicleTypeCatalogItem::class,
         AsdCatalogSyncState::class,
-        AsdSyncQueueItem::class
+        AsdSyncQueueItem::class,
+
+        // ✅ Telemetría operativa por recorrido
+        TripTelemetry::class
     ],
-    version = 23,
+    version = 24,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -46,6 +51,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun asdVehicleTypeCatalogDao(): AsdVehicleTypeCatalogDao
     abstract fun asdCatalogSyncStateDao(): AsdCatalogSyncStateDao
     abstract fun asdSyncQueueDao(): AsdSyncQueueDao
+
+    // ✅ Telemetría
+    abstract fun tripTelemetryDao(): TripTelemetryDao
 
     // ✅ Dashboard operativo
     abstract fun operationalDashboardDao(): OperationalDashboardDao
