@@ -99,7 +99,7 @@ fun AsdTripReadinessGate(
         }
     }
 
-    LaunchedEffect(tripId, trip?.id, trackingThisTrip) {
+    LaunchedEffect(tripId, trip, trackingThisTrip) {
         if (trip != null && trip?.endTime == null && !trackingThisTrip && !accepted) {
             evaluateAndContinue()
         }
