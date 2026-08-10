@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.data.local.AsdSyncQueueItem
+import com.oropeza.urbanapp.asd.readiness.FieldReadiness
 import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import kotlinx.coroutines.sync.Mutex
@@ -124,8 +125,6 @@ object TripTelemetryRecorder {
         val now = System.currentTimeMillis()
         mutate(tripId) {
             it.copy(
-                // A blocked FGS start is a recovery attempt/incident, not a confirmed
-                // tracking recovery. recoveryCount is reserved for confirmed restores.
                 assistedRecoveryCount = it.assistedRecoveryCount + 1,
                 fgsBlockedCount = it.fgsBlockedCount + 1,
                 lastRecoveryAt = now,
@@ -224,6 +223,9 @@ object TripTelemetryRecorder {
         val workspace = UrbanRuntime.workspace(context)
         val cloudTripId = "${identity.installationId}_$tripId"
         val cloudPath = UrbanCloudPaths.tripTelemetryPath(workspace, cloudTripId)
+        val readinessEvidence = FieldReadiness.readEvidenceJson(context, tripId)?.let { json ->
+            runCatching { gson.fromJson(json, Map::class.java) }.getOrNull()
+        }
         val payload = mapOf(
             "schemaVersion" to telemetry.schemaVersion,
             "tripId" to telemetry.tripId,
@@ -231,6 +233,7 @@ object TripTelemetryRecorder {
             "startedAt" to telemetry.startedAt,
             "finishedAt" to telemetry.finishedAt,
             "updatedAt" to telemetry.updatedAt,
+            "readiness" to readinessEvidence,
             "battery" to mapOf(
                 "samples" to telemetry.batterySampleCount,
                 "startPct" to telemetry.batteryStartPct,
@@ -296,7 +299,7 @@ object TripTelemetryRecorder {
                 priority = 2
             )
         )
-        Log.i(TAG, "TELEMETRY_ENQUEUED trip=$tripId isolatedFromCoreSync=true cloudPath=$cloudPath")
+        Log.i(TAG, "TELEMETRY_ENQUEUED trip=$tripId isolatedFromCoreSync=true cloudPath=$cloudPath readiness=${readinessEvidence != null}")
     }
 
     private suspend fun mutate(tripId: Long, transform: (TripTelemetry) -> TripTelemetry) {
