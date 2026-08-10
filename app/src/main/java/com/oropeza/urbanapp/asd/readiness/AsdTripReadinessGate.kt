@@ -33,6 +33,15 @@ fun AsdTripReadinessGate(
     var gpsCheck by remember(tripId) { mutableStateOf<ReadinessCheck?>(null) }
     var report by remember(tripId) { mutableStateOf(FieldReadiness.evaluate(context)) }
 
+    val trackingThisTrip = trackingMetrics.active && trackingMetrics.tripId == tripId
+
+    fun missingIdentityFields(): List<String> = buildList {
+        if (trip?.routeName.isNullOrBlank()) add("ruta")
+        if (trip?.aforador.isNullOrBlank()) add("operador")
+        if (trip?.deviceNumber.isNullOrBlank()) add("equipo")
+        if (trip?.direction.isNullOrBlank()) add("sentido")
+    }
+
     fun composeReport(): FieldReadinessReport {
         val base = FieldReadiness.evaluate(context)
         val syncCheck = if (pendingSync >= 25) {
@@ -40,12 +49,7 @@ fun AsdTripReadinessGate(
         } else {
             ReadinessCheck("SYNC_BACKLOG", "Pendientes de sincronización", ReadinessSeverity.PASS, if (pendingSync == 0) "No hay deuda de sincronización pendiente." else "La cola local tiene pocos elementos y puede continuar operando normalmente.", pendingSync.toString())
         }
-        val missing = buildList {
-            if (trip?.routeName.isNullOrBlank()) add("ruta")
-            if (trip?.aforador.isNullOrBlank()) add("operador")
-            if (trip?.deviceNumber.isNullOrBlank()) add("equipo")
-            if (trip?.direction.isNullOrBlank()) add("sentido")
-        }
+        val missing = missingIdentityFields()
         val identityCheck = if (missing.isEmpty()) {
             ReadinessCheck("TRIP_IDENTITY", "Identidad del levantamiento", ReadinessSeverity.PASS, "Ruta, operador, equipo y sentido están identificados.", "Completa")
         } else {
@@ -58,6 +62,10 @@ fun AsdTripReadinessGate(
     fun logReport() {
         Log.i(TAG, "PREFLIGHT_EVALUATED trip=$tripId version=${FieldReadiness.VERSION} state=${report.state} blockers=${report.blockers.size} warnings=${report.warnings.size} passed=${report.passed.size}")
         report.checks.forEach { check -> Log.i(TAG, "PREFLIGHT_CHECK trip=$tripId id=${check.id} severity=${check.severity} value=${check.value ?: "NONE"}") }
+        val missing = missingIdentityFields()
+        if (missing.isNotEmpty()) {
+            Log.w(TAG, "PREFLIGHT_IDENTITY_MISSING trip=$tripId fields=${missing.joinToString(",")}")
+        }
     }
 
     fun refresh(probeGps: Boolean = true) {
@@ -71,15 +79,19 @@ fun AsdTripReadinessGate(
                     fix.accM <= 25.0 -> ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.PASS, "Se obtuvo un fix GPS utilizable antes de iniciar.", "±${fix.accM.toInt()} m")
                     else -> ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.WARNING, "El GPS responde, pero la precisión inicial es baja. Esperar unos segundos puede mejorarla.", "±${fix.accM.toInt()} m")
                 }
-                report = composeReport()
-                logReport()
+                if (!accepted && !trackingThisTrip) {
+                    report = composeReport()
+                    logReport()
+                }
             }
         }
     }
 
-    LaunchedEffect(tripId, trip, pendingSync) { refresh(probeGps = gpsCheck == null) }
-
-    val trackingThisTrip = trackingMetrics.active && trackingMetrics.tripId == tripId
+    LaunchedEffect(tripId, trip, pendingSync, accepted, trackingThisTrip) {
+        if (!accepted && !trackingThisTrip && trip?.endTime == null) {
+            refresh(probeGps = gpsCheck == null)
+        }
+    }
 
     when {
         trip == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
