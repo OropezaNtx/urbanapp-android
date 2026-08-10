@@ -13,6 +13,7 @@ import { logCloudCompleteness } from "./cloudCompleteness";
 import { logWebCompleteness } from "./webCompleteness";
 import { logTripQuality } from "./qualityEngine";
 import { logOperationalAnalytics } from "./operationalAnalytics";
+import { enrichOperationalAnalyticsWithTelemetry } from "./telemetryAnalytics";
 
 const ORG_ID = import.meta.env.VITE_URBAN_ORG_ID || "afora";
 const PROJECT_ID = import.meta.env.VITE_URBAN_PROJECT_ID || "urban_operations";
@@ -91,6 +92,11 @@ function tripSubcollection(tripDocId, subcollectionName) {
   return collection(db, "asd_organizations", ORG_ID, "projects", PROJECT_ID, "trips", String(tripDocId), subcollectionName);
 }
 
+function tripSubdoc(tripDocId, subcollectionName, documentId) {
+  if (USE_LEGACY) return doc(db, "asd_trips", String(tripDocId), subcollectionName, documentId);
+  return doc(db, "asd_organizations", ORG_ID, "projects", PROJECT_ID, "trips", String(tripDocId), subcollectionName, documentId);
+}
+
 function mapDocs(snapshot) {
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
@@ -135,6 +141,21 @@ export async function fetchTripTrackChunks(tripDocId) {
   return mapDocs(snap).map((d) => ({ source: "cloud/track_chunks", ...d }));
 }
 
+export async function fetchTripTelemetry(tripDocId) {
+  if (USE_LEGACY) return null;
+  const path = `${subcollectionPath(tripDocId, "telemetry")}/summary`;
+  try {
+    const snap = await tracedRead(
+      "FETCH_TRIP_TELEMETRY",
+      path,
+      () => getDoc(tripSubdoc(tripDocId, "telemetry", "summary"))
+    );
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchTripTrackSummary(tripDocId) {
   if (!USE_LEGACY) return [];
   const path = subcollectionPath(tripDocId, "track_summary");
@@ -174,6 +195,7 @@ export async function fetchTripDetail(tripDocId, tripId) {
   const primaryReads = [
     fetchTripEvents(tripDocId).catch(() => []),
     fetchTripTrackChunks(tripDocId).catch(() => []),
+    fetchTripTelemetry(tripDocId).catch(() => null),
   ];
 
   const legacyReads = USE_LEGACY
@@ -183,7 +205,7 @@ export async function fetchTripDetail(tripDocId, tripId) {
       ]
     : [Promise.resolve([]), Promise.resolve([])];
 
-  const [events, trackChunks, backupEvents, trackSummary] = await Promise.all([
+  const [events, trackChunks, telemetry, backupEvents, trackSummary] = await Promise.all([
     ...primaryReads,
     ...legacyReads,
   ]);
@@ -208,11 +230,22 @@ export async function fetchTripDetail(tripDocId, tripId) {
     events: resolvedEvents,
     trackChunks: resolvedTrack,
   });
-  const operationalAnalytics = logOperationalAnalytics({
+  const baseOperationalAnalytics = logOperationalAnalytics({
     tripDocId,
     trip,
     events: resolvedEvents,
     trackChunks: resolvedTrack,
+  });
+  const operationalAnalytics = enrichOperationalAnalyticsWithTelemetry(baseOperationalAnalytics, telemetry);
+
+  webIntegrity("WEB_TELEMETRY_STATE", {
+    tripDocId,
+    available: Boolean(telemetry),
+    batterySamples: telemetry?.battery?.samples ?? 0,
+    heartbeatSamples: telemetry?.heartbeat?.samples ?? 0,
+    networkSamples: telemetry?.network?.samples ?? 0,
+    recoveries: telemetry?.recovery?.count ?? 0,
+    syncRuns: telemetry?.sync?.runs ?? 0,
   });
 
   return {
@@ -221,6 +254,7 @@ export async function fetchTripDetail(tripDocId, tripId) {
     backupEvents,
     trackSummary: resolvedTrack,
     trackChunks,
+    telemetry,
     completeness,
     webCompleteness,
     quality,
