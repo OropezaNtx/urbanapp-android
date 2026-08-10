@@ -8,6 +8,7 @@ import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
+import android.os.PowerManager
 import android.os.StatFs
 import androidx.core.content.ContextCompat
 
@@ -37,7 +38,7 @@ data class FieldReadinessReport(
 }
 
 object FieldReadiness {
-    const val VERSION = "3.3.5A.1"
+    const val VERSION = "3.3.5A.2"
 
     fun evaluate(context: Context): FieldReadinessReport {
         val c = context.applicationContext
@@ -49,7 +50,9 @@ object FieldReadiness {
                 battery(c),
                 storage(c),
                 network(c),
+                notifications(c),
                 background(c),
+                batteryOptimization(c),
             ),
         )
     }
@@ -69,11 +72,8 @@ object FieldReadiness {
         val enabled = try {
             manager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true || manager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true
         } catch (_: Throwable) { false }
-        return if (enabled) {
-            ReadinessCheck("LOCATION_SERVICES", "Servicios de ubicación", ReadinessSeverity.PASS, "Los servicios de ubicación están activos.", "Activos")
-        } else {
-            ReadinessCheck("LOCATION_SERVICES", "Servicios de ubicación", ReadinessSeverity.BLOCKER, "Activa la ubicación del teléfono antes de iniciar el levantamiento.", "Desactivados")
-        }
+        return if (enabled) ReadinessCheck("LOCATION_SERVICES", "Servicios de ubicación", ReadinessSeverity.PASS, "Los servicios de ubicación están activos.", "Activos")
+        else ReadinessCheck("LOCATION_SERVICES", "Servicios de ubicación", ReadinessSeverity.BLOCKER, "Activa la ubicación del teléfono antes de iniciar el levantamiento.", "Desactivados")
     }
 
     private fun battery(context: Context): ReadinessCheck {
@@ -89,46 +89,62 @@ object FieldReadiness {
     }
 
     private fun storage(context: Context): ReadinessCheck {
-        val freeMb = StatFs(context.filesDir.absolutePath).availableBytes / (1024L * 1024L)
-        val severity = when {
-            freeMb < 250L -> ReadinessSeverity.BLOCKER
-            freeMb < 750L -> ReadinessSeverity.WARNING
-            else -> ReadinessSeverity.PASS
+        return try {
+            val freeMb = StatFs(context.filesDir.absolutePath).availableBytes / (1024L * 1024L)
+            val severity = when {
+                freeMb < 250L -> ReadinessSeverity.BLOCKER
+                freeMb < 750L -> ReadinessSeverity.WARNING
+                else -> ReadinessSeverity.PASS
+            }
+            val summary = when (severity) {
+                ReadinessSeverity.BLOCKER -> "Espacio insuficiente para una captura prolongada. Libera almacenamiento antes de iniciar."
+                ReadinessSeverity.WARNING -> "El almacenamiento disponible es reducido para una jornada larga."
+                ReadinessSeverity.PASS -> "Hay espacio local suficiente para continuar capturando offline."
+            }
+            val value = if (freeMb >= 1024L) String.format("%.1f GB libres", freeMb / 1024.0) else "$freeMb MB libres"
+            ReadinessCheck("STORAGE", "Almacenamiento local", severity, summary, value)
+        } catch (_: Throwable) {
+            ReadinessCheck("STORAGE", "Almacenamiento local", ReadinessSeverity.WARNING, "No fue posible verificar el espacio disponible.", "No disponible")
         }
-        val summary = when (severity) {
-            ReadinessSeverity.BLOCKER -> "Espacio insuficiente para una captura prolongada. Libera almacenamiento antes de iniciar."
-            ReadinessSeverity.WARNING -> "El almacenamiento disponible es reducido para una jornada larga."
-            ReadinessSeverity.PASS -> "Hay espacio local suficiente para continuar capturando offline."
-        }
-        val value = if (freeMb >= 1024L) String.format("%.1f GB libres", freeMb / 1024.0) else "$freeMb MB libres"
-        return ReadinessCheck("STORAGE", "Almacenamiento local", severity, summary, value)
     }
 
     private fun network(context: Context): ReadinessCheck {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val capabilities = cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
-        val connected = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
-        val type = when {
-            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "Wi-Fi"
-            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "Datos móviles"
-            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "Ethernet"
-            connected -> "Conectado"
-            else -> "Sin Internet"
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val capabilities = cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+            val connected = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            val type = when {
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "Wi-Fi"
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "Datos móviles"
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "Ethernet"
+                connected -> "Conectado"
+                else -> "Sin Internet"
+            }
+            if (connected) ReadinessCheck("NETWORK", "Conectividad", ReadinessSeverity.PASS, "Internet disponible. La sincronización podrá ejecutarse durante el recorrido.", type)
+            else ReadinessCheck("NETWORK", "Conectividad", ReadinessSeverity.WARNING, "Sin Internet. Puedes trabajar offline; Afora sincronizará cuando vuelva la conexión.", type)
+        } catch (_: Throwable) {
+            ReadinessCheck("NETWORK", "Conectividad", ReadinessSeverity.WARNING, "No fue posible verificar la conectividad. La captura local sigue disponible.", "No disponible")
         }
-        return if (connected) {
-            ReadinessCheck("NETWORK", "Conectividad", ReadinessSeverity.PASS, "Internet disponible. La sincronización podrá ejecutarse durante el recorrido.", type)
-        } else {
-            ReadinessCheck("NETWORK", "Conectividad", ReadinessSeverity.WARNING, "Sin Internet. Puedes trabajar offline; Afora sincronizará cuando vuelva la conexión.", type)
-        }
+    }
+
+    private fun notifications(context: Context): ReadinessCheck {
+        if (android.os.Build.VERSION.SDK_INT < 33) return ReadinessCheck("NOTIFICATIONS", "Notificaciones", ReadinessSeverity.PASS, "El sistema no requiere permiso runtime de notificaciones.", "Disponible")
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        return if (granted) ReadinessCheck("NOTIFICATIONS", "Notificaciones", ReadinessSeverity.PASS, "Afora puede mostrar el estado persistente del tracking.", "Permitidas")
+        else ReadinessCheck("NOTIFICATIONS", "Notificaciones", ReadinessSeverity.WARNING, "Las notificaciones están desactivadas. El tracking puede ser menos visible para el operador.", "Desactivadas")
     }
 
     private fun background(context: Context): ReadinessCheck {
         val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val restricted = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P && manager?.isBackgroundRestricted == true
-        return if (restricted) {
-            ReadinessCheck("BACKGROUND", "Ejecución en segundo plano", ReadinessSeverity.WARNING, "Android restringe actividad en segundo plano. Conviene retirar restricciones de batería para una jornada larga.", "Restringida")
-        } else {
-            ReadinessCheck("BACKGROUND", "Ejecución en segundo plano", ReadinessSeverity.PASS, "No se detectan restricciones generales de segundo plano.", "Disponible")
-        }
+        return if (restricted) ReadinessCheck("BACKGROUND", "Ejecución en segundo plano", ReadinessSeverity.WARNING, "Android restringe actividad en segundo plano. Conviene retirar restricciones de batería para una jornada larga.", "Restringida")
+        else ReadinessCheck("BACKGROUND", "Ejecución en segundo plano", ReadinessSeverity.PASS, "No se detectan restricciones generales de segundo plano.", "Disponible")
+    }
+
+    private fun batteryOptimization(context: Context): ReadinessCheck {
+        val manager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val unrestricted = runCatching { manager?.isIgnoringBatteryOptimizations(context.packageName) == true }.getOrDefault(false)
+        return if (unrestricted) ReadinessCheck("BATTERY_OPTIMIZATION", "Optimización de batería", ReadinessSeverity.PASS, "Afora está exenta de optimización de batería.", "Sin restricción")
+        else ReadinessCheck("BATTERY_OPTIMIZATION", "Optimización de batería", ReadinessSeverity.WARNING, "El sistema puede aplicar optimizaciones de batería. Para jornadas largas se recomienda permitir actividad sin restricciones.", "Activa")
     }
 }
