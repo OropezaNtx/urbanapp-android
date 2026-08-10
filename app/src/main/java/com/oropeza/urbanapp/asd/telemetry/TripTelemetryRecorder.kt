@@ -289,13 +289,13 @@ object TripTelemetryRecorder {
                 entityType = "TELEMETRY",
                 operation = "UPSERT",
                 entityLocalId = tripId,
-                parentTripId = tripId,
+                parentTripId = null,
                 cloudPath = cloudPath,
                 payloadJson = gson.toJson(payload),
                 priority = 2
             )
         )
-        Log.i(TAG, "TELEMETRY_ENQUEUED trip=$tripId cloudPath=$cloudPath")
+        Log.i(TAG, "TELEMETRY_ENQUEUED trip=$tripId isolatedFromCoreSync=true cloudPath=$cloudPath")
     }
 
     private suspend fun mutate(tripId: Long, transform: (TripTelemetry) -> TripTelemetry) {
