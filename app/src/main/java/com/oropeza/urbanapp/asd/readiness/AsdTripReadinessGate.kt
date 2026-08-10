@@ -26,8 +26,8 @@ fun AsdTripReadinessGate(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val trip by AsdGraph.repo.tripFlow(tripId).collectAsState(initial = null)
-    val pointCount by AsdGraph.repo.trackCountFlow(tripId).collectAsState(initial = 0)
     val pendingSync by AsdGraph.repo.syncQueuePendingCountFlow().collectAsState(initial = 0)
+    val trackingMetrics by TrackingService.trackingMetrics.collectAsState()
     val gps = remember { LocationProvider(context) }
     var accepted by rememberSaveable(tripId) { mutableStateOf(false) }
     var gpsCheck by remember(tripId) { mutableStateOf<ReadinessCheck?>(null) }
@@ -79,12 +79,12 @@ fun AsdTripReadinessGate(
 
     LaunchedEffect(tripId, trip, pendingSync) { refresh(probeGps = gpsCheck == null) }
 
-    val alreadyStarted = pointCount > 0 || TrackingService.isRunning
+    val trackingThisTrip = trackingMetrics.active && trackingMetrics.tripId == tripId
 
     when {
         trip == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         trip?.endTime != null -> AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
-        alreadyStarted -> AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
+        trackingThisTrip -> AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
         accepted -> AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
         else -> FieldReadinessDialog(
             report = report,
