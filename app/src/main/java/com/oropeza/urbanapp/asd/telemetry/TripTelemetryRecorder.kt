@@ -124,7 +124,8 @@ object TripTelemetryRecorder {
         val now = System.currentTimeMillis()
         mutate(tripId) {
             it.copy(
-                recoveryCount = it.recoveryCount + 1,
+                // A blocked FGS start is a recovery attempt/incident, not a confirmed
+                // tracking recovery. recoveryCount is reserved for confirmed restores.
                 assistedRecoveryCount = it.assistedRecoveryCount + 1,
                 fgsBlockedCount = it.fgsBlockedCount + 1,
                 lastRecoveryAt = now,
@@ -132,7 +133,7 @@ object TripTelemetryRecorder {
                 updatedAt = now
             )
         }
-        Log.w(TAG, "TELEMETRY_FGS_BLOCKED trip=$tripId gapMs=$gapMs")
+        Log.w(TAG, "TELEMETRY_FGS_BLOCKED trip=$tripId gapMs=$gapMs confirmedRecovery=false")
     }
 
     suspend fun recordSyncItemStarted(runId: String, tripId: Long, startedAt: Long) = mutex.withLock {
