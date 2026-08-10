@@ -2,6 +2,7 @@ package com.oropeza.urbanapp.asd.data.local
 
 import android.content.Context
 import androidx.room.Room
+import com.oropeza.urbanapp.asd.telemetry.TelemetryMigrations
 
 object DbProvider {
 
@@ -38,7 +39,8 @@ object DbProvider {
                 Migrations.MIGRATION_19_20,
                 Migrations.MIGRATION_20_21,
                 GpsOperationalMigrations.MIGRATION_21_22,
-                SyncQueueIntegrityMigrations.MIGRATION_22_23
+                SyncQueueIntegrityMigrations.MIGRATION_22_23,
+                TelemetryMigrations.MIGRATION_23_24
             )
             .build()
     }
