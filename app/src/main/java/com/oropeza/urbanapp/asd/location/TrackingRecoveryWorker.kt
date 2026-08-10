@@ -16,14 +16,6 @@ import com.oropeza.urbanapp.asd.telemetry.TripTelemetryRecorder
 import com.oropeza.urbanapp.asd.telemetry.TripTelemetryWorker
 import java.util.concurrent.TimeUnit
 
-/**
- * Watchdog persistente del tracking ASD.
- *
- * Mantiene una cadena de comprobaciones mientras exista exactamente un recorrido
- * activo. Si Android impide recuperar silenciosamente el FGS, entra en estado
- * ASSISTED_RECOVERY_PENDING y reduce la supervisión hasta que el operador toque
- * la notificación de recuperación.
- */
 class TrackingRecoveryWorker(
     appContext: Context,
     workerParams: WorkerParameters
@@ -41,6 +33,7 @@ class TrackingRecoveryWorker(
         private const val PREF_LAST_HEARTBEAT_MS = "last_heartbeat_ms"
         private const val PREF_ASSISTED_PENDING = "assisted_recovery_pending"
         private const val PREF_ASSISTED_TRIP_ID = "assisted_recovery_trip_id"
+        private const val PREF_TELEMETRY_TRIP_ID = "telemetry_trip_id"
 
         private const val STALE_HEARTBEAT_MS = 30_000L
         private const val HEALTHY_CHECK_DELAY_MS = 120_000L
@@ -51,6 +44,8 @@ class TrackingRecoveryWorker(
         fun arm(context: Context, tripId: Long) {
             if (tripId <= 0L) return
             val appContext = context.applicationContext
+            appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putLong(PREF_TELEMETRY_TRIP_ID, tripId).apply()
             WorkManager.getInstance(appContext).cancelAllWorkByTag(WATCHDOG_TAG)
             val hadPendingRecovery = clearAssistedPending(appContext, "tracking_active")
             if (hadPendingRecovery) TrackingRecoveryNotification.cancel(appContext, "tracking_active")
@@ -61,20 +56,18 @@ class TrackingRecoveryWorker(
         fun disarm(context: Context, reason: String) {
             val appContext = context.applicationContext
             val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val tripId = prefs.getLong(PREF_TRIP_ID, -1L)
+            val tripId = prefs.getLong(PREF_TELEMETRY_TRIP_ID, prefs.getLong(PREF_TRIP_ID, -1L))
             WorkManager.getInstance(appContext).cancelAllWorkByTag(WATCHDOG_TAG)
             clearAssistedPending(appContext, reason)
             TrackingRecoveryNotification.cancel(appContext, reason)
             if (tripId > 0L) TripTelemetryWorker.finish(appContext, tripId)
+            prefs.edit().remove(PREF_TELEMETRY_TRIP_ID).apply()
             Log.i(TAG, "WATCHDOG_DISARMED reason=$reason")
         }
 
         private fun markAssistedPending(context: Context, tripId: Long) {
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(PREF_ASSISTED_PENDING, true)
-                .putLong(PREF_ASSISTED_TRIP_ID, tripId)
-                .apply()
+                .edit().putBoolean(PREF_ASSISTED_PENDING, true).putLong(PREF_ASSISTED_TRIP_ID, tripId).apply()
             Log.w(TAG, "ASSISTED_RECOVERY_PENDING trip=$tripId")
         }
 
@@ -91,10 +84,7 @@ class TrackingRecoveryWorker(
         private fun enqueueGeneration(context: Context, tripId: Long, generation: Int, delayMs: Long, reason: String) {
             val input = Data.Builder().putLong(INPUT_TRIP_ID, tripId).putInt(INPUT_GENERATION, generation).build()
             val request = OneTimeWorkRequestBuilder<TrackingRecoveryWorker>()
-                .setInputData(input)
-                .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
-                .addTag(WATCHDOG_TAG)
-                .build()
+                .setInputData(input).setInitialDelay(delayMs, TimeUnit.MILLISECONDS).addTag(WATCHDOG_TAG).build()
             WorkManager.getInstance(context.applicationContext).enqueue(request)
             Log.i(TAG, "WATCHDOG_ARMED trip=$tripId generation=$generation delayMs=$delayMs reason=$reason workId=${request.id}")
         }
@@ -124,8 +114,7 @@ class TrackingRecoveryWorker(
             val assistedTripId = prefs.getLong(PREF_ASSISTED_TRIP_ID, -1L)
             val activeTrips = AsdGraph.db.tripDao().getAllOnce().filter { it.endTime == null }
             val activeTrip = activeTrips.singleOrNull()
-            val identityValid = markerActive && markedTripId > 0L && markedTripId == expectedTripId &&
-                activeTrip != null && activeTrip.tripId == markedTripId
+            val identityValid = markerActive && markedTripId > 0L && markedTripId == expectedTripId && activeTrip != null && activeTrip.tripId == markedTripId
 
             if (!identityValid) {
                 Log.w(TAG, "WATCHDOG_DISARMED reason=identity_mismatch expectedTripId=$expectedTripId markerActive=$markerActive markedTripId=$markedTripId activeTripCount=${activeTrips.size} activeTripId=${activeTrip?.tripId}")
@@ -178,11 +167,8 @@ class TrackingRecoveryWorker(
                 ListenableWorker.Result.success()
             } catch (e: Exception) {
                 val blockedBySystem = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && e.javaClass.simpleName == "ForegroundServiceStartNotAllowedException"
-                if (blockedBySystem) {
-                    Log.e(TAG, "WATCHDOG_FGS_BLOCKED trip=$markedTripId generation=$generation", e)
-                } else {
-                    Log.e(TAG, "WATCHDOG_FGS_BLOCKED trip=$markedTripId generation=$generation error=${e.javaClass.simpleName}", e)
-                }
+                if (blockedBySystem) Log.e(TAG, "WATCHDOG_FGS_BLOCKED trip=$markedTripId generation=$generation", e)
+                else Log.e(TAG, "WATCHDOG_FGS_BLOCKED trip=$markedTripId generation=$generation error=${e.javaClass.simpleName}", e)
                 TripTelemetryRecorder.recordFgsBlocked(markedTripId, heartbeatAgeMs)
                 markAssistedPending(applicationContext, markedTripId)
                 TrackingRecoveryNotification.show(applicationContext, markedTripId, heartbeatAgeMs)
