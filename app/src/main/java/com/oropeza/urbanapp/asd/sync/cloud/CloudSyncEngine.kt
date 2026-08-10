@@ -5,7 +5,9 @@ import com.google.gson.JsonParser
 import com.oropeza.urbanapp.asd.data.local.AsdSyncQueueItem
 import com.oropeza.urbanapp.asd.data.repository.AsdRepository
 import com.oropeza.urbanapp.asd.telemetry.TripTelemetryRecorder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlin.math.min
 import kotlin.math.pow
@@ -53,6 +55,26 @@ class CloudSyncEngine(
                 Log.i(INTEGRITY_TAG, "SYNC_ITEM_UPLOADED runId=$runId queueId=${item.id} type=${item.entityType} elapsedMs=${System.currentTimeMillis() - startedAt} cloudPath=${item.cloudPath}")
             }
             cloudResult
+        } catch (e: CancellationException) {
+            val now = System.currentTimeMillis()
+            withContext(NonCancellable + Dispatchers.IO) {
+                repository.updateSyncItem(
+                    item.copy(
+                        status = "FAILED",
+                        lastError = "Sync cancelled; retry scheduled",
+                        nextAttemptAt = 0L,
+                        updatedAt = now
+                    )
+                )
+                if (telemetryEligible) {
+                    runCatching { TripTelemetryRecorder.recordSyncFailure(tripId, "CANCELLED_REQUEUED", now) }
+                }
+            }
+            Log.w(
+                INTEGRITY_TAG,
+                "SYNC_ITEM_CANCELLED runId=$runId queueId=${item.id} type=${item.entityType} result=REQUEUED cloudPath=${item.cloudPath}"
+            )
+            throw e
         } catch (e: Exception) {
             Log.e(INTEGRITY_TAG, "SYNC_ITEM_FAILED runId=$runId queueId=${item.id} type=${item.entityType} stage=UPLOAD exception=${e.javaClass.simpleName}:${e.message} cloudPath=${item.cloudPath}", e)
             CloudSyncResult.RetryableFailure(e.message ?: "Unknown exception")
@@ -70,7 +92,14 @@ class CloudSyncEngine(
         val now = System.currentTimeMillis()
         return when (result) {
             is CloudSyncResult.Success -> {
-                repository.markSyncItemSynced(item.id)
+                repository.updateSyncItem(
+                    item.copy(
+                        status = "SYNCED",
+                        lastError = null,
+                        nextAttemptAt = 0L,
+                        updatedAt = now
+                    )
+                )
                 val elapsedMs = now - startedAt
                 if (telemetryEligible) {
                     TripTelemetryRecorder.recordSyncConfirmed(
