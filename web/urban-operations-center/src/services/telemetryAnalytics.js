@@ -72,7 +72,7 @@ export function enrichOperationalAnalyticsWithTelemetry(analytics, telemetry) {
       syncActivitySpanMs: activitySpanMs,
       lastSyncRunStartedAt: sync.lastRunStartedAt ?? null,
       lastSyncRunFinishedAt: sync.lastRunFinishedAt ?? null,
-      lastSyncRunDurationMs,
+      lastSyncRunDurationMs: lastRunDurationMs,
       averageSyncRunDurationMs: sync.averageRunDurationMs ?? null,
       maxSyncRunDurationMs: sync.maxRunDurationMs ?? null,
       lastResult: sync.lastResult ?? null,
