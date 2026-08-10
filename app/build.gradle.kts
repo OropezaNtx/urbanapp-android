@@ -91,6 +91,12 @@ android {
     }
 }
 
+// Keep Room migration history auditable. KSP writes one JSON schema per DB version
+// under app/schemas so migrations such as 23 -> 24 can be version-controlled.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     // Core
     implementation("androidx.core:core-ktx:1.12.0")
