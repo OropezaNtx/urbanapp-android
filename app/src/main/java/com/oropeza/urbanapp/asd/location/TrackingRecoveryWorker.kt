@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.telemetry.TripTelemetryRecorder
+import com.oropeza.urbanapp.asd.telemetry.TripTelemetrySystemSampler
 import com.oropeza.urbanapp.asd.telemetry.TripTelemetryWorker
 import java.util.concurrent.TimeUnit
 
@@ -126,6 +127,7 @@ class TrackingRecoveryWorker(
             }
 
             TripTelemetryRecorder.ensureStarted(applicationContext, markedTripId)
+            TripTelemetrySystemSampler.sample(applicationContext, markedTripId)
             val now = System.currentTimeMillis()
             val heartbeatAgeMs = if (lastHeartbeatMs > 0L) (now - lastHeartbeatMs).coerceAtLeast(0L) else Long.MAX_VALUE
 
