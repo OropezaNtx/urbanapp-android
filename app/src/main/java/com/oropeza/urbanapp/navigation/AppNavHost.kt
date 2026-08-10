@@ -12,8 +12,8 @@ import com.oropeza.urbanapp.ui.screens.LoginScreen
 import com.oropeza.urbanapp.ui.screens.SignUpScreen
 import com.oropeza.urbanapp.asd.ui.viewmodel.AsdMapScreen
 import com.oropeza.urbanapp.asd.ui.viewmodel.AsdNewTripScreen
-import com.oropeza.urbanapp.asd.ui.viewmodel.AsdTripDetailScreen
 import com.oropeza.urbanapp.asd.ui.viewmodel.AsdTripListScreen
+import com.oropeza.urbanapp.asd.readiness.AsdTripReadinessGate
 import com.oropeza.urbanapp.cc.ui.CcSessionListScreen
 import com.oropeza.urbanapp.cc.ui.CcNewSessionScreen
 import com.oropeza.urbanapp.cc.ui.CcSessionDetailScreen
@@ -79,7 +79,7 @@ fun AppNavHost(navController: NavHostController) {
             arguments = listOf(navArgument("tripId") { type = NavType.LongType })
         ) { backStack ->
             val tripId = backStack.arguments?.getLong("tripId") ?: 0L
-            AsdTripDetailScreen(
+            AsdTripReadinessGate(
                 tripId = tripId,
                 onBack = { navController.popBackStack() },
                 onOpenMap = { id -> navController.navigate("asd_map/$id") }
