@@ -1,4 +1,5 @@
 import { webIntegrity } from './webIntegrity';
+import { buildOperationalHealth } from './operationalHealth';
 
 export const OPERATIONAL_INTELLIGENCE_VERSION = '3.3.0';
 
@@ -101,7 +102,7 @@ function finalizeGroup(group) {
 export function buildOperationalIntelligence(records, { now = Date.now() } = {}) {
   const samples = (records || []).map(({ trip, detail }) => {
     const analytics = detail?.operationalAnalytics || {};
-    const health = detail?.operationalHealth || null;
+    const health = detail?.operationalHealth || buildOperationalHealth({ tripDocId: trip?.id, analytics });
     const quality = detail?.quality || null;
     const gps = analytics.gps || {};
     const device = analytics.device || {};
@@ -125,11 +126,11 @@ export function buildOperationalIntelligence(records, { now = Date.now() } = {})
       operationalState,
       healthScore,
       qualityScore: quality?.score ?? null,
-      gpsState: health?.domains?.gps?.state || (closed ? 'NOT_AVAILABLE' : 'IN_PROGRESS'),
-      deviceState: health?.domains?.device?.state || 'NOT_AVAILABLE',
-      networkState: health?.domains?.network?.state || 'NOT_AVAILABLE',
-      recoveryState: health?.domains?.recovery?.state || 'NOT_AVAILABLE',
-      syncState: health?.domains?.sync?.state || 'NOT_AVAILABLE',
+      gpsState: closed ? (health?.domains?.gps?.state || 'NOT_AVAILABLE') : 'IN_PROGRESS',
+      deviceState: closed ? (health?.domains?.device?.state || 'NOT_AVAILABLE') : 'IN_PROGRESS',
+      networkState: closed ? (health?.domains?.network?.state || 'NOT_AVAILABLE') : 'IN_PROGRESS',
+      recoveryState: closed ? (health?.domains?.recovery?.state || 'NOT_AVAILABLE') : 'IN_PROGRESS',
+      syncState: closed ? (health?.domains?.sync?.state || 'NOT_AVAILABLE') : 'IN_PROGRESS',
       telemetryAvailable: Boolean(analytics.telemetry),
       gpsCoveragePct: gps.coveragePct ?? null,
       averageAccuracyM: gps.averageAccuracyM ?? null,
@@ -151,7 +152,7 @@ export function buildOperationalIntelligence(records, { now = Date.now() } = {})
       operator: label(trip?.aforador ?? trip?.observerName, 'Operador sin identificar'),
       device: label(trip?.deviceNumber ?? trip?.deviceInstallationId, 'Dispositivo sin identificar'),
       vehicle: label(trip?.vehicleEco ?? trip?.plateNumber, 'Unidad sin identificar'),
-      issues: health?.issues || [],
+      issues: closed ? (health?.issues || []) : [],
     };
   });
 
