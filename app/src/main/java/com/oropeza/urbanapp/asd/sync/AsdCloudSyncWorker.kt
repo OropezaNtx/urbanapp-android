@@ -17,13 +17,6 @@ import com.oropeza.urbanapp.asd.telemetry.TripTelemetryRecorder
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
-/**
- * Procesa la cola cloud sin bloquear las operaciones locales de ASD.
- *
- * Sprint 2.2.3: WorkManager ya no aplica un retry infinito por elementos que
- * tienen su propio nextAttemptAt. El backoff normal vive en sync_queue y un
- * RetryKick separado despierta un nuevo drenado cuando corresponde.
- */
 class AsdCloudSyncWorker(
     appContext: Context,
     workerParams: WorkerParameters
@@ -39,20 +32,15 @@ class AsdCloudSyncWorker(
 
         fun enqueue(context: Context, cancelDeferredRetry: Boolean = true) {
             val appContext = context.applicationContext
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
+            val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
             val request = OneTimeWorkRequestBuilder<AsdCloudSyncWorker>()
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .addTag("ASD_CLOUD_SYNC_V2")
                 .build()
-
             val workManager = WorkManager.getInstance(appContext)
             workManager.cancelUniqueWork(LEGACY_WORK_NAME)
             if (cancelDeferredRetry) AsdCloudSyncRetryKickWorker.cancel(appContext)
-
             Log.i(INTEGRITY_TAG, "SYNC_WORK_REQUESTED requestedWorkId=${request.id} uniqueName=$WORK_NAME requiresNetwork=true policy=KEEP")
             val operation = workManager.enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.KEEP, request)
             operation.result.addListener(
@@ -64,8 +52,7 @@ class AsdCloudSyncWorker(
                     } catch (e: Exception) {
                         Log.e(INTEGRITY_TAG, "SYNC_WORK_ENQUEUE_FAILED requestedWorkId=${request.id} error=${e.javaClass.simpleName}:${e.message}", e)
                     }
-                },
-                DIRECT_EXECUTOR
+                }, DIRECT_EXECUTOR
             )
         }
 
@@ -86,8 +73,7 @@ class AsdCloudSyncWorker(
                     } catch (e: Exception) {
                         Log.e(INTEGRITY_TAG, "SYNC_UNIQUE_WORK_STATE_FAILED requestedWorkId=$requestedWorkId error=${e.javaClass.simpleName}:${e.message}", e)
                     }
-                },
-                DIRECT_EXECUTOR
+                }, DIRECT_EXECUTOR
             )
         }
     }
@@ -126,9 +112,13 @@ class AsdCloudSyncWorker(
                 }
             }
 
-            // 3.2B: agrega una sola proyección TELEMETRY por trip tocado en este drenado.
-            // CloudSyncEngine ignora TELEMETRY como fuente de métricas para evitar recursión.
-            TripTelemetryRecorder.flushTouchedSyncTelemetry(applicationContext)
+            val telemetryFlushed = TripTelemetryRecorder.flushTouchedSyncTelemetry(applicationContext)
+            if (telemetryFlushed > 0 && totalSynced < MAX_ITEMS_PER_RUN) {
+                batchNumber++
+                val telemetryConfirmed = engine.processNextBatch(batchNumber)
+                totalSynced += telemetryConfirmed
+                Log.i(INTEGRITY_TAG, "SYNC_TELEMETRY_DRAIN runId=$runId enqueued=$telemetryFlushed confirmed=$telemetryConfirmed")
+            }
 
             val outstanding = AsdGraph.repo.getOutstandingSyncCount()
             val elapsedMs = System.currentTimeMillis() - startedAt
