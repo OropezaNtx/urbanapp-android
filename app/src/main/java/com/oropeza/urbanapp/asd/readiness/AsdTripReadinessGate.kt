@@ -31,6 +31,7 @@ fun AsdTripReadinessGate(
     val gps = remember { LocationProvider(context) }
     var accepted by rememberSaveable(tripId) { mutableStateOf(false) }
     var gpsCheck by remember(tripId) { mutableStateOf<ReadinessCheck?>(null) }
+    var gpsProbeStarted by remember(tripId) { mutableStateOf(false) }
     var report by remember(tripId) { mutableStateOf(FieldReadiness.evaluate(context)) }
 
     val trackingThisTrip = trackingMetrics.active && trackingMetrics.tripId == tripId
@@ -45,7 +46,7 @@ fun AsdTripReadinessGate(
     fun composeReport(): FieldReadinessReport {
         val base = FieldReadiness.evaluate(context)
         val syncCheck = if (pendingSync >= 25) {
-            ReadinessCheck("SYNC_BACKLOG", "Pendientes de sincronización", ReadinessSeverity.WARNING, "Existe un backlog importante de datos locales. Puedes continuar offline, pero conviene sincronizar antes de acumular otra jornada.", pendingSync.toString())
+            ReadinessCheck("SYNC_BACKLOG", "Pendientes de sincronización", ReadinessSeverity.WARNING, "Existe un backlog importante de datos locales. Afora puede continuar offline y lo reportará a supervisión.", pendingSync.toString())
         } else {
             ReadinessCheck("SYNC_BACKLOG", "Pendientes de sincronización", ReadinessSeverity.PASS, if (pendingSync == 0) "No hay deuda de sincronización pendiente." else "La cola local tiene pocos elementos y puede continuar operando normalmente.", pendingSync.toString())
         }
@@ -53,43 +54,54 @@ fun AsdTripReadinessGate(
         val identityCheck = if (missing.isEmpty()) {
             ReadinessCheck("TRIP_IDENTITY", "Identidad del levantamiento", ReadinessSeverity.PASS, "Ruta, operador, equipo y sentido están identificados.", "Completa")
         } else {
-            ReadinessCheck("TRIP_IDENTITY", "Identidad del levantamiento", ReadinessSeverity.WARNING, "Faltan datos de identificación: ${missing.joinToString(", ")}. Conviene corregirlos para auditoría y análisis.", "${missing.size} faltante(s)")
+            ReadinessCheck("TRIP_IDENTITY", "Identidad del levantamiento", ReadinessSeverity.WARNING, "Faltan datos de identificación: ${missing.joinToString(", ")}. Se conserva como evidencia para supervisión.", "${missing.size} faltante(s)")
         }
-        val gpsResult = gpsCheck ?: ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.WARNING, "Aún no se ha verificado un fix GPS real.", "Pendiente")
+        val gpsResult = gpsCheck ?: ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.WARNING, "La verificación del fix inicial continúa en segundo plano.", "Pendiente")
         return base.copy(checks = base.checks + listOf(gpsResult, syncCheck, identityCheck))
     }
 
-    fun logReport() {
-        Log.i(TAG, "PREFLIGHT_EVALUATED trip=$tripId version=${FieldReadiness.VERSION} state=${report.state} blockers=${report.blockers.size} warnings=${report.warnings.size} passed=${report.passed.size}")
-        report.checks.forEach { check -> Log.i(TAG, "PREFLIGHT_CHECK trip=$tripId id=${check.id} severity=${check.severity} value=${check.value ?: "NONE"}") }
+    fun persistAndLog(current: FieldReadinessReport) {
+        FieldReadiness.persistEvidence(context, tripId, current)
+        Log.i(TAG, "PREFLIGHT_EVALUATED trip=$tripId version=${FieldReadiness.VERSION} state=${current.state} blockers=${current.blockers.size} warnings=${current.warnings.size} passed=${current.passed.size}")
+        current.checks.forEach { check -> Log.i(TAG, "PREFLIGHT_CHECK trip=$tripId id=${check.id} severity=${check.severity} value=${check.value ?: "NONE"}") }
         val missing = missingIdentityFields()
-        if (missing.isNotEmpty()) {
-            Log.w(TAG, "PREFLIGHT_IDENTITY_MISSING trip=$tripId fields=${missing.joinToString(",")}")
-        }
+        if (missing.isNotEmpty()) Log.w(TAG, "PREFLIGHT_IDENTITY_MISSING trip=$tripId fields=${missing.joinToString(",")}")
     }
 
-    fun refresh(probeGps: Boolean = true) {
-        report = composeReport()
-        logReport()
-        if (probeGps && report.blockers.none { it.id == "LOCATION_PERMISSION" || it.id == "LOCATION_SERVICES" }) {
-            scope.launch {
-                val fix = runCatching { gps.getBestFixForStartTrip(timeoutMs = 4_000L) }.getOrNull()
-                gpsCheck = when {
-                    fix == null || fix.lat == 0.0 || fix.lon == 0.0 || fix.status == "NO_FIX" -> ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.WARNING, "No se obtuvo un fix GPS utilizable todavía. Puedes esperar y revisar de nuevo.", "Sin fix")
-                    fix.accM <= 25.0 -> ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.PASS, "Se obtuvo un fix GPS utilizable antes de iniciar.", "±${fix.accM.toInt()} m")
-                    else -> ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.WARNING, "El GPS responde, pero la precisión inicial es baja. Esperar unos segundos puede mejorarla.", "±${fix.accM.toInt()} m")
-                }
-                if (!accepted && !trackingThisTrip) {
-                    report = composeReport()
-                    logReport()
-                }
+    fun probeGpsSilently() {
+        if (gpsProbeStarted) return
+        gpsProbeStarted = true
+        scope.launch {
+            val fix = runCatching { gps.getBestFixForStartTrip(timeoutMs = 4_000L) }.getOrNull()
+            gpsCheck = when {
+                fix == null || fix.lat == 0.0 || fix.lon == 0.0 || fix.status == "NO_FIX" -> ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.WARNING, "No se obtuvo un fix GPS utilizable durante el preflight silencioso.", "Sin fix")
+                fix.accM <= 25.0 -> ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.PASS, "Se obtuvo un fix GPS utilizable al inicio.", "±${fix.accM.toInt()} m")
+                else -> ReadinessCheck("GPS_FIX", "Señal GPS inicial", ReadinessSeverity.WARNING, "El GPS respondió con precisión inicial reducida. Se conserva para análisis de calidad.", "±${fix.accM.toInt()} m")
             }
+            report = composeReport()
+            persistAndLog(report)
+            Log.i(TAG, "PREFLIGHT_GPS_EVIDENCE trip=$tripId severity=${gpsCheck?.severity} value=${gpsCheck?.value}")
         }
     }
 
-    LaunchedEffect(tripId, trip, pendingSync, accepted, trackingThisTrip) {
-        if (!accepted && !trackingThisTrip && trip?.endTime == null) {
-            refresh(probeGps = gpsCheck == null)
+    fun evaluateAndContinue() {
+        report = composeReport()
+        persistAndLog(report)
+
+        if (report.canStart) {
+            if (!accepted) {
+                accepted = true
+                Log.i(TAG, "PREFLIGHT_SILENT_ACCEPTED trip=$tripId state=${report.state} warnings=${report.warnings.size}")
+            }
+            probeGpsSilently()
+        } else {
+            Log.w(TAG, "PREFLIGHT_BLOCKED trip=$tripId blockers=${report.blockers.joinToString(",") { it.id }}")
+        }
+    }
+
+    LaunchedEffect(tripId, trip?.id, trackingThisTrip) {
+        if (trip != null && trip?.endTime == null && !trackingThisTrip && !accepted) {
+            evaluateAndContinue()
         }
     }
 
@@ -99,18 +111,9 @@ fun AsdTripReadinessGate(
         trackingThisTrip -> AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
         accepted -> AsdTripDetailScreen(tripId = tripId, onBack = onBack, onOpenMap = onOpenMap)
         else -> FieldReadinessDialog(
-            report = report,
-            onRefresh = { refresh(probeGps = true) },
-            onStart = {
-                report = composeReport()
-                logReport()
-                if (report.canStart) {
-                    accepted = true
-                    Log.i(TAG, "PREFLIGHT_ACCEPTED trip=$tripId state=${report.state} warnings=${report.warnings.size}")
-                } else {
-                    Log.w(TAG, "PREFLIGHT_BLOCKED trip=$tripId blockers=${report.blockers.joinToString(",") { it.id }}")
-                }
-            },
+            report = report.copy(checks = report.blockers),
+            onRefresh = { evaluateAndContinue() },
+            onStart = { evaluateAndContinue() },
             onDismiss = {
                 Log.i(TAG, "PREFLIGHT_CANCELLED trip=$tripId")
                 onBack()
