@@ -9,7 +9,6 @@ import android.os.BatteryManager
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
 import androidx.work.ListenableWorker
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -31,22 +30,26 @@ class TripTelemetryWorker(
         private const val SAMPLE_INTERVAL_MS = 60_000L
         private const val CLOUD_FLUSH_EVERY_GENERATIONS = 5
 
-        private fun workName(tripId: Long) = "ASD_TRIP_TELEMETRY_$tripId"
+        private fun tripTag(tripId: Long) = "ASD_TRIP_TELEMETRY_$tripId"
 
         fun arm(context: Context, tripId: Long) {
             if (tripId <= 0L) return
-            enqueue(context.applicationContext, tripId, 0, 0L, false)
+            val appContext = context.applicationContext
+            WorkManager.getInstance(appContext).cancelAllWorkByTag(tripTag(tripId))
+            enqueue(appContext, tripId, 0, 0L, false)
             Log.i(TAG, "TELEMETRY_ARMED trip=$tripId")
         }
 
         fun finish(context: Context, tripId: Long) {
             if (tripId <= 0L) return
-            enqueue(context.applicationContext, tripId, 0, 0L, true)
+            val appContext = context.applicationContext
+            WorkManager.getInstance(appContext).cancelAllWorkByTag(tripTag(tripId))
+            enqueue(appContext, tripId, 0, 0L, true)
             Log.i(TAG, "TELEMETRY_FINISH_REQUESTED trip=$tripId")
         }
 
         fun cancel(context: Context, tripId: Long) {
-            if (tripId > 0L) WorkManager.getInstance(context.applicationContext).cancelUniqueWork(workName(tripId))
+            if (tripId > 0L) WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag(tripTag(tripId))
             Log.i(TAG, "TELEMETRY_CANCELLED trip=$tripId")
         }
 
@@ -60,12 +63,9 @@ class TripTelemetryWorker(
                 .setInputData(input)
                 .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
                 .addTag("ASD_TRIP_TELEMETRY")
+                .addTag(tripTag(tripId))
                 .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                workName(tripId),
-                ExistingWorkPolicy.REPLACE,
-                request
-            )
+            WorkManager.getInstance(context).enqueue(request)
         }
     }
 
