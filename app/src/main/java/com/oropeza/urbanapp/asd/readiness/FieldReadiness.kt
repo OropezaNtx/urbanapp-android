@@ -10,6 +10,8 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.StatFs
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
+import org.json.JSONObject
 
 enum class ReadinessSeverity { PASS, WARNING, BLOCKER }
 
@@ -37,7 +39,10 @@ data class FieldReadinessReport(
 }
 
 object FieldReadiness {
-    const val VERSION = "3.3.5A.3"
+    const val VERSION = "3.3.5A.4"
+
+    private const val PREFS_NAME = "asd_field_readiness"
+    private fun evidenceKey(tripId: Long) = "trip_${tripId}_evidence"
 
     fun evaluate(context: Context): FieldReadinessReport {
         val c = context.applicationContext
@@ -53,6 +58,42 @@ object FieldReadiness {
                 background(c),
             ),
         )
+    }
+
+    fun persistEvidence(context: Context, tripId: Long, report: FieldReadinessReport) {
+        if (tripId <= 0L) return
+        val checks = JSONArray()
+        report.checks.forEach { check ->
+            checks.put(
+                JSONObject()
+                    .put("id", check.id)
+                    .put("severity", check.severity.name)
+                    .put("value", check.value ?: JSONObject.NULL)
+                    .put("summary", check.summary)
+            )
+        }
+        val payload = JSONObject()
+            .put("version", VERSION)
+            .put("generatedAt", report.generatedAt)
+            .put("state", report.state)
+            .put("canStart", report.canStart)
+            .put("blockers", report.blockers.size)
+            .put("warnings", report.warnings.size)
+            .put("passed", report.passed.size)
+            .put("checks", checks)
+
+        context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(evidenceKey(tripId), payload.toString())
+            .apply()
+    }
+
+    fun readEvidenceJson(context: Context, tripId: Long): String? {
+        if (tripId <= 0L) return null
+        return context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(evidenceKey(tripId), null)
     }
 
     private fun locationPermission(context: Context): ReadinessCheck {
