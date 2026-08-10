@@ -112,6 +112,8 @@ class AsdCloudSyncWorker(
                 }
             }
 
+            // Close the timing of the real sync run before projecting telemetry.
+            TripTelemetryRecorder.finishSyncRun(runId, System.currentTimeMillis())
             val telemetryFlushed = TripTelemetryRecorder.flushTouchedSyncTelemetry(applicationContext)
             if (telemetryFlushed > 0 && totalSynced < MAX_ITEMS_PER_RUN) {
                 batchNumber++
@@ -134,6 +136,8 @@ class AsdCloudSyncWorker(
                 ListenableWorker.Result.success()
             }
         } catch (e: Exception) {
+            // Best effort: close any per-trip run opened before the failure.
+            runCatching { TripTelemetryRecorder.finishSyncRun(runId, System.currentTimeMillis()) }
             val elapsedMs = System.currentTimeMillis() - startedAt
             val result = if (runAttemptCount < 5) "RETRY_EXCEPTION" else "FAILURE"
             Log.e(INTEGRITY_TAG, "SYNC_FINISHED runId=$runId result=$result attempt=$runAttemptCount elapsedMs=$elapsedMs error=${e.javaClass.simpleName}:${e.message}", e)
