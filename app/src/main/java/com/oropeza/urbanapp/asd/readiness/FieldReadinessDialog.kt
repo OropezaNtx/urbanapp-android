@@ -27,8 +27,11 @@ fun FieldReadinessDialog(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
-    val permissionLauncher = rememberLauncherForActivityResult(
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
+    ) { onRefresh() }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
     ) { onRefresh() }
 
     AlertDialog(
@@ -61,7 +64,7 @@ fun FieldReadinessDialog(
                         check = check,
                         onAction = when (check.id) {
                             "LOCATION_PERMISSION" -> ({
-                                permissionLauncher.launch(arrayOf(
+                                locationPermissionLauncher.launch(arrayOf(
                                     Manifest.permission.ACCESS_FINE_LOCATION,
                                     Manifest.permission.ACCESS_COARSE_LOCATION,
                                 ))
@@ -69,6 +72,9 @@ fun FieldReadinessDialog(
                             "LOCATION_SERVICES" -> ({
                                 runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
                             })
+                            "NOTIFICATIONS" -> if (android.os.Build.VERSION.SDK_INT >= 33) ({
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }) else null
                             else -> null
                         },
                     )
@@ -127,7 +133,12 @@ private fun ReadinessRow(check: ReadinessCheck, onAction: (() -> Unit)?) {
             Text(check.summary, style = MaterialTheme.typography.bodySmall)
             if (onAction != null && check.severity != ReadinessSeverity.PASS) {
                 TextButton(onClick = onAction, contentPadding = PaddingValues(0.dp)) {
-                    Text(if (check.id == "LOCATION_PERMISSION") "CONCEDER PERMISO" else "ABRIR AJUSTES")
+                    Text(
+                        when (check.id) {
+                            "LOCATION_PERMISSION", "NOTIFICATIONS" -> "CONCEDER PERMISO"
+                            else -> "ABRIR AJUSTES"
+                        }
+                    )
                 }
             }
         }
