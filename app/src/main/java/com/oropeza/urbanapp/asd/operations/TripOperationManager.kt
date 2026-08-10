@@ -3,6 +3,7 @@ package com.oropeza.urbanapp.asd.operations
 import android.util.Log
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.location.LocationFix
+import com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker
 import com.oropeza.urbanapp.core.events.UrbanEventFactory
 import com.oropeza.urbanapp.core.events.UrbanEventTypes
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
@@ -69,6 +70,13 @@ object TripOperationManager {
                             mapOf("tripId" to tripId)
                         )
                     )
+
+                    // Closing a trip is a durability boundary. Always request the cloud
+                    // worker explicitly so the final Room track is reconciled even when
+                    // no later event or UI action happens. WorkManager keeps Offline First:
+                    // without network this request simply waits until connectivity returns.
+                    AsdCloudSyncWorker.enqueue(AsdGraph.appContext)
+                    Log.i("TripOperationManager", "TRIP_CLOSE_SYNC_REQUESTED trip=$tripId")
                     OperationResult.Success
                 } else {
                     val after = AsdGraph.repo.getTripOnce(tripId)
