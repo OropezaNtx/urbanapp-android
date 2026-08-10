@@ -3,6 +3,7 @@ import { Activity, Clock3, Gauge, MapPinned, Radio, Smartphone, TimerReset, Wifi
 import './OperationalAnalyticsPanel.css';
 
 function finite(value) {
+  if (value === null || value === undefined || value === '') return false;
   return Number.isFinite(Number(value));
 }
 
@@ -131,8 +132,8 @@ export default function OperationalAnalyticsPanel({ analytics }) {
         <Metric label="Heartbeat promedio" value={available(device.heartbeat) ? fmtDuration(device.heartbeat.averageAgeMs) : 'No disponible todavía'} />
         <Metric label="Heartbeat máximo" value={available(device.heartbeat) ? fmtDuration(device.heartbeat.maxAgeMs) : 'No disponible todavía'} />
         <Metric label="Heartbeats vencidos" value={available(device.heartbeat) ? device.heartbeat.staleSamples : 'No disponible todavía'} hint="Muestras con edad ≥ 30 s" />
-        <Metric label="Cobertura de red" value={fmtNumber(device.networkCoveragePct, 2, '%')} />
-        <Metric label="Tiempo sin red" value={fmtDuration(device.networkOfflineDurationMs)} />
+        <Metric label="Cobertura de red" value={telemetryAvailable ? fmtNumber(device.networkCoveragePct, 2, '%') : 'No disponible todavía'} />
+        <Metric label="Tiempo sin red" value={telemetryAvailable ? fmtDuration(device.networkOfflineDurationMs) : 'No disponible todavía'} />
         <Metric label="Reconexiones" value={available(device.reconnections) ? device.reconnections.value : 'No disponible todavía'} />
         <Metric label="Cambios de red" value={telemetryAvailable ? device.networkTransitions ?? 0 : 'No disponible todavía'} />
         <Metric label="Última red" value={telemetryAvailable ? device.lastNetworkType ?? '—' : 'No disponible todavía'} />
@@ -150,10 +151,14 @@ export default function OperationalAnalyticsPanel({ analytics }) {
         <Metric label="Payload estimado Web" value={fmtBytes(sync.payloadBytesEstimated)} hint="Trip + eventos + chunks recibidos" />
         <Metric label="Payload confirmado Android" value={fmtBytes(sync.payloadBytesActual)} />
         <Metric label="Runs de sincronización" value={telemetryAvailable ? sync.syncRuns ?? 0 : 'No disponible todavía'} />
+        <Metric label="Runs completados" value={telemetryAvailable ? sync.completedSyncRuns ?? 0 : 'No disponible todavía'} />
         <Metric label="Reintentos" value={telemetryAvailable ? sync.retries ?? 0 : 'No disponible todavía'} />
         <Metric label="Items confirmados" value={telemetryAvailable ? sync.confirmedItems ?? 0 : 'No disponible todavía'} />
         <Metric label="Items fallidos" value={telemetryAvailable ? sync.failedItems ?? 0 : 'No disponible todavía'} />
-        <Metric label="Tiempo de subida" value={available(sync.uploadDurationMs) ? fmtDuration(sync.uploadDurationMs.value) : 'No disponible todavía'} hint="Primera subida → última confirmación" />
+        <Metric label="Duración último run" value={available(sync.uploadDurationMs) ? fmtDuration(sync.uploadDurationMs.value) : 'No disponible todavía'} hint="Duración real del último Worker de sync del recorrido" />
+        <Metric label="Duración promedio de run" value={fmtDuration(sync.averageSyncRunDurationMs)} />
+        <Metric label="Duración máxima de run" value={fmtDuration(sync.maxSyncRunDurationMs)} />
+        <Metric label="Ventana total de actividad sync" value={fmtDuration(sync.syncActivitySpanMs)} hint="Primera actividad → última confirmación; puede abarcar todo el recorrido" />
         <Metric label="Round-trip cloud promedio" value={available(sync.cloudDurationMs) ? fmtNumber(sync.cloudDurationMs.value, 1, ' ms') : 'No disponible todavía'} />
         <Metric label="Round-trip cloud máximo" value={fmtNumber(sync.maxCloudRoundTripMs, 1, ' ms')} />
         <Metric label="Último resultado" value={telemetryAvailable ? sync.lastResult ?? '—' : 'No disponible todavía'} />
@@ -161,6 +166,6 @@ export default function OperationalAnalyticsPanel({ analytics }) {
       </Section>
     </div>
 
-    <div className="ops-note"><WifiOff size={16} /> GPS y cinemática siguen calculándose desde track_chunks. Batería, heartbeat, red, recoveries y sync provienen de telemetría persistida por Android cuando el recorrido fue capturado con Telemetry v1.</div>
+    <div className="ops-note"><WifiOff size={16} /> GPS y cinemática siguen calculándose desde track_chunks. Batería, heartbeat, red, recoveries y sincronización provienen de telemetría persistida por Android cuando el recorrido fue capturado con Telemetry v1.</div>
   </section>;
 }
