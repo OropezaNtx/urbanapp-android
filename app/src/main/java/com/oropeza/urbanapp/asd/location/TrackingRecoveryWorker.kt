@@ -57,11 +57,20 @@ class TrackingRecoveryWorker(
         fun disarm(context: Context, reason: String) {
             val appContext = context.applicationContext
             val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val tripId = prefs.getLong(PREF_TELEMETRY_TRIP_ID, prefs.getLong(PREF_TRIP_ID, -1L))
+            val inMemoryTripId = TrackingService.trackingMetrics.value.tripId ?: -1L
+            val tripId = prefs.getLong(
+                PREF_TELEMETRY_TRIP_ID,
+                prefs.getLong(PREF_TRIP_ID, inMemoryTripId)
+            )
             WorkManager.getInstance(appContext).cancelAllWorkByTag(WATCHDOG_TAG)
             clearAssistedPending(appContext, reason)
             TrackingRecoveryNotification.cancel(appContext, reason)
-            if (tripId > 0L) TripTelemetryWorker.finish(appContext, tripId)
+            if (tripId > 0L) {
+                TripTelemetryWorker.finish(appContext, tripId)
+                Log.i(TAG, "WATCHDOG_FINAL_TELEMETRY trip=$tripId reason=$reason source=${if (prefs.contains(PREF_TELEMETRY_TRIP_ID) || prefs.contains(PREF_TRIP_ID)) "PREFS" else "TRACKING_METRICS"}")
+            } else {
+                Log.w(TAG, "WATCHDOG_FINAL_TELEMETRY_SKIPPED reason=$reason noTripIdentity=true")
+            }
             prefs.edit().remove(PREF_TELEMETRY_TRIP_ID).apply()
             Log.i(TAG, "WATCHDOG_DISARMED reason=$reason")
         }
