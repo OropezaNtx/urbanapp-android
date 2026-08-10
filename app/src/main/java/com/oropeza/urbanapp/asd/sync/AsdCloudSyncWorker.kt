@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.sync.cloud.CloudSyncEngine
+import com.oropeza.urbanapp.asd.telemetry.TripTelemetryRecorder
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
@@ -49,38 +50,19 @@ class AsdCloudSyncWorker(
                 .build()
 
             val workManager = WorkManager.getInstance(appContext)
-
             workManager.cancelUniqueWork(LEGACY_WORK_NAME)
             if (cancelDeferredRetry) AsdCloudSyncRetryKickWorker.cancel(appContext)
 
-            Log.i(
-                INTEGRITY_TAG,
-                "SYNC_WORK_REQUESTED requestedWorkId=${request.id} uniqueName=$WORK_NAME " +
-                    "requiresNetwork=true policy=KEEP"
-            )
-
-            val operation = workManager.enqueueUniqueWork(
-                WORK_NAME,
-                ExistingWorkPolicy.KEEP,
-                request
-            )
-
+            Log.i(INTEGRITY_TAG, "SYNC_WORK_REQUESTED requestedWorkId=${request.id} uniqueName=$WORK_NAME requiresNetwork=true policy=KEEP")
+            val operation = workManager.enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.KEEP, request)
             operation.result.addListener(
                 {
                     try {
                         operation.result.get()
-                        Log.i(
-                            INTEGRITY_TAG,
-                            "SYNC_WORK_ENQUEUE_COMPLETED requestedWorkId=${request.id} uniqueName=$WORK_NAME"
-                        )
+                        Log.i(INTEGRITY_TAG, "SYNC_WORK_ENQUEUE_COMPLETED requestedWorkId=${request.id} uniqueName=$WORK_NAME")
                         logUniqueWorkState(workManager, request.id.toString())
                     } catch (e: Exception) {
-                        Log.e(
-                            INTEGRITY_TAG,
-                            "SYNC_WORK_ENQUEUE_FAILED requestedWorkId=${request.id} " +
-                                "error=${e.javaClass.simpleName}:${e.message}",
-                            e
-                        )
+                        Log.e(INTEGRITY_TAG, "SYNC_WORK_ENQUEUE_FAILED requestedWorkId=${request.id} error=${e.javaClass.simpleName}:${e.message}", e)
                     }
                 },
                 DIRECT_EXECUTOR
@@ -94,32 +76,15 @@ class AsdCloudSyncWorker(
                     try {
                         val infos = future.get()
                         if (infos.isEmpty()) {
-                            Log.w(
-                                INTEGRITY_TAG,
-                                "SYNC_UNIQUE_WORK_STATE requestedWorkId=$requestedWorkId actualWorkId=NONE " +
-                                    "state=NONE runAttemptCount=0 requestedAccepted=false"
-                            )
+                            Log.w(INTEGRITY_TAG, "SYNC_UNIQUE_WORK_STATE requestedWorkId=$requestedWorkId actualWorkId=NONE state=NONE runAttemptCount=0 requestedAccepted=false")
                             return@addListener
                         }
-
                         val active = infos.firstOrNull { !it.state.isFinished } ?: infos.lastOrNull()
                         infos.forEach { info ->
-                            Log.i(
-                                INTEGRITY_TAG,
-                                "SYNC_UNIQUE_WORK_STATE requestedWorkId=$requestedWorkId " +
-                                    "actualWorkId=${info.id} state=${info.state} " +
-                                    "runAttemptCount=${info.runAttemptCount} " +
-                                    "requestedAccepted=${info.id.toString() == requestedWorkId} " +
-                                    "selectedActive=${active?.id == info.id}"
-                            )
+                            Log.i(INTEGRITY_TAG, "SYNC_UNIQUE_WORK_STATE requestedWorkId=$requestedWorkId actualWorkId=${info.id} state=${info.state} runAttemptCount=${info.runAttemptCount} requestedAccepted=${info.id.toString() == requestedWorkId} selectedActive=${active?.id == info.id}")
                         }
                     } catch (e: Exception) {
-                        Log.e(
-                            INTEGRITY_TAG,
-                            "SYNC_UNIQUE_WORK_STATE_FAILED requestedWorkId=$requestedWorkId " +
-                                "error=${e.javaClass.simpleName}:${e.message}",
-                            e
-                        )
+                        Log.e(INTEGRITY_TAG, "SYNC_UNIQUE_WORK_STATE_FAILED requestedWorkId=$requestedWorkId error=${e.javaClass.simpleName}:${e.message}", e)
                     }
                 },
                 DIRECT_EXECUTOR
@@ -130,31 +95,18 @@ class AsdCloudSyncWorker(
     override suspend fun doWork(): ListenableWorker.Result {
         val runId = id.toString()
         val startedAt = System.currentTimeMillis()
-
         Log.i(INTEGRITY_TAG, "SYNC_WORK_STARTED runId=$runId attempt=$runAttemptCount")
 
         return try {
             AsdGraph.init(applicationContext)
             val recoveredStale = AsdGraph.repo.recoverStaleSyncItems()
-            if (recoveredStale > 0) {
-                Log.w(INTEGRITY_TAG, "SYNC_STALE_RECOVERED runId=$runId count=$recoveredStale")
-            }
+            if (recoveredStale > 0) Log.w(INTEGRITY_TAG, "SYNC_STALE_RECOVERED runId=$runId count=$recoveredStale")
 
             val legacyMigration = LegacyCloudPathMigrator.migrateIfNeeded(applicationContext)
-            Log.i(
-                INTEGRITY_TAG,
-                "SYNC_LEGACY_PATH_MIGRATION runId=$runId eligible=${legacyMigration.eligible} " +
-                    "migrated=${legacyMigration.migrated} skipped=${legacyMigration.skipped} " +
-                    "reason=${legacyMigration.reason ?: "NONE"}"
-            )
+            Log.i(INTEGRITY_TAG, "SYNC_LEGACY_PATH_MIGRATION runId=$runId eligible=${legacyMigration.eligible} migrated=${legacyMigration.migrated} skipped=${legacyMigration.skipped} reason=${legacyMigration.reason ?: "NONE"}")
 
             TrackingPipelineIntegrityAuditor.logRelevantTrips("BEFORE_CLOUD_DRAIN")
-
-            val engine = CloudSyncEngine(
-                repository = AsdGraph.repo,
-                target = AsdGraph.getCloudSyncTarget(),
-                runId = runId
-            )
+            val engine = CloudSyncEngine(repository = AsdGraph.repo, target = AsdGraph.getCloudSyncTarget(), runId = runId)
 
             var totalSynced = 0
             var batchNumber = 0
@@ -166,56 +118,35 @@ class AsdCloudSyncWorker(
             }
 
             TrackingPipelineIntegrityAuditor.logRelevantTrips("AFTER_CLOUD_DRAIN")
-
-            // Sprint 2.3.1: solo auditamos cloud cuando este Worker realmente
-            // confirmó datos. El auditor es read-only y nunca cambia la cola.
             if (totalSynced > 0) {
                 try {
-                    CloudDataIntegrityAuditor.auditRelevantTrips(
-                        stage = "AFTER_CLOUD_DRAIN",
-                        runId = runId
-                    )
+                    CloudDataIntegrityAuditor.auditRelevantTrips(stage = "AFTER_CLOUD_DRAIN", runId = runId)
                 } catch (auditError: Exception) {
-                    Log.e(
-                        "DataIntegrity",
-                        "DATA_AUDIT_MISMATCH stage=AFTER_CLOUD_DRAIN runId=$runId " +
-                            "reason=AUDITOR_FAILURE error=${auditError.javaClass.simpleName}:${auditError.message}",
-                        auditError
-                    )
+                    Log.e("DataIntegrity", "DATA_AUDIT_MISMATCH stage=AFTER_CLOUD_DRAIN runId=$runId reason=AUDITOR_FAILURE error=${auditError.javaClass.simpleName}:${auditError.message}", auditError)
                 }
             }
 
+            // 3.2B: agrega una sola proyección TELEMETRY por trip tocado en este drenado.
+            // CloudSyncEngine ignora TELEMETRY como fuente de métricas para evitar recursión.
+            TripTelemetryRecorder.flushTouchedSyncTelemetry(applicationContext)
+
             val outstanding = AsdGraph.repo.getOutstandingSyncCount()
             val elapsedMs = System.currentTimeMillis() - startedAt
-
             if (outstanding > 0) {
                 val delayMs = CloudSyncRetryPlanner.nextDelayMs()
                 AsdCloudSyncRetryKickWorker.schedule(applicationContext, delayMs)
-                Log.i(
-                    INTEGRITY_TAG,
-                    "SYNC_FINISHED runId=$runId result=DEFERRED synced=$totalSynced " +
-                        "outstanding=$outstanding batches=$batchNumber elapsedMs=$elapsedMs retryInMs=$delayMs"
-                )
+                Log.i(INTEGRITY_TAG, "SYNC_FINISHED runId=$runId result=DEFERRED synced=$totalSynced outstanding=$outstanding batches=$batchNumber elapsedMs=$elapsedMs retryInMs=$delayMs")
                 ListenableWorker.Result.success()
             } else {
                 AsdCloudSyncRetryKickWorker.cancel(applicationContext)
                 Log.i(INTEGRITY_TAG, "SYNC_QUEUE_EMPTY runId=$runId")
-                Log.i(
-                    INTEGRITY_TAG,
-                    "SYNC_FINISHED runId=$runId result=SUCCESS synced=$totalSynced " +
-                        "outstanding=0 batches=$batchNumber elapsedMs=$elapsedMs"
-                )
+                Log.i(INTEGRITY_TAG, "SYNC_FINISHED runId=$runId result=SUCCESS synced=$totalSynced outstanding=0 batches=$batchNumber elapsedMs=$elapsedMs")
                 ListenableWorker.Result.success()
             }
         } catch (e: Exception) {
             val elapsedMs = System.currentTimeMillis() - startedAt
             val result = if (runAttemptCount < 5) "RETRY_EXCEPTION" else "FAILURE"
-            Log.e(
-                INTEGRITY_TAG,
-                "SYNC_FINISHED runId=$runId result=$result attempt=$runAttemptCount " +
-                    "elapsedMs=$elapsedMs error=${e.javaClass.simpleName}:${e.message}",
-                e
-            )
+            Log.e(INTEGRITY_TAG, "SYNC_FINISHED runId=$runId result=$result attempt=$runAttemptCount elapsedMs=$elapsedMs error=${e.javaClass.simpleName}:${e.message}", e)
             Log.e(TAG, "Falló la sincronización en background", e)
             if (runAttemptCount < 5) ListenableWorker.Result.retry() else ListenableWorker.Result.failure()
         }
