@@ -6,17 +6,33 @@ data class LatLng(val lat: Double, val lon: Double)
 
 object PolylineSmoother {
 
+    private const val MAX_SMOOTHING_SHIFT_M = 4.0
+
+    /**
+     * Geometry-preserving smoothing.
+     *
+     * AforaGpsEngine already applies Kalman filtering to defensible fixes. This
+     * second stage is only for visual micro-jitter, so it must never materially
+     * relocate the route. Endpoints are preserved, the center point keeps most of
+     * the weight and any introduced displacement is capped at 4 m.
+     */
     fun movingAverage(points: List<LatLng>, window: Int = 3): List<LatLng> {
         if (points.size <= 2 || window <= 1) return points
-        val w = window.coerceAtLeast(3)
-        val half = w / 2
-        return points.mapIndexed { i, _ ->
-            val from = (i - half).coerceAtLeast(0)
-            val to = (i + half).coerceAtMost(points.lastIndex)
-            val slice = points.subList(from, to + 1)
-            val lat = slice.sumOf { it.lat } / slice.size
-            val lon = slice.sumOf { it.lon } / slice.size
-            LatLng(lat, lon)
+
+        return points.mapIndexed { i, current ->
+            if (i == 0 || i == points.lastIndex) return@mapIndexed current
+
+            val prev = points[i - 1]
+            val next = points[i + 1]
+
+            // Weighted centered filter: do not let neighbours overpower the
+            // canonical filtered coordinate produced by the GPS engine.
+            val candidate = LatLng(
+                lat = prev.lat * 0.15 + current.lat * 0.70 + next.lat * 0.15,
+                lon = prev.lon * 0.15 + current.lon * 0.70 + next.lon * 0.15
+            )
+
+            boundShift(current, candidate, MAX_SMOOTHING_SHIFT_M)
         }
     }
 
@@ -29,6 +45,28 @@ object PolylineSmoother {
         dp(points, 0, points.lastIndex, epsilonMeters, keep)
         return points.filterIndexed { idx, _ -> keep[idx] }
     }
+
+    private fun boundShift(origin: LatLng, candidate: LatLng, maxShiftM: Double): LatLng {
+        val distance = haversineMeters(origin, candidate)
+        if (!distance.isFinite() || distance <= maxShiftM || distance <= 0.0) return candidate
+        val ratio = (maxShiftM / distance).coerceIn(0.0, 1.0)
+        return LatLng(
+            lat = origin.lat + (candidate.lat - origin.lat) * ratio,
+            lon = origin.lon + (candidate.lon - origin.lon) * ratio
+        )
+    }
+
+    private fun haversineMeters(a: LatLng, b: LatLng): Double {
+        val r = 6_371_000.0
+        val dLat = Math.toRadians(b.lat - a.lat)
+        val dLon = Math.toRadians(b.lon - a.lon)
+        val h = sin(dLat / 2).pow(2.0) +
+            cos(Math.toRadians(a.lat)) * cos(Math.toRadians(b.lat)) * sin(dLon / 2).pow(2.0)
+        return 2.0 * r * atan2(sqrt(h.coerceIn(0.0, 1.0)), sqrt((1.0 - h).coerceAtLeast(0.0)))
+    }
+
+    fun douglasPeuckerLegacy(points: List<LatLng>, epsilonMeters: Double): List<LatLng> =
+        douglasPeucker(points, epsilonMeters)
 
     private fun dp(points: List<LatLng>, start: Int, end: Int, epsM: Double, keep: BooleanArray) {
         if (end <= start + 1) return
@@ -55,7 +93,6 @@ object PolylineSmoother {
     }
 
     private fun distancePointToSegmentMeters(p: LatLng, a: LatLng, b: LatLng): Double {
-        // Aproximación equirectangular local (suficiente para distancias pequeñas)
         val lat0 = Math.toRadians((a.lat + b.lat) / 2.0)
         fun toXY(x: LatLng): Pair<Double, Double> {
             val xM = Math.toRadians(x.lon) * cos(lat0) * 6371000.0
