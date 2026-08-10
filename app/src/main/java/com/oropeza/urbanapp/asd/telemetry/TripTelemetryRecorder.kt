@@ -123,6 +123,7 @@ object TripTelemetryRecorder {
         val now = System.currentTimeMillis()
         mutate(tripId) {
             it.copy(
+                recoveryCount = it.recoveryCount + 1,
                 assistedRecoveryCount = it.assistedRecoveryCount + 1,
                 fgsBlockedCount = it.fgsBlockedCount + 1,
                 lastRecoveryAt = now,
