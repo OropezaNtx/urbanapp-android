@@ -9,8 +9,11 @@ export function enrichOperationalAnalyticsWithTelemetry(analytics, telemetry) {
 
   const firstUpload = Number(sync.firstUploadStartedAt || 0);
   const lastUpload = Number(sync.lastUploadFinishedAt || 0);
-  const uploadLifecycleMs = firstUpload > 0 && lastUpload >= firstUpload
+  const activitySpanMs = firstUpload > 0 && lastUpload >= firstUpload
     ? lastUpload - firstUpload
+    : null;
+  const lastRunDurationMs = Number.isFinite(Number(sync.lastRunDurationMs))
+    ? Number(sync.lastRunDurationMs)
     : null;
 
   return {
@@ -59,16 +62,23 @@ export function enrichOperationalAnalyticsWithTelemetry(analytics, telemetry) {
       ...(analytics.sync || {}),
       payloadBytesActual: sync.payloadBytes ?? null,
       syncRuns: sync.runs ?? 0,
+      completedSyncRuns: sync.completedRuns ?? 0,
       retries: sync.retries ?? 0,
       failedItems: sync.failedItems ?? 0,
       confirmedItems: sync.confirmedItems ?? 0,
       firstUploadStartedAt: sync.firstUploadStartedAt ?? null,
       lastUploadFinishedAt: sync.lastUploadFinishedAt ?? null,
       lastCloudConfirmedAt: sync.lastCloudConfirmedAt ?? null,
+      syncActivitySpanMs: activitySpanMs,
+      lastSyncRunStartedAt: sync.lastRunStartedAt ?? null,
+      lastSyncRunFinishedAt: sync.lastRunFinishedAt ?? null,
+      lastSyncRunDurationMs,
+      averageSyncRunDurationMs: sync.averageRunDurationMs ?? null,
+      maxSyncRunDurationMs: sync.maxRunDurationMs ?? null,
       lastResult: sync.lastResult ?? null,
       uploadDurationMs: {
-        availability: uploadLifecycleMs != null ? "AVAILABLE" : "NOT_AVAILABLE",
-        value: uploadLifecycleMs,
+        availability: lastRunDurationMs != null ? "AVAILABLE" : "NOT_AVAILABLE",
+        value: lastRunDurationMs,
       },
       cloudDurationMs: {
         availability: sync.averageCloudRoundTripMs != null ? "AVAILABLE" : "NOT_AVAILABLE",
@@ -84,7 +94,8 @@ export function enrichOperationalAnalyticsWithTelemetry(analytics, telemetry) {
       reconnectionHistory: network.samples > 0,
       networkHistory: network.samples > 0,
       recoveryHistory: true,
-      uploadTiming: uploadLifecycleMs != null,
+      uploadTiming: lastRunDurationMs != null,
+      syncActivitySpan: activitySpanMs != null,
       cloudTiming: sync.averageCloudRoundTripMs != null,
       webAnalysisTiming: true,
     },
