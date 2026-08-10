@@ -16,6 +16,9 @@ import com.oropeza.urbanapp.asd.sync.cloud.CloudSyncEngine
 import com.oropeza.urbanapp.asd.telemetry.TripTelemetryRecorder
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 class AsdCloudSyncWorker(
     appContext: Context,
@@ -88,6 +91,14 @@ class AsdCloudSyncWorker(
             val recoveredStale = AsdGraph.repo.recoverStaleSyncItems()
             if (recoveredStale > 0) Log.w(INTEGRITY_TAG, "SYNC_STALE_RECOVERED runId=$runId count=$recoveredStale")
 
+            val chunkReconciliation = TrackChunkQueueReconciler.reconcileRecentClosedTrips()
+            Log.i(
+                INTEGRITY_TAG,
+                "SYNC_TRACK_RECONCILIATION runId=$runId scannedTrips=${chunkReconciliation.scannedTrips} " +
+                    "expectedChunks=${chunkReconciliation.expectedChunks} requeued=${chunkReconciliation.requeuedChunks} " +
+                    "missing=${chunkReconciliation.missingChunks} changed=${chunkReconciliation.changedChunks}"
+            )
+
             val legacyMigration = LegacyCloudPathMigrator.migrateIfNeeded(applicationContext)
             Log.i(INTEGRITY_TAG, "SYNC_LEGACY_PATH_MIGRATION runId=$runId eligible=${legacyMigration.eligible} migrated=${legacyMigration.migrated} skipped=${legacyMigration.skipped} reason=${legacyMigration.reason ?: "NONE"}")
 
@@ -134,6 +145,13 @@ class AsdCloudSyncWorker(
                 Log.i(INTEGRITY_TAG, "SYNC_FINISHED runId=$runId result=SUCCESS synced=$totalSynced outstanding=0 batches=$batchNumber elapsedMs=$elapsedMs")
                 ListenableWorker.Result.success()
             }
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                runCatching { TripTelemetryRecorder.finishSyncRun(runId, System.currentTimeMillis()) }
+            }
+            val elapsedMs = System.currentTimeMillis() - startedAt
+            Log.w(INTEGRITY_TAG, "SYNC_WORK_CANCELLED runId=$runId attempt=$runAttemptCount elapsedMs=$elapsedMs")
+            throw e
         } catch (e: Exception) {
             try {
                 TripTelemetryRecorder.finishSyncRun(runId, System.currentTimeMillis())
