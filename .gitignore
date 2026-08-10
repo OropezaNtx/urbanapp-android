@@ -46,3 +46,4 @@ Thumbs.db
 # Project specific
 scripts/catalog_uploader/CATALOGO_ASD.xlsx
 serviceAccountKey.json
+jobscheduler.txt
