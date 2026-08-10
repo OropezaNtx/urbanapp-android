@@ -28,6 +28,9 @@ object UrbanCloudPaths {
     fun trackChunkPath(workspace: UrbanWorkspace, cloudTripId: String, chunkId: String) =
         "${tripPath(workspace, cloudTripId)}/track_chunks/$chunkId"
 
+    fun tripTelemetryPath(workspace: UrbanWorkspace, cloudTripId: String) =
+        "${tripPath(workspace, cloudTripId)}/telemetry/summary"
+
     fun configurationPath(workspaceId: String, projectId: String) =
         "asd_organizations/$workspaceId/projects/$projectId/configuration/current"
 
@@ -40,16 +43,15 @@ object UrbanCloudPaths {
     fun userPath(workspaceId: String, userId: String) = 
         "asd_organizations/$workspaceId/users/$userId"
 
-    fun rolePath(workspaceId: String, roleId: String) = 
+    fun rolePath(workspaceId: String, roleId: String) =
         "asd_organizations/$workspaceId/roles/$roleId"
 
-    fun permissionPath(workspaceId: String, permissionId: String) = 
+    fun permissionPath(workspaceId: String, permissionId: String) =
         "asd_organizations/$workspaceId/permissions/$permissionId"
 
     fun projectUserPath(workspaceId: String, projectId: String, userId: String) =
         "asd_organizations/$workspaceId/projects/$projectId/users/$userId"
 
-    // Backward compatibility (standardized to workspaceId)
     fun installationPath(workspaceId: String, projectId: String, installationId: String) =
         "${projectPath(workspaceId, projectId)}/installations/$installationId"
         
