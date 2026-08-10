@@ -9,7 +9,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.oropeza.urbanapp.asd.AsdGraph
+import com.oropeza.urbanapp.asd.location.TrackingService
 import com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker
+import kotlinx.coroutines.delay
 
 /**
  * One-shot lifecycle worker. Periodic samples are piggybacked on the existing
@@ -24,6 +26,7 @@ class TripTelemetryWorker(
         private const val TAG = "TripTelemetry"
         private const val INPUT_TRIP_ID = "telemetry_trip_id"
         private const val INPUT_FORCE_FINAL = "telemetry_force_final"
+        private const val RECOVERY_SNAPSHOT_SETTLE_MS = 250L
 
         private fun tripTag(tripId: Long) = "ASD_TRIP_TELEMETRY_$tripId"
 
@@ -71,6 +74,15 @@ class TripTelemetryWorker(
             AsdGraph.init(applicationContext)
             val trip = AsdGraph.db.tripDao().getByIdOnce(tripId) ?: return ListenableWorker.Result.success()
             TripTelemetryRecorder.ensureStarted(applicationContext, tripId)
+
+            if (!forceFinal) {
+                // TrackingRecoveryWorker.arm() is called immediately before TrackingService
+                // publishes its recovered snapshot. A very small suspend gives that already
+                // in-memory publication time to settle without adding another periodic worker.
+                delay(RECOVERY_SNAPSHOT_SETTLE_MS)
+                persistConfirmedRecoveryIfPresent(tripId)
+            }
+
             val finished = forceFinal || trip.endTime != null
             TripTelemetrySystemSampler.sample(applicationContext, tripId, finished = finished)
 
@@ -86,5 +98,21 @@ class TripTelemetryWorker(
             Log.e(TAG, "TELEMETRY_SAMPLE_FAILED trip=$tripId forceFinal=$forceFinal", e)
             ListenableWorker.Result.success()
         }
+    }
+
+    private suspend fun persistConfirmedRecoveryIfPresent(tripId: Long) {
+        val snapshot = TrackingService.trackingMetrics.value
+        val matchesTrip = snapshot.tripId == tripId
+        if (!matchesTrip || !snapshot.recoveredAfterProcessDeath) return
+
+        TripTelemetryRecorder.recordRecovery(
+            tripId = tripId,
+            gapMs = snapshot.lastRecoveryGapMs
+        )
+        Log.w(
+            TAG,
+            "TELEMETRY_PROCESS_RECOVERY_CONFIRMED trip=$tripId " +
+                "gapMs=${snapshot.lastRecoveryGapMs} recoveryCount=${snapshot.recoveryCount}"
+        )
     }
 }
