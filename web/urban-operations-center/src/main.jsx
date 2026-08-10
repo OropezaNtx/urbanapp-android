@@ -17,6 +17,7 @@ import InstallationsPanel from './components/InstallationsPanel';
 import IntegrityDashboard from './components/IntegrityDashboard';
 import QualityReport from './components/QualityReport';
 import OperationalAnalyticsPanel from './components/OperationalAnalyticsPanel';
+import OperationalIntelligenceDashboard from './components/OperationalIntelligenceDashboard';
 import './styles.css';
 
 const toMillis = (v) => {
@@ -170,6 +171,7 @@ function App() {
       <button onClick={() => setView('dashboard')}>Dashboard</button>
       <button onClick={() => setView('trips')}>Levantamientos</button>
       <button onClick={() => setView('integrity')}>Integridad</button>
+      <button onClick={() => setView('intelligence')}>Inteligencia</button>
       <button onClick={() => setView('devices')}>Equipos en Vivo</button>
       <button onClick={() => setView('installations')}>Licencias</button>
       <button onClick={() => setView('fleet')}>Estado de Flota</button>
@@ -193,6 +195,10 @@ function App() {
 
     {view === 'integrity' && <main>
       <IntegrityDashboard trips={trips} onOpenTrip={openTrip} />
+    </main>}
+
+    {view === 'intelligence' && <main>
+      <OperationalIntelligenceDashboard trips={trips} onOpenTrip={openTrip} />
     </main>}
 
     {view === 'devices' && <main>
