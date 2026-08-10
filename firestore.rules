@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAforaOperations(orgId, projectId) {
+      return orgId == 'afora' && projectId == 'urban_operations';
+    }
+
+    match /asd_organizations/{orgId} {
+      allow read: if signedIn() && orgId == 'afora';
+      allow write: if false;
+
+      match /projects/{projectId} {
+        allow read: if signedIn() && isAforaOperations(orgId, projectId);
+        allow write: if false;
+
+        match /trips/{tripId} {
+          allow read, create, update: if signedIn() && isAforaOperations(orgId, projectId);
+          allow delete: if false;
+
+          match /events/{eventId} {
+            allow read, create, update: if signedIn() && isAforaOperations(orgId, projectId);
+            allow delete: if false;
+          }
+
+          match /track_chunks/{chunkId} {
+            allow read, create, update: if signedIn() && isAforaOperations(orgId, projectId);
+            allow delete: if false;
+          }
+
+          match /telemetry/{documentId} {
+            allow read, create, update: if signedIn() && isAforaOperations(orgId, projectId);
+            allow delete: if false;
+          }
+        }
+
+        match /installations/{installationId} {
+          allow read, create, update: if signedIn() && isAforaOperations(orgId, projectId);
+          allow delete: if false;
+
+          match /live/{document=**} {
+            allow read, create, update: if signedIn() && isAforaOperations(orgId, projectId);
+            allow delete: if false;
+          }
+        }
+
+        match /live_status/{document=**} {
+          allow read, create, update: if signedIn() && isAforaOperations(orgId, projectId);
+          allow delete: if false;
+        }
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
