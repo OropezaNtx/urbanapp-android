@@ -88,6 +88,9 @@ class AsdCloudSyncWorker(
 
         return try {
             AsdGraph.init(applicationContext)
+            val sanitizedRows = SyncQueueStateSanitizer.sanitize()
+            if (sanitizedRows > 0) Log.i(INTEGRITY_TAG, "SYNC_QUEUE_SANITIZED runId=$runId rows=$sanitizedRows")
+
             val recoveredStale = AsdGraph.repo.recoverStaleSyncItems()
             if (recoveredStale > 0) Log.w(INTEGRITY_TAG, "SYNC_STALE_RECOVERED runId=$runId count=$recoveredStale")
 
