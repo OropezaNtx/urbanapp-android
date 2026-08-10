@@ -8,7 +8,6 @@ import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
-import android.os.PowerManager
 import android.os.StatFs
 import androidx.core.content.ContextCompat
 
@@ -38,7 +37,7 @@ data class FieldReadinessReport(
 }
 
 object FieldReadiness {
-    const val VERSION = "3.3.5A.2"
+    const val VERSION = "3.3.5A.3"
 
     fun evaluate(context: Context): FieldReadinessReport {
         val c = context.applicationContext
@@ -52,7 +51,6 @@ object FieldReadiness {
                 network(c),
                 notifications(c),
                 background(c),
-                batteryOptimization(c),
             ),
         )
     }
@@ -139,12 +137,5 @@ object FieldReadiness {
         val restricted = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P && manager?.isBackgroundRestricted == true
         return if (restricted) ReadinessCheck("BACKGROUND", "Ejecución en segundo plano", ReadinessSeverity.WARNING, "Android restringe actividad en segundo plano. Conviene retirar restricciones de batería para una jornada larga.", "Restringida")
         else ReadinessCheck("BACKGROUND", "Ejecución en segundo plano", ReadinessSeverity.PASS, "No se detectan restricciones generales de segundo plano.", "Disponible")
-    }
-
-    private fun batteryOptimization(context: Context): ReadinessCheck {
-        val manager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        val unrestricted = runCatching { manager?.isIgnoringBatteryOptimizations(context.packageName) == true }.getOrDefault(false)
-        return if (unrestricted) ReadinessCheck("BATTERY_OPTIMIZATION", "Optimización de batería", ReadinessSeverity.PASS, "Afora está exenta de optimización de batería.", "Sin restricción")
-        else ReadinessCheck("BATTERY_OPTIMIZATION", "Optimización de batería", ReadinessSeverity.WARNING, "El sistema puede aplicar optimizaciones de batería. Para jornadas largas se recomienda permitir actividad sin restricciones.", "Activa")
     }
 }
