@@ -3,10 +3,10 @@ package com.oropeza.urbanapp.asd.sync
 import android.util.Log
 import com.google.gson.JsonParser
 import com.oropeza.urbanapp.asd.AsdGraph
-import com.oropeza.urbanapp.asd.data.local.AsdTrackChunkCloudDto
-import com.oropeza.urbanapp.asd.data.local.TrackPoint
+import com.oropeza.urbanapp.asd.data.local.*
 import com.oropeza.urbanapp.asd.data.repository.AsdCloudMapper
 import com.oropeza.urbanapp.asd.location.engine.TrackPointQuality
+import com.oropeza.urbanapp.asd.sync.cloud.*
 import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 
