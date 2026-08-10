@@ -24,6 +24,7 @@ object TripTelemetryRecorder {
     private val gson = Gson()
     private val touchedSyncTrips = Collections.newSetFromMap(ConcurrentHashMap<Long, Boolean>())
     private val seenRunTripKeys = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+    private val runTripStartTimes = ConcurrentHashMap<String, Long>()
 
     suspend fun ensureStarted(context: Context, tripId: Long) = mutex.withLock {
         if (tripId <= 0L) return@withLock
@@ -137,15 +138,18 @@ object TripTelemetryRecorder {
     suspend fun recordSyncItemStarted(runId: String, tripId: Long, startedAt: Long) = mutex.withLock {
         if (tripId <= 0L) return@withLock
         val key = "$runId:$tripId"
+        val firstForRun = seenRunTripKeys.add(key)
+        if (firstForRun) runTripStartTimes[key] = startedAt
         mutate(tripId) {
             it.copy(
-                syncRunCount = it.syncRunCount + if (seenRunTripKeys.add(key)) 1 else 0,
+                syncRunCount = it.syncRunCount + if (firstForRun) 1 else 0,
                 firstUploadStartedAt = it.firstUploadStartedAt ?: startedAt,
+                lastSyncRunStartedAt = if (firstForRun) startedAt else it.lastSyncRunStartedAt,
                 updatedAt = startedAt
             )
         }
         touchedSyncTrips.add(tripId)
-        Log.i(TAG, "TELEMETRY_SYNC_STARTED trip=$tripId runId=$runId")
+        if (firstForRun) Log.i(TAG, "TELEMETRY_SYNC_STARTED trip=$tripId runId=$runId startedAt=$startedAt")
     }
 
     suspend fun recordSyncConfirmed(tripId: Long, elapsedMs: Long, payloadBytes: Long, finishedAt: Long) = mutex.withLock {
@@ -181,11 +185,34 @@ object TripTelemetryRecorder {
         Log.w(TAG, "TELEMETRY_SYNC_FAILED trip=$tripId result=$result")
     }
 
+    suspend fun finishSyncRun(runId: String, finishedAt: Long = System.currentTimeMillis()) = mutex.withLock {
+        val keys = seenRunTripKeys.filter { it.startsWith("$runId:") }
+        keys.forEach { key ->
+            val tripId = key.substringAfterLast(':').toLongOrNull() ?: return@forEach
+            val startedAt = runTripStartTimes[key] ?: return@forEach
+            val durationMs = (finishedAt - startedAt).coerceAtLeast(0L)
+            mutate(tripId) {
+                it.copy(
+                    lastSyncRunStartedAt = startedAt,
+                    lastSyncRunFinishedAt = finishedAt,
+                    lastSyncRunDurationMs = durationMs,
+                    totalSyncRunDurationMs = it.totalSyncRunDurationMs + durationMs,
+                    maxSyncRunDurationMs = max(it.maxSyncRunDurationMs, durationMs),
+                    completedSyncRunCount = it.completedSyncRunCount + 1,
+                    updatedAt = finishedAt
+                )
+            }
+            touchedSyncTrips.add(tripId)
+            seenRunTripKeys.remove(key)
+            runTripStartTimes.remove(key)
+            Log.i(TAG, "TELEMETRY_SYNC_RUN_FINISHED trip=$tripId runId=$runId durationMs=$durationMs")
+        }
+    }
+
     suspend fun flushTouchedSyncTelemetry(context: Context): Int {
         val trips = touchedSyncTrips.toList()
         touchedSyncTrips.removeAll(trips.toSet())
         trips.forEach { enqueueCloudSnapshot(context, it) }
-        seenRunTripKeys.clear()
         if (trips.isNotEmpty()) Log.i(TAG, "TELEMETRY_SYNC_FLUSH trips=${trips.size}")
         return trips.size
     }
@@ -246,6 +273,12 @@ object TripTelemetryRecorder {
                 "firstUploadStartedAt" to telemetry.firstUploadStartedAt,
                 "lastUploadFinishedAt" to telemetry.lastUploadFinishedAt,
                 "lastCloudConfirmedAt" to telemetry.lastCloudConfirmedAt,
+                "lastRunStartedAt" to telemetry.lastSyncRunStartedAt,
+                "lastRunFinishedAt" to telemetry.lastSyncRunFinishedAt,
+                "lastRunDurationMs" to telemetry.lastSyncRunDurationMs,
+                "averageRunDurationMs" to telemetry.averageSyncRunDurationMs,
+                "maxRunDurationMs" to telemetry.maxSyncRunDurationMs,
+                "completedRuns" to telemetry.completedSyncRunCount,
                 "averageCloudRoundTripMs" to telemetry.averageCloudRoundTripMs,
                 "maxCloudRoundTripMs" to telemetry.maxCloudRoundTripMs,
                 "lastResult" to telemetry.lastSyncResult
