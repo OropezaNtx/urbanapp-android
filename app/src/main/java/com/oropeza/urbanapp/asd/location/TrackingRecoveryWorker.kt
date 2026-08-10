@@ -164,8 +164,10 @@ class TrackingRecoveryWorker(
 
             try {
                 ContextCompat.startForegroundService(applicationContext, intent)
-                TripTelemetryRecorder.recordRecovery(markedTripId, heartbeatAgeMs)
-                Log.w(TAG, "WATCHDOG_FGS_STARTED trip=$markedTripId generation=$generation")
+                // Do not count this as recovered yet. TrackingService will publish
+                // recoveredAfterProcessDeath=true only after it validates the trip and
+                // actually restores tracking; TripTelemetryWorker persists that signal.
+                Log.w(TAG, "WATCHDOG_FGS_STARTED trip=$markedTripId generation=$generation awaitingTrackingConfirmation=true")
                 ListenableWorker.Result.success()
             } catch (e: Exception) {
                 val blockedBySystem = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && e.javaClass.simpleName == "ForegroundServiceStartNotAllowedException"
