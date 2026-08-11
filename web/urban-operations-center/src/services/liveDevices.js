@@ -5,10 +5,6 @@ import { webIntegrity, webIntegrityError } from "./webIntegrity";
 const ORG_ID = import.meta.env.VITE_URBAN_ORG_ID || "afora";
 const PROJECT_ID = import.meta.env.VITE_URBAN_PROJECT_ID || "urban_operations";
 
-function mapDocs(snapshot) {
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-}
-
 function toMillis(value) {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -16,6 +12,38 @@ function toMillis(value) {
   if (value.seconds) return value.seconds * 1000;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeLiveDoc(doc) {
+  const raw = { id: doc.id, ...doc.data() };
+  const lat = raw.position?.lat ?? raw.lat ?? raw.lastLat;
+  const lon = raw.position?.lon ?? raw.lon ?? raw.lastLon;
+  const activeTripId = raw.tripId ?? raw.activeTripId ?? null;
+  const updatedAt = raw.lastUpdateClient ?? raw.lastUpdateServer ?? raw.updatedAt ?? raw.createdAt ?? raw.lastFixTime;
+
+  return {
+    ...raw,
+    installationId: raw.installationId || doc.id,
+    tripId: activeTripId,
+    activeTripId,
+    tripStatus: raw.tripStatus || (activeTripId ? "ACTIVE" : "IDLE"),
+    lastUpdateClient: updatedAt,
+    lastUpdateServer: raw.lastUpdateServer ?? updatedAt,
+    position: raw.position || (lat != null && lon != null ? {
+      lat,
+      lon,
+      accuracy: raw.accuracy ?? raw.lastAccuracy ?? null,
+    } : undefined),
+    lat,
+    lon,
+    battery: raw.battery ?? (raw.batteryLevel != null ? { level: raw.batteryLevel } : undefined),
+    gpsStatus: raw.gpsStatus || raw.locationStatus || (lat != null && lon != null ? "OK" : "PENDING"),
+    syncVersion: raw.syncVersion || raw.appVersionName,
+  };
+}
+
+function mapDocs(snapshot) {
+  return snapshot.docs.map(normalizeLiveDoc);
 }
 
 function sortByLastUpdateDesc(a, b) {
