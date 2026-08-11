@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -446,7 +447,18 @@ private fun InlineAsdCaptureCard(isEnded: Boolean, isDelayActive: Boolean, activ
     val typography = LocalAforaTypography.current
     val haptic = LocalHapticFeedback.current
     fun triggerHaptic() = haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-    AforaOperationalCard(modifier = Modifier.padding(horizontal = 16.dp), borderAlpha = if(isDelayActive) 0.8f else 0.3f, containerColor = if(isDelayActive) colors.Success.copy(alpha = 0.02f) else colors.Surface) {
+    val activeCardModifier = if (isDelayActive) {
+        Modifier
+            .padding(horizontal = 16.dp)
+            .border(3.dp, colors.Success, RoundedCornerShape(14.dp))
+    } else {
+        Modifier.padding(horizontal = 16.dp)
+    }
+    AforaOperationalCard(
+        modifier = activeCardModifier,
+        borderAlpha = if (isDelayActive) 1f else 0.3f,
+        containerColor = if (isDelayActive) colors.Success.copy(alpha = 0.14f) else colors.Surface
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) { AforaHealthIndicator(isHealthy = isDelayActive); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(if (isDelayActive) "CAPTURA ACTIVA" else "LISTO PARA CAPTURAR", style = typography.Title, fontWeight = FontWeight.ExtraBold, color = if(isDelayActive) colors.Success else colors.Secondary); Text(if (isDelayActive) formatElapsed(activeElapsedSec) else "Toque un control para iniciar", style = typography.BodySmall, color = colors.Secondary.copy(alpha = 0.6f)) }; if (isDelayActive) IconButton(onClick = { triggerHaptic(); onCancelDelay() }) { Text("✕", color = colors.Danger, fontWeight = FontWeight.Bold) } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { ProMetric("SUBEN", (menUp + womenUp).toString(), Modifier.weight(1f), colors.Success); ProMetric("BAJAN", (menDown + womenDown).toString(), Modifier.weight(1f), colors.Danger); ProMetric("A BORDO", (currentOnBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0).toString(), Modifier.weight(1f), isError = exceedsCapacity) }
@@ -536,7 +548,7 @@ private fun EditTripHeaderDialog(trip: Trip, onDismiss: () -> Unit, vm: AsdTripD
     var oS by rememberSaveable(trip.tripId) { mutableStateOf(trip.observerSex ?: "") }
     var hN by rememberSaveable(trip.tripId) { mutableStateOf(trip.notes?.uppercase() ?: "") }
     @Composable fun NF(l: String, v: String, c: (String) -> Unit, n: Boolean = false) { OutlinedTextField(value = v, onValueChange = { c(if (n) it.filter { ch -> ch.isDigit() }.take(6) else it.uppercase()) }, label = { Text(l) }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = MaterialTheme.shapes.extraSmall, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.Primary), keyboardOptions = KeyboardOptions(keyboardType = if (n) KeyboardType.Number else KeyboardType.Text, imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("EDITAR ENCABEZADO", style = LocalAforaTypography.current.Title, fontWeight = FontWeight.Black) }, text = { Box(modifier = Modifier.heightIn(max = 400.dp)) { LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) { item { NF("ID PLANEACIÓN", pId, { pId = it }) }; item { NF("RUTA", rN, { rN = it }) }; item { NF("EMPRESA", comp, { comp = it }) }; item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Box(Modifier.weight(1f)) { NF("SENTIDO", dir, { dir = it }) }; Box(Modifier.weight(1f)) { NF("ES/FS", ef, { ef = it }) } } }; item { NF("OPERADOR", af, { af = it }) }; item { NF("PLACA", pN, { pN = it }) } } } }, confirmButton = { Button(onClick = { onSave(rN, comp.ifBlank{null}, vE.ifBlank{null}, dir, rNum.toIntOrNull(), ef.ifBlank{null}, bS.ifBlank{null}, bE.ifBlank{null}, pN.ifBlank{null}, vT.ifBlank{null}, sC.toIntOrNull(), hN.ifBlank{null}, af.ifBlank{null}, sup.ifBlank{null}, dN.ifBlank{null}, oS.ifBlank{null}) }, shape = MaterialTheme.shapes.extraSmall) { Text("GUARDAR") } }, dismissButton = { OutlinedButton(onClick = onDismiss, shape = MaterialTheme.shapes.extraSmall) { Text("CANCELAR") } })
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("EDITAR ENCABEZADO", style = LocalAforaTypography.current.Title, fontWeight = FontWeight.Black) }, text = { Box(modifier = Modifier.heightIn(max = 400.dp)) { LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) { item { NF("ID PLANEACIÓN", pId, { pId = it }) }; item { NF("RUTA", rN, { rN = it }) }; item { NF("EMPRESA", comp, { comp = it }) }; item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Box(Modifier.weight(1f)) { NF("SENTIDO", dir, { dir = it }) }; Box(Modifier.weight(1f)) { NF("ES/FS", ef, { ef = it }) } }; item { NF("OPERADOR", af, { af = it }) }; item { NF("PLACA", pN, { pN = it }) } } } }, confirmButton = { Button(onClick = { onSave(rN, comp.ifBlank{null}, vE.ifBlank{null}, dir, rNum.toIntOrNull(), ef.ifBlank{null}, bS.ifBlank{null}, bE.ifBlank{null}, pN.ifBlank{null}, vT.ifBlank{null}, sC.toIntOrNull(), hN.ifBlank{null}, af.ifBlank{null}, sup.ifBlank{null}, dN.ifBlank{null}, oS.ifBlank{null}) }, shape = MaterialTheme.shapes.extraSmall) { Text("GUARDAR") } }, dismissButton = { OutlinedButton(onClick = onDismiss, shape = MaterialTheme.shapes.extraSmall) { Text("CANCELAR") } })
 }
 
 private fun buildGpsQualitySummary(points: List<TrackPoint>): String { if (points.isEmpty()) return "-"; val qualities = points.map { point -> val parsed = com.oropeza.urbanapp.asd.location.GpsProviderDiagnostics.parse(point.provider); parsed.quality.ifBlank { when { point.accM <= 10.0 -> "EXCELLENT"; point.accM <= 25.0 -> "GOOD"; point.accM <= 45.0 -> "USABLE"; else -> "POOR" } } }; fun pct(label: String): Int { val count = qualities.count { it == label }; return ((count.toDouble() / qualities.size.toDouble()) * 100.0).toInt() }; return "EXCELLENT ${pct("EXCELLENT")}% / GOOD ${pct("GOOD")}% / USABLE ${pct("USABLE")}% / POOR ${pct("POOR")}%" }
