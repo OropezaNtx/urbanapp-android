@@ -6,6 +6,7 @@ import com.oropeza.urbanapp.asd.data.local.AsdSyncQueueDao
 import com.oropeza.urbanapp.asd.data.local.AsdSyncQueueItem
 import com.oropeza.urbanapp.asd.data.local.StopEvent
 import com.oropeza.urbanapp.asd.data.local.Trip
+import com.oropeza.urbanapp.asd.location.TrackingService
 import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
 import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.platform.UrbanPlatformCloudMapper
@@ -48,7 +49,21 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     }
 
     suspend fun enqueueHeartbeat(context: android.content.Context, activeTripId: Long? = null) {
-        val heartbeat = UrbanPlatformService.buildHeartbeat(context, activeTripId?.toString())
+        val base = UrbanPlatformService.buildHeartbeat(context, activeTripId?.toString())
+        val gps = TrackingService.runtimeGpsState.value
+        val hasUsableFix = gps.hasFix && gps.lat != 0.0 && gps.lon != 0.0
+        val heartbeat = base.copy(
+            gpsStatus = when {
+                hasUsableFix -> "OK"
+                activeTripId != null -> "PENDING"
+                else -> "IDLE"
+            },
+            lastLat = gps.lat.takeIf { hasUsableFix },
+            lastLon = gps.lon.takeIf { hasUsableFix },
+            lastFixTime = gps.fixTimeMs.takeIf { hasUsableFix && it > 0L },
+            status = if (activeTripId != null) "ACTIVE" else "IDLE",
+            updatedAt = System.currentTimeMillis()
+        )
         val path = UrbanCloudPaths.heartbeatPath(
             workspaceId = heartbeat.workspaceId
                 ?.takeIf { it.isNotBlank() }
@@ -119,7 +134,6 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
             )
             dao.insert(item)
 
-            // ✅ Phase 6: Trigger cloud sync activation
             com.oropeza.urbanapp.core.platform.sync.UrbanCloudSyncScheduler.syncNow(AsdGraph.appContext)
         } catch (e: Exception) {
             android.util.Log.e("AsdSyncQueueRepo", "Failed to enqueue sync for $type $localId", e)
