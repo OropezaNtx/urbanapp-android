@@ -4,18 +4,18 @@ import android.content.Context
 import android.os.BatteryManager
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.oropeza.urbanapp.BuildConfig
+import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
-import com.oropeza.urbanapp.license.LicenseCache
 import kotlinx.coroutines.tasks.await
 
 /**
  * Heartbeat estándar de Urban Platform Core.
  *
- * Publica un documento pequeño y sobrescribible por instalación:
- * installations/{installationId}
- *
- * No guarda historial y no sustituye los datos operativos de live_devices.
+ * Publica un documento pequeño y sobrescribible por instalación en el espacio
+ * de live_status del proyecto. No guarda historial ni sustituye la telemetría
+ * detallada de cada recorrido.
  */
 class UrbanHeartbeatPublisher(
     context: Context,
@@ -26,17 +26,21 @@ class UrbanHeartbeatPublisher(
     suspend fun publish(activeTripId: Long? = null): Result<Unit> {
         return runCatching {
             val identity = UrbanRuntime.identity(appContext)
+            val workspace = UrbanRuntime.workspace(appContext)
             val config = UrbanRuntime.configuration(appContext)
             val battery = readBattery(appContext)
             val now = System.currentTimeMillis()
 
             val payload = mapOf(
                 "installationId" to identity.installationId,
+                "workspaceId" to workspace.organization.workspaceId,
+                "projectId" to workspace.project.projectId,
                 "lastSeen" to FieldValue.serverTimestamp(),
                 "lastSeenClient" to now,
                 "lastHeartbeatAt" to now,
                 "installationVersion" to identity.appVersionName,
                 "activeTripId" to activeTripId,
+                "tripStatus" to if (activeTripId != null) "ACTIVE" else "IDLE",
                 "battery" to mapOf(
                     "level" to battery.level,
                     "charging" to battery.charging
@@ -61,9 +65,8 @@ class UrbanHeartbeatPublisher(
                 )
             )
 
-            firestore.collection("installations")
-                .document(identity.installationId)
-                .update(payload)
+            firestore.document(UrbanCloudPaths.heartbeatPath(workspace, identity.installationId))
+                .set(payload, SetOptions.merge())
                 .await()
         }
     }
