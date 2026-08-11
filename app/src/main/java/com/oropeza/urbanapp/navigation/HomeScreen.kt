@@ -67,7 +67,7 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val identity = remember { UrbanRuntime.identity(context) }
-    
+
     val pendingSyncCount by UrbanRuntime.syncStatus().pendingSyncCountFlow().collectAsState(initial = 0)
     val lastSyncTime by UrbanRuntime.syncStatus().lastSyncTimeFlow().collectAsState(initial = null)
 
@@ -104,7 +104,7 @@ fun HomeScreenContent(
 ) {
     val colors = LocalAforaColors.current
     val typography = LocalAforaTypography.current
-    
+
     val isLicenseActive = licenseStatus == UrbanLicenseStatus.ACTIVE
     val licenseStatusColor = when {
         isLicenseActive -> colors.Success
@@ -132,7 +132,6 @@ fun HomeScreenContent(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Operational Status Section
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AforaSectionHeader("ESTADO OPERATIVO")
                 AforaOperationalCard {
@@ -166,18 +165,8 @@ fun HomeScreenContent(
                 }
             }
 
-            // Primary Action Section
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                AforaPrimaryButton(
-                    text = "ABRIR PANEL OPERATIVO",
-                    onClick = onOpenDashboard,
-                    enabled = isLicenseActive
-                )
-
-                HorizontalDivider(color = colors.Outline.copy(alpha = 0.2f))
-
                 AforaSectionHeader("MÓDULOS DE LEVANTAMIENTO")
-                
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     AforaSecondaryButton(text = "LEVANTAMIENTOS ASD", enabled = isLicenseActive, onClick = onOpenAsd)
                     AforaSecondaryButton(text = "LEVANTAMIENTOS CC", enabled = isLicenseActive, onClick = onOpenCc)
@@ -187,33 +176,24 @@ fun HomeScreenContent(
 
             Spacer(Modifier.weight(1f))
 
-            // Configuration & Identity (Low Hierarchy)
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                AforaSecondaryButton(
-                    text = "CONFIGURACIÓN DEL SISTEMA",
-                    onClick = onOpenLicense,
-                    isOutlined = false
-                )
+            AforaOperationalCard(containerColor = Color.Transparent, borderAlpha = 0.1f) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AforaMetadataRow(label = "ID DISPOSITIVO", value = identity.installationId.take(12).uppercase())
+                    AforaMetadataRow(label = "VERSIÓN", value = "v${BuildConfig.VERSION_NAME}", valueColor = colors.Secondary.copy(alpha = 0.6f))
 
-                AforaOperationalCard(containerColor = Color.Transparent, borderAlpha = 0.1f) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AforaMetadataRow(label = "ID DISPOSITIVO", value = identity.installationId.take(12).uppercase())
-                        AforaMetadataRow(label = "VERSIÓN", value = "v${BuildConfig.VERSION_NAME}", valueColor = colors.Secondary.copy(alpha = 0.6f))
-                        
-                        if (pendingSyncCount > 0 || lastSyncTime != null) {
-                            HorizontalDivider(color = colors.Outline.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 4.dp))
-                            
-                            val syncLabel = if (pendingSyncCount > 0) "PENDIENTES" else "ÚLTIMO RESPALDO"
-                            val syncVal = if (pendingSyncCount > 0) "$pendingSyncCount" else SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(lastSyncTime ?: 0L))
-                            val syncColor = if (pendingSyncCount > 0) colors.Warning else colors.Success
-                            
-                            AforaMetadataRow(
-                                label = syncLabel, 
-                                value = syncVal, 
-                                labelColor = syncColor.copy(alpha = 0.6f),
-                                valueColor = syncColor
-                            )
-                        }
+                    if (pendingSyncCount > 0 || lastSyncTime != null) {
+                        HorizontalDivider(color = colors.Outline.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 4.dp))
+
+                        val syncLabel = if (pendingSyncCount > 0) "PENDIENTES" else "ÚLTIMO RESPALDO"
+                        val syncVal = if (pendingSyncCount > 0) "$pendingSyncCount" else SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(lastSyncTime ?: 0L))
+                        val syncColor = if (pendingSyncCount > 0) colors.Warning else colors.Success
+
+                        AforaMetadataRow(
+                            label = syncLabel,
+                            value = syncVal,
+                            labelColor = syncColor.copy(alpha = 0.6f),
+                            valueColor = syncColor
+                        )
                     }
                 }
             }
