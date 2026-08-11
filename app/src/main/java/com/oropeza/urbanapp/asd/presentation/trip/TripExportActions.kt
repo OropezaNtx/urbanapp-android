@@ -2,6 +2,7 @@ package com.oropeza.urbanapp.asd.presentation.trip
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.export.AsdClientXlsxExporter
 import com.oropeza.urbanapp.asd.export.AsdGarminGpxExporter
@@ -104,7 +105,8 @@ class TripExportActions {
 
             suspend fun make(entryName: String, exporter: suspend (Uri) -> Boolean) {
                 val file = File(tempDir, entryName)
-                if (!exporter(Uri.fromFile(file))) {
+                val ok = exporter(Uri.fromFile(file))
+                if (!ok || !file.exists() || file.length() <= 0L) {
                     throw IllegalStateException("No se pudo generar $entryName")
                 }
                 files[entryName] = file
@@ -130,7 +132,7 @@ class TripExportActions {
                     appendLine("Ruta: ${trip.routeName}")
                     appendLine("Sentido: ${trip.direction}")
                     appendLine("Inicio: ${Date(trip.startTime)}")
-                    appendLine("Fin: ${trip.endTime?.let(::Date) ?: "EN CURSO"}")
+                    appendLine("Fin: ${trip.endTime?.let { Date(it) } ?: "EN CURSO"}")
                     appendLine("Archivos: ${files.size}")
                 }.toByteArray(Charsets.UTF_8)
 
@@ -144,8 +146,11 @@ class TripExportActions {
                     zip.closeEntry()
                 }
             }
+
+            Log.i("FieldExport", "PACKAGE_OK trip=$tripId files=${files.size} destination=$destination")
             true
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            Log.e("FieldExport", "PACKAGE_FAILED trip=$tripId", t)
             false
         } finally {
             tempDir.deleteRecursively()
