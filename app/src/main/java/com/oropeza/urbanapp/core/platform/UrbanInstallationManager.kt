@@ -2,8 +2,9 @@ package com.oropeza.urbanapp.core.platform
 
 import android.content.Context
 import com.google.firebase.firestore.FirebaseFirestore
-import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
+import com.google.firebase.firestore.SetOptions
 import com.oropeza.urbanapp.core.identity.UrbanIdentityManager
+import com.oropeza.urbanapp.core.identity.UrbanIdentityProvider
 import kotlinx.coroutines.tasks.await
 
 class UrbanInstallationManager(private val context: Context) {
@@ -14,6 +15,7 @@ class UrbanInstallationManager(private val context: Context) {
         private const val KEY_STATUS = "installation_status"
         private const val KEY_LICENSE_ID = "license_id"
         private const val KEY_WORKSPACE_ID = "workspace_id"
+        private const val KEY_PROJECT_ID = "project_id"
     }
 
     fun getLocalStatus(): InstallationStatus {
@@ -27,58 +29,65 @@ class UrbanInstallationManager(private val context: Context) {
 
     suspend fun syncInstallationStatus(): InstallationStatus {
         val identity = UrbanIdentityProvider.getIdentity(context)
-        val installationId = identity.installationId
-        val ownerUid = UrbanIdentityManager.getUid() ?: return InstallationStatus.PENDING
-        
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
+            .ifBlank { UrbanPlatformSettings.DEFAULT_ORGANIZATION_ID }
+        val projectId = UrbanPlatformSettings.getProjectId(context)
+            .ifBlank { UrbanPlatformSettings.DEFAULT_PROJECT_ID }
+        val path = UrbanCloudPaths.installationPath(workspaceId, projectId, identity.installationId)
+
         return try {
-            // Step 1: Read derived access document (Primary truth for authorization)
-            // Keyed by ownerUid to satisfy direct document rules without query params
-            val accessRef = db.collection("installation_access").document(ownerUid)
-            val accessSnapshot = accessRef.get().await()
+            val ref = db.document(path)
+            val snapshot = ref.get().await()
 
-            if (accessSnapshot.exists()) {
-                val status = accessSnapshot.getString("status") ?: InstallationStatus.PENDING.name
-                val licenseId = accessSnapshot.getString("licenseId")
-                val workspaceId = accessSnapshot.getString("workspaceId")
-                val projectId = accessSnapshot.getString("projectId") ?: "default_project"
-                
-                val currentStatus = try { 
-                    InstallationStatus.valueOf(status) 
-                } catch (e: Exception) { 
-                    InstallationStatus.PENDING 
-                }
-                
-                saveLocalStatus(currentStatus, licenseId, workspaceId, projectId)
-                
-                // Step 2: Update telemetry in main installations doc
-                db.collection("installations").document(installationId)
-                    .update("lastSyncAt", System.currentTimeMillis()).await()
+            if (!snapshot.exists()) {
+                registerInstallation(path)
+                return InstallationStatus.PENDING
+            }
 
-                currentStatus
-            } else {
-                // If installation_access doesn't exist, check if installation exists
-                val instSnapshot = db.collection("installations").document(installationId).get().await()
-                if (!instSnapshot.exists()) {
-                    registerInstallation(installationId)
-                }
+            val statusName = snapshot.getString("status") ?: InstallationStatus.PENDING.name
+            val status = try {
+                InstallationStatus.valueOf(statusName)
+            } catch (e: Exception) {
                 InstallationStatus.PENDING
             }
+            val licenseId = snapshot.getString("licenseId")
+            val resolvedWorkspaceId = snapshot.getString("workspaceId") ?: workspaceId
+            val resolvedProjectId = snapshot.getString("projectId") ?: projectId
+
+            saveLocalStatus(status, licenseId, resolvedWorkspaceId, resolvedProjectId)
+
+            // Presence/last-sync fields are informational. Merge avoids clobbering
+            // license or administrative fields written by Operations Center.
+            ref.set(
+                mapOf(
+                    "lastSyncAt" to System.currentTimeMillis(),
+                    "updatedAt" to System.currentTimeMillis(),
+                    "ownerUid" to UrbanIdentityManager.getUid()
+                ),
+                SetOptions.merge()
+            ).await()
+
+            status
         } catch (e: Exception) {
-            getLocalStatus() // Offline fallback
+            getLocalStatus()
         }
     }
 
-    private suspend fun registerInstallation(installationId: String) {
+    private suspend fun registerInstallation(path: String) {
         val installation = UrbanPlatformService.buildCurrentInstallation(context).copy(
             ownerUid = UrbanIdentityManager.getUid(),
-            workspaceId = null,
-            licenseId = null,
             status = InstallationStatus.PENDING.name,
-            registeredAt = null,
+            registeredAt = System.currentTimeMillis(),
         )
-        val map = UrbanPlatformCloudMapper.installationToMap(installation)
-        db.collection("installations").document(installationId).set(map).await()
-        saveLocalStatus(InstallationStatus.PENDING, null, null, null)
+        db.document(path)
+            .set(UrbanPlatformCloudMapper.installationToMap(installation), SetOptions.merge())
+            .await()
+        saveLocalStatus(
+            InstallationStatus.PENDING,
+            installation.licenseId,
+            installation.workspaceId,
+            installation.projectId
+        )
     }
 
     private fun saveLocalStatus(status: InstallationStatus, licenseId: String?, workspaceId: String?, projectId: String?) {
@@ -86,11 +95,16 @@ class UrbanInstallationManager(private val context: Context) {
             .putString(KEY_STATUS, status.name)
             .putString(KEY_LICENSE_ID, licenseId)
             .putString(KEY_WORKSPACE_ID, workspaceId)
+            .putString(KEY_PROJECT_ID, projectId)
             .apply()
-            
-        // Also sync with UrbanPlatformSettings if ACTIVE
-        if (status == InstallationStatus.ACTIVE && workspaceId != null) {
-            UrbanPlatformSettings.saveSettings(context, workspaceId, projectId ?: "default_project", licenseId ?: "")
+
+        if (status == InstallationStatus.ACTIVE && !workspaceId.isNullOrBlank()) {
+            UrbanPlatformSettings.saveSettings(
+                context,
+                workspaceId,
+                projectId ?: UrbanPlatformSettings.DEFAULT_PROJECT_ID,
+                licenseId ?: ""
+            )
         }
     }
 }
