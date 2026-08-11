@@ -5,10 +5,6 @@ import { webIntegrity, webIntegrityError } from "./webIntegrity";
 const ORG_ID = import.meta.env.VITE_URBAN_ORG_ID || "afora";
 const PROJECT_ID = import.meta.env.VITE_URBAN_PROJECT_ID || "urban_operations";
 
-function mapDocs(snapshot) {
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-}
-
 function toMillis(value) {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -24,17 +20,81 @@ function sortByLastSeenDesc(a, b) {
   return bMs - aMs;
 }
 
-export function subscribeInstallationsHealth(onInstallations, onError) {
-  const path = `asd_organizations/${ORG_ID}/projects/${PROJECT_ID}/installations`;
-  webIntegrity("WEB_COLLECTION_PATH", { operation: "SUBSCRIBE_INSTALLATIONS", path });
-  webIntegrity("WEB_FIRESTORE_READ", {
-    operation: "SUBSCRIBE_INSTALLATIONS",
-    path,
-    outcome: "WAITING_FOR_AUTH",
-  });
+function normalizeLive(doc) {
+  const raw = { id: doc.id, ...doc.data() };
+  return {
+    ...raw,
+    installationId: raw.installationId || doc.id,
+    lastSeenClient: raw.lastSeenClient ?? raw.updatedAt ?? raw.lastFixTime,
+    lastHeartbeatAt: raw.lastHeartbeatAt ?? raw.updatedAt,
+    activeTripId: raw.activeTripId ?? raw.tripId ?? null,
+    battery: raw.battery ?? (raw.batteryLevel != null ? { level: raw.batteryLevel } : undefined),
+    device: raw.device,
+  };
+}
 
-  let unsubscribe = null;
+function mergeFleet(installations, liveDevices) {
+  const installationsById = new Map(installations.map((item) => [item.id, item]));
+  const liveById = new Map(liveDevices.map((item) => [item.installationId || item.id, item]));
+  const ids = new Set([...installationsById.keys(), ...liveById.keys()]);
+
+  return [...ids].map((id) => {
+    const installation = installationsById.get(id) || { id, installationId: id, status: "PENDING" };
+    const live = liveById.get(id);
+    if (!live) return installation;
+
+    const fallbackDevice = {
+      manufacturer: installation.manufacturer,
+      model: installation.model,
+      androidVersion: installation.androidVersion,
+      appVersionName: installation.appVersionName,
+      appVersionCode: installation.appVersionCode,
+    };
+
+    return {
+      ...installation,
+      ...live,
+      id,
+      installationId: id,
+      // Administrative fields always come from the durable installation record.
+      status: installation.status || live.status || "PENDING",
+      workspaceId: installation.workspaceId || live.workspaceId,
+      projectId: installation.projectId || live.projectId,
+      licenseId: installation.licenseId,
+      ownerUid: installation.ownerUid,
+      manufacturer: installation.manufacturer || live.device?.manufacturer,
+      model: installation.model || live.device?.model,
+      androidVersion: installation.androidVersion || live.device?.androidVersion,
+      appVersionName: installation.appVersionName || live.appVersionName || live.device?.appVersionName,
+      device: live.device || fallbackDevice,
+      lastSeenAt: live.lastSeenClient || installation.lastSeenAt,
+      lastHeartbeatAt: live.lastHeartbeatAt || live.lastSeenClient || installation.lastHeartbeatAt,
+      lastSyncAt: installation.lastSyncAt,
+    };
+  }).sort(sortByLastSeenDesc);
+}
+
+export function subscribeInstallationsHealth(onInstallations, onError) {
+  const installationsPath = `asd_organizations/${ORG_ID}/projects/${PROJECT_ID}/installations`;
+  const livePath = `asd_organizations/${ORG_ID}/projects/${PROJECT_ID}/live_status`;
+  webIntegrity("WEB_COLLECTION_PATH", { operation: "SUBSCRIBE_INSTALLATIONS", path: installationsPath });
+  webIntegrity("WEB_COLLECTION_PATH", { operation: "SUBSCRIBE_FLEET_LIVE", path: livePath });
+
+  let unsubscribeInstallations = null;
+  let unsubscribeLive = null;
   let cancelled = false;
+  let installationRows = [];
+  let liveRows = [];
+
+  const emit = () => onInstallations(mergeFleet(installationRows, liveRows));
+  const reportError = (operation, path, error) => {
+    if (error?.code === "permission-denied") {
+      webIntegrityError("WEB_FIRESTORE_PERMISSION_DENIED", error, { operation, path });
+    } else {
+      webIntegrityError("WEB_FIRESTORE_READ_FAILED", error, { operation, path });
+    }
+    if (onError) onError(error);
+  };
 
   authReady
     .then((user) => {
@@ -42,61 +102,51 @@ export function subscribeInstallationsHealth(onInstallations, onError) {
 
       webIntegrity("WEB_FIRESTORE_READ", {
         operation: "SUBSCRIBE_INSTALLATIONS",
-        path,
+        path: installationsPath,
         outcome: "SUBSCRIBE",
         uid: user?.uid ?? null,
         anonymous: user?.isAnonymous ?? null,
       });
 
-      const ref = collection(
-        db,
-        "asd_organizations",
-        ORG_ID,
-        "projects",
-        PROJECT_ID,
-        "installations"
-      );
+      const installationsRef = collection(db, "asd_organizations", ORG_ID, "projects", PROJECT_ID, "installations");
+      const liveRef = collection(db, "asd_organizations", ORG_ID, "projects", PROJECT_ID, "live_status");
 
-      unsubscribe = onSnapshot(
-        ref,
+      unsubscribeInstallations = onSnapshot(
+        installationsRef,
         (snapshot) => {
-          const installations = mapDocs(snapshot).sort(sortByLastSeenDesc);
+          installationRows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
           webIntegrity("WEB_QUERY_RESULT", {
             operation: "SUBSCRIBE_INSTALLATIONS",
-            path,
+            path: installationsPath,
             outcome: "SUCCESS",
-            count: installations.length,
+            count: installationRows.length,
           });
-          onInstallations(installations);
+          emit();
         },
-        (error) => {
-          if (error?.code === "permission-denied") {
-            webIntegrityError("WEB_FIRESTORE_PERMISSION_DENIED", error, {
-              operation: "SUBSCRIBE_INSTALLATIONS",
-              path,
-            });
-          } else {
-            webIntegrityError("WEB_FIRESTORE_READ_FAILED", error, {
-              operation: "SUBSCRIBE_INSTALLATIONS",
-              path,
-            });
-          }
-          if (onError) onError(error);
-        }
+        (error) => reportError("SUBSCRIBE_INSTALLATIONS", installationsPath, error)
+      );
+
+      unsubscribeLive = onSnapshot(
+        liveRef,
+        (snapshot) => {
+          liveRows = snapshot.docs.map(normalizeLive);
+          webIntegrity("WEB_QUERY_RESULT", {
+            operation: "SUBSCRIBE_FLEET_LIVE",
+            path: livePath,
+            outcome: "SUCCESS",
+            count: liveRows.length,
+          });
+          emit();
+        },
+        (error) => reportError("SUBSCRIBE_FLEET_LIVE", livePath, error)
       );
     })
-    .catch((error) => {
-      webIntegrityError("WEB_FIRESTORE_READ_FAILED", error, {
-        operation: "SUBSCRIBE_INSTALLATIONS",
-        path,
-        phase: "AUTH",
-      });
-      if (onError) onError(error);
-    });
+    .catch((error) => reportError("SUBSCRIBE_INSTALLATIONS", installationsPath, error));
 
   return () => {
     cancelled = true;
-    if (unsubscribe) unsubscribe();
+    if (unsubscribeInstallations) unsubscribeInstallations();
+    if (unsubscribeLive) unsubscribeLive();
   };
 }
 
@@ -104,9 +154,6 @@ export async function updateInstallationStatus(installationId, status, extraFiel
   await authReady;
   const batch = writeBatch(db);
 
-  // One source of truth: the project-scoped installation document consumed by
-  // Android bootstrap, Licenses and Fleet Health. Avoid legacy top-level access
-  // mirrors that are outside the current Firestore security contract.
   const instRef = doc(
     db,
     "asd_organizations",
