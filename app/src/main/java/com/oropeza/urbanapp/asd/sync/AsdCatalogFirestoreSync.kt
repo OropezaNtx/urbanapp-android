@@ -1,5 +1,7 @@
 package com.oropeza.urbanapp.asd.sync
 
+import android.util.Log
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.oropeza.urbanapp.asd.AsdGraph
@@ -7,6 +9,8 @@ import com.oropeza.urbanapp.asd.data.local.AsdCatalogSyncState
 import com.oropeza.urbanapp.asd.data.local.AsdFieldPersonCatalogItem
 import com.oropeza.urbanapp.asd.data.local.AsdRouteCatalogItem
 import com.oropeza.urbanapp.asd.data.local.AsdVehicleTypeCatalogItem
+import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
+import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -56,7 +60,6 @@ data class AsdVehicleTypeCatalogFirestoreDto(
     val active: Boolean = true
 )
 
-// Mappers
 fun AsdRouteCatalogFirestoreDto.toEntity() = AsdRouteCatalogItem(
     catalogId = catalogId,
     direction = direction,
@@ -93,17 +96,70 @@ fun AsdVehicleTypeCatalogFirestoreDto.toEntity() = AsdVehicleTypeCatalogItem(
 
 object AsdCatalogFirestoreSync {
 
+    private const val TAG = "AsdCatalogSync"
+    private const val LEGACY_VERSION_PATH = "asd_catalog_versions/current"
+
+    private data class ResolvedCatalog(
+        val versionDoc: DocumentSnapshot,
+        val source: String,
+        val path: String
+    )
+
+    /**
+     * Prefer the project-scoped catalog introduced for Field RC2. During the
+     * migration window we retain a read-only legacy fallback so an existing
+     * catalog does not disappear while Firestore data is being relocated.
+     */
+    private suspend fun resolveCatalog(): ResolvedCatalog {
+        val context = AsdGraph.appContext
+        val workspaceId = UrbanPlatformSettings.getWorkspaceId(context)
+            .ifBlank { UrbanPlatformSettings.DEFAULT_ORGANIZATION_ID }
+        val projectId = UrbanPlatformSettings.getProjectId(context)
+            .ifBlank { UrbanPlatformSettings.DEFAULT_PROJECT_ID }
+        val db = Firebase.firestore
+
+        val projectPath = UrbanCloudPaths.catalogVersionPath(workspaceId, projectId)
+        var projectError: Throwable? = null
+        try {
+            val projectDoc = db.document(projectPath).get().await()
+            if (projectDoc.exists()) {
+                Log.i(TAG, "CATALOG_SOURCE source=PROJECT_FIRESTORE path=$projectPath")
+                return ResolvedCatalog(projectDoc, "PROJECT_FIRESTORE", projectPath)
+            }
+        } catch (t: Throwable) {
+            projectError = t
+            Log.w(TAG, "CATALOG_PROJECT_READ_FAILED path=$projectPath message=${t.message}")
+        }
+
+        try {
+            val legacyDoc = db.document(LEGACY_VERSION_PATH).get().await()
+            if (legacyDoc.exists()) {
+                Log.w(TAG, "CATALOG_SOURCE source=LEGACY_FIRESTORE path=$LEGACY_VERSION_PATH migrationRequired=true")
+                return ResolvedCatalog(legacyDoc, "LEGACY_FIRESTORE", LEGACY_VERSION_PATH)
+            }
+        } catch (legacyError: Throwable) {
+            val projectDetail = projectError?.message?.let { " Proyecto: $it." }.orEmpty()
+            throw IllegalStateException(
+                "No se pudo leer el catálogo del proyecto ni el catálogo legacy.$projectDetail Legacy: ${legacyError.message}",
+                legacyError
+            )
+        }
+
+        val projectDetail = projectError?.message?.let { " Error de proyecto: $it." }.orEmpty()
+        throw IllegalStateException(
+            "No existe catálogo activo en $projectPath ni en $LEGACY_VERSION_PATH.$projectDetail"
+        )
+    }
+
     suspend fun checkVersionAndSyncIfNeeded(): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            val db = Firebase.firestore
-            val versionDoc = db.collection("asd_catalog_versions").document("current").get().await()
-            if (!versionDoc.exists()) return@withContext Result.success(false)
-
-            val remoteVersion = versionDoc.getString("version") ?: ""
+            val resolved = resolveCatalog()
+            val remoteVersion = resolved.versionDoc.getString("version") ?: ""
             val localState = AsdGraph.repo.getCatalogSyncStateOnce()
-            
-            if (remoteVersion != localState?.version || localState.status != "READY") {
-                syncFromFirestore()
+
+            val sourceChanged = localState?.source != resolved.source
+            if (remoteVersion != localState?.version || localState.status != "READY" || sourceChanged) {
+                syncResolvedCatalog(resolved)
                 Result.success(true)
             } else {
                 Result.success(false)
@@ -112,108 +168,10 @@ object AsdCatalogFirestoreSync {
             Result.failure(e)
         }
     }
-    
+
     suspend fun syncFromFirestore(): Result<AsdCatalogSyncResult> = withContext(Dispatchers.IO) {
         try {
-            val db = Firebase.firestore
-            val versionDoc = db.collection("asd_catalog_versions").document("current").get().await()
-            
-            if (!versionDoc.exists()) {
-                return@withContext Result.failure(Exception("No existe catálogo web actual."))
-            }
-
-            val versionData = versionDoc.toObject(AsdCatalogVersionFirestoreDto::class.java)
-            if (versionData?.active != true) {
-                return@withContext Result.failure(Exception("El catálogo web no está activo."))
-            }
-
-            val versionStr = versionData.version
-
-            // 1. Routes
-            val routesSnap = versionDoc.reference.collection("routes").get().await()
-            val routes = mutableListOf<AsdRouteCatalogItem>()
-            val routesWarnings = mutableListOf<String>()
-
-            for (doc in routesSnap.documents) {
-                val dto = doc.toObject(AsdRouteCatalogFirestoreDto::class.java) ?: continue
-                val catalogId = dto.catalogId.trim().uppercase()
-                val routeName = dto.routeName.trim().uppercase()
-                val direction = if (dto.direction.uppercase().contains("REGRESO")) "REGRESO" else "IDA"
-
-                if (catalogId.isBlank() || routeName.isBlank()) {
-                    routesWarnings.add("Ruta ${doc.id} saltada: ID o NOMBRE vacíos.")
-                    continue
-                }
-
-                routes.add(dto.copy(catalogId = catalogId, routeName = routeName, direction = direction).toEntity())
-            }
-
-            if (routes.isEmpty()) {
-                return@withContext Result.failure(Exception("El catálogo web no contiene rutas."))
-            }
-
-            // 2. People
-            val peopleSnap = versionDoc.reference.collection("people").get().await()
-            val people = mutableListOf<AsdFieldPersonCatalogItem>()
-            
-            for (doc in peopleSnap.documents) {
-                val dto = doc.toObject(AsdFieldPersonCatalogFirestoreDto::class.java) ?: continue
-                val personId = dto.personId.trim().uppercase()
-                val name = dto.name.trim().uppercase()
-
-                if (personId.isBlank() || name.isBlank()) continue
-
-                val role = if (dto.role.uppercase() in listOf("OBSERVADOR", "SUPERVISOR", "AMBOS")) dto.role.uppercase() else "AMBOS"
-                val sex = when(dto.defaultSex?.uppercase()) {
-                    "H", "HOMBRE" -> "H"
-                    "M", "MUJER" -> "M"
-                    else -> null
-                }
-
-                people.add(dto.copy(personId = personId, name = name, role = role, defaultSex = sex).toEntity())
-            }
-
-            // 3. Vehicle Types
-            val vehiclesSnap = versionDoc.reference.collection("vehicle_types").get().await()
-            val vehicles = mutableListOf<AsdVehicleTypeCatalogItem>()
-            for (doc in vehiclesSnap.documents) {
-                val dto = doc.toObject(AsdVehicleTypeCatalogFirestoreDto::class.java) ?: continue
-                if (dto.vehicleTypeId.isBlank() || dto.name.isBlank()) continue
-                vehicles.add(dto.toEntity())
-            }
-
-            // Guardar en Room
-            AsdGraph.repo.replaceAsdRouteCatalog(routes)
-            if (people.isNotEmpty()) {
-                AsdGraph.repo.replaceAsdPeopleCatalog(people)
-            }
-            if (vehicles.isNotEmpty()) {
-                AsdGraph.repo.replaceAsdVehicleTypeCatalog(vehicles)
-            }
-
-            val syncMsg = "Catálogo web sincronizado: ${routes.size} rutas, ${people.size} personas, ${vehicles.size} unidades."
-
-            val state = AsdCatalogSyncState(
-                source = "FIRESTORE",
-                version = versionStr,
-                lastSyncAt = System.currentTimeMillis(),
-                routesCount = routes.size,
-                peopleCount = people.size,
-                vehicleTypesCount = vehicles.size,
-                status = "READY",
-                message = syncMsg
-            )
-            AsdGraph.repo.updateCatalogSyncState(state)
-
-            Result.success(
-                AsdCatalogSyncResult(
-                    version = versionStr,
-                    routesCount = routes.size,
-                    peopleCount = people.size,
-                    vehicleTypesCount = vehicles.size,
-                    message = syncMsg
-                )
-            )
+            syncResolvedCatalog(resolveCatalog())
         } catch (e: Exception) {
             val errMsg = "Error en sincronización web: ${e.message}"
             AsdGraph.repo.updateCatalogSyncState(
@@ -224,7 +182,107 @@ object AsdCatalogFirestoreSync {
                     message = errMsg
                 )
             )
+            Log.e(TAG, "CATALOG_SYNC_FAILED message=${e.message}", e)
             Result.failure(e)
         }
+    }
+
+    private suspend fun syncResolvedCatalog(resolved: ResolvedCatalog): Result<AsdCatalogSyncResult> {
+        val versionDoc = resolved.versionDoc
+        val versionData = versionDoc.toObject(AsdCatalogVersionFirestoreDto::class.java)
+        if (versionData?.active != true) {
+            return Result.failure(Exception("El catálogo web no está activo."))
+        }
+
+        val versionStr = versionData.version
+
+        val routesSnap = versionDoc.reference.collection("routes").get().await()
+        val routes = mutableListOf<AsdRouteCatalogItem>()
+        val routesWarnings = mutableListOf<String>()
+
+        for (doc in routesSnap.documents) {
+            val dto = doc.toObject(AsdRouteCatalogFirestoreDto::class.java) ?: continue
+            val catalogId = dto.catalogId.trim().uppercase()
+            val routeName = dto.routeName.trim().uppercase()
+            val direction = if (dto.direction.uppercase().contains("REGRESO")) "REGRESO" else "IDA"
+
+            if (catalogId.isBlank() || routeName.isBlank()) {
+                routesWarnings.add("Ruta ${doc.id} saltada: ID o NOMBRE vacíos.")
+                continue
+            }
+
+            routes.add(dto.copy(catalogId = catalogId, routeName = routeName, direction = direction).toEntity())
+        }
+
+        if (routes.isEmpty()) {
+            return Result.failure(Exception("El catálogo web no contiene rutas."))
+        }
+
+        val peopleSnap = versionDoc.reference.collection("people").get().await()
+        val people = mutableListOf<AsdFieldPersonCatalogItem>()
+        for (doc in peopleSnap.documents) {
+            val dto = doc.toObject(AsdFieldPersonCatalogFirestoreDto::class.java) ?: continue
+            val personId = dto.personId.trim().uppercase()
+            val name = dto.name.trim().uppercase()
+            if (personId.isBlank() || name.isBlank()) continue
+
+            val role = if (dto.role.uppercase() in listOf("OBSERVADOR", "SUPERVISOR", "AMBOS")) {
+                dto.role.uppercase()
+            } else {
+                "AMBOS"
+            }
+            val sex = when (dto.defaultSex?.uppercase()) {
+                "H", "HOMBRE" -> "H"
+                "M", "MUJER" -> "M"
+                else -> null
+            }
+            people.add(dto.copy(personId = personId, name = name, role = role, defaultSex = sex).toEntity())
+        }
+
+        val vehiclesSnap = versionDoc.reference.collection("vehicle_types").get().await()
+        val vehicles = mutableListOf<AsdVehicleTypeCatalogItem>()
+        for (doc in vehiclesSnap.documents) {
+            val dto = doc.toObject(AsdVehicleTypeCatalogFirestoreDto::class.java) ?: continue
+            if (dto.vehicleTypeId.isBlank() || dto.name.isBlank()) continue
+            vehicles.add(dto.toEntity())
+        }
+
+        // Replace Room only after a complete, valid remote snapshot has been read.
+        // A network/permission error therefore never destroys the last usable catalog.
+        AsdGraph.repo.replaceAsdRouteCatalog(routes)
+        if (people.isNotEmpty()) AsdGraph.repo.replaceAsdPeopleCatalog(people)
+        if (vehicles.isNotEmpty()) AsdGraph.repo.replaceAsdVehicleTypeCatalog(vehicles)
+
+        val warningSuffix = if (routesWarnings.isEmpty()) "" else " ${routesWarnings.size} ruta(s) omitidas por datos incompletos."
+        val migrationSuffix = if (resolved.source == "LEGACY_FIRESTORE") " Catálogo legacy en uso; migración pendiente." else ""
+        val syncMsg = "Catálogo web sincronizado: ${routes.size} rutas, ${people.size} personas, ${vehicles.size} unidades.$warningSuffix$migrationSuffix"
+
+        AsdGraph.repo.updateCatalogSyncState(
+            AsdCatalogSyncState(
+                source = resolved.source,
+                version = versionStr,
+                lastSyncAt = System.currentTimeMillis(),
+                routesCount = routes.size,
+                peopleCount = people.size,
+                vehicleTypesCount = vehicles.size,
+                status = "READY",
+                message = syncMsg
+            )
+        )
+
+        Log.i(
+            TAG,
+            "CATALOG_SYNC_SUCCESS source=${resolved.source} version=$versionStr routes=${routes.size} people=${people.size} vehicles=${vehicles.size} path=${resolved.path}"
+        )
+
+        return Result.success(
+            AsdCatalogSyncResult(
+                version = versionStr,
+                routesCount = routes.size,
+                peopleCount = people.size,
+                vehicleTypesCount = vehicles.size,
+                message = syncMsg
+            )
+        )
     }
 }
