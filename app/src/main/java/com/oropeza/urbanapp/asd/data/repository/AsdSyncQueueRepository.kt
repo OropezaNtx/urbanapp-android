@@ -12,6 +12,7 @@ import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.platform.UrbanPlatformCloudMapper
 import com.oropeza.urbanapp.core.platform.UrbanPlatformService
 import com.oropeza.urbanapp.core.platform.UrbanPlatformSettings
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 
 class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
 
@@ -28,7 +29,12 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
     }
 
     suspend fun enqueueInstallationRegister(context: android.content.Context) {
-        val installation = UrbanPlatformService.buildCurrentInstallation(context)
+        val installation = UrbanPlatformService.buildCurrentInstallation(context).copy(
+            // Registration refreshes device metadata but must never grant itself
+            // authorization. The administrative state is synchronized separately
+            // from the project-scoped installation document.
+            status = UrbanRuntime.installationStatus(context).name
+        )
         val path = UrbanCloudPaths.installationPath(
             workspaceId = installation.workspaceId
                 ?.takeIf { it.isNotBlank() }
