@@ -16,10 +16,12 @@ object PolylineSmoother {
      * relocate the route. Endpoints are preserved, the center point keeps most of
      * the weight and any introduced displacement is capped at 4 m.
      *
-     * IMPORTANT: Tracking intentionally persists NO_FIX samples as (0,0) so the
-     * audit trail remains lossless. Those placeholders are evidence, not route
-     * geometry, and must never participate in map/distance calculations. A single
-     * Mexico -> (0,0) -> Mexico sequence is enough to manufacture ~20,000 km.
+     * IMPORTANT: Tracking intentionally persists invalid/no-fix evidence so the
+     * audit trail remains lossless. Coordinates with either component equal to
+     * zero are retained in Room/Cloud, but are not defensible route geometry for
+     * the current field operating area. They must never participate in map or
+     * distance calculations. A partial placeholder such as (19, 0) can otherwise
+     * manufacture roughly ten thousand kilometres from Mexico in one segment.
      */
     fun movingAverage(points: List<LatLng>, window: Int = 3): List<LatLng> {
         val geometryPoints = points.filter(::isUsableGeometryPoint)
@@ -31,8 +33,6 @@ object PolylineSmoother {
             val prev = geometryPoints[i - 1]
             val next = geometryPoints[i + 1]
 
-            // Weighted centered filter: do not let neighbours overpower the
-            // canonical filtered coordinate produced by the GPS engine.
             val candidate = LatLng(
                 lat = prev.lat * 0.15 + current.lat * 0.70 + next.lat * 0.15,
                 lon = prev.lon * 0.15 + current.lon * 0.70 + next.lon * 0.15
@@ -58,7 +58,8 @@ object PolylineSmoother {
             point.lon.isFinite() &&
             point.lat in -90.0..90.0 &&
             point.lon in -180.0..180.0 &&
-            !(point.lat == 0.0 && point.lon == 0.0)
+            point.lat != 0.0 &&
+            point.lon != 0.0
 
     private fun boundShift(origin: LatLng, candidate: LatLng, maxShiftM: Double): LatLng {
         val distance = haversineMeters(origin, candidate)
