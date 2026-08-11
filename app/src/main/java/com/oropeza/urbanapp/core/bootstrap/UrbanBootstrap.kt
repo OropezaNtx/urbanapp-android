@@ -40,11 +40,10 @@ object UrbanBootstrap {
                 Log.d(TAG, "Authenticated with UID: ${UrbanIdentityManager.getUid()}")
             } catch (e: Exception) {
                 Log.e(TAG, "Authentication initialization failed", e)
-                // If we have a valid offline license, we might continue
-                val isLicenseActive = try { 
-                    UrbanRuntime.licenseStatus(context) == com.oropeza.urbanapp.core.license.UrbanLicenseStatus.ACTIVE 
+                val isLicenseActive = try {
+                    UrbanRuntime.licenseStatus(context) == com.oropeza.urbanapp.core.license.UrbanLicenseStatus.ACTIVE
                 } catch (e: Exception) { false }
-                
+
                 if (isLicenseActive) {
                     currentStatus = currentStatus.addWarning("Offline: Auth failed but using cached license")
                 } else {
@@ -66,16 +65,14 @@ object UrbanBootstrap {
                 return@withContext res
             }
 
-            // 1.1 Installation (Critical)
+            // 1.1 Installation access/status. This remains non-blocking offline.
             try {
                 UrbanRuntime.syncInstallationStatus(context)
                 currentStatus = currentStatus.copy(installationReady = true)
             } catch (e: Exception) {
                 Log.e(TAG, "Installation sync failed", e)
-                // If we have local status, we can proceed, otherwise failure
                 if (UrbanRuntime.installationStatus(context) == com.oropeza.urbanapp.core.platform.InstallationStatus.PENDING) {
-                     // Still pending, maybe not a critical failure yet but we should warn
-                     currentStatus = currentStatus.addWarning("Installation pending activation")
+                    currentStatus = currentStatus.addWarning("Installation pending activation")
                 }
             }
 
@@ -84,6 +81,13 @@ object UrbanBootstrap {
                 UrbanRuntime.workspace(context)
                 currentStatus = currentStatus.copy(workspaceReady = true)
                 UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.WORKSPACE_READY))
+
+                // The Operations Center consumes project-scoped installation and
+                // live-status documents. Publish them only after workspace resolution
+                // so cloud paths cannot drift to legacy/top-level collections.
+                UrbanRuntime.syncInstallation(context)
+                UrbanRuntime.syncHeartbeat(context, activeTripId = null)
+                Log.i(TAG, "PLATFORM_PRESENCE_SYNC_REQUESTED")
             } catch (e: Exception) {
                 Log.e(TAG, "Workspace initialization failed", e)
                 val res = failure("Critical failure: Workspace could not be loaded")
@@ -102,7 +106,6 @@ object UrbanBootstrap {
 
             // 4. License
             try {
-                // If installation is ACTIVE, try to sync remote license
                 if (UrbanRuntime.installationStatus(context) == com.oropeza.urbanapp.core.platform.InstallationStatus.ACTIVE) {
                     UrbanRuntime.syncRemoteLicense(context)
                 }
@@ -118,10 +121,10 @@ object UrbanBootstrap {
                 val workspace = UrbanRuntime.workspace(context)
                 val configManager = com.oropeza.urbanapp.core.config.UrbanConfigurationManager
                 val currentConfig = UrbanRuntime.configuration(context)
-                
+
                 if (currentConfig.featureFlags[UrbanFeatureFlags.REMOTE_CONFIG_ENABLED] == true) {
                     UrbanRuntime.publishEvent(UrbanEventFactory.platform(UrbanEventTypes.CONFIGURATION_FETCH_STARTED))
-                    
+
                     val cloudConfig = UrbanConfigurationCloudDatasource().fetchConfiguration(workspace)
                     if (cloudConfig != null) {
                         configManager.getRepository().saveLocalConfiguration(context, cloudConfig, source = "CLOUD")
@@ -157,7 +160,6 @@ object UrbanBootstrap {
                 currentStatus = currentStatus.addWarning("Full diagnostics capture partially ready")
             }
 
-            // Finalize status
             val finishedAt = System.currentTimeMillis()
             val finalStatus = if (currentStatus.warnings.isNotEmpty()) "WARNING" else "SUCCESS"
             currentStatus = currentStatus.copy(
