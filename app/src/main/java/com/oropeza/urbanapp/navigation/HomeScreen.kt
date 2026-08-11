@@ -168,9 +168,9 @@ fun HomeScreenContent(
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 AforaSectionHeader("MÓDULOS DE LEVANTAMIENTO")
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Operator build: unfinished CC/FOV modules remain in code/navigation,
+                    // but are intentionally not exposed to field personnel yet.
                     AforaSecondaryButton(text = "LEVANTAMIENTOS ASD", enabled = isLicenseActive, onClick = onOpenAsd)
-                    AforaSecondaryButton(text = "LEVANTAMIENTOS CC", enabled = isLicenseActive, onClick = onOpenCc)
-                    AforaSecondaryButton(text = "LEVANTAMIENTOS FOV", enabled = isLicenseActive, onClick = onOpenFov)
                 }
             }
 
