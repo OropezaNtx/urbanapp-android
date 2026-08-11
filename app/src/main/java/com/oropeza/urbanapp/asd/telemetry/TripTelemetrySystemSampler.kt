@@ -6,6 +6,7 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
+import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 
 /** Lightweight sampler reused by the existing tracking watchdog. */
 object TripTelemetrySystemSampler {
@@ -21,6 +22,14 @@ object TripTelemetrySystemSampler {
             networkConnected = network.first,
             networkType = network.second,
             finished = finished
+        )
+
+        // Reuse the already-scheduled watchdog/telemetry cadence as the platform
+        // presence cadence. This avoids another timer/service while keeping the
+        // Operations Center fed with battery, GPS and active-trip state.
+        UrbanRuntime.syncHeartbeat(
+            context.applicationContext,
+            activeTripId = if (finished) null else tripId
         )
     }
 
