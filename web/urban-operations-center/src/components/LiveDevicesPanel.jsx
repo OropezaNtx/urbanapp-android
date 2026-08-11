@@ -133,12 +133,16 @@ export default function LiveDevicesPanel({ devices }) {
     }, {});
   }, [devices]);
 
+  const transmitting = counters.Transmitiendo || 0;
+  const delayed = (counters.Reciente || 0) + (counters.Demorado || 0);
+  const attention = (counters.Inactivo || 0) + (counters["GPS débil"] || 0) + (counters["Sin reporte"] || 0);
+
   return <div className="live-wrap">
     <section className="grid stats live-stats">
       <div className="stat"><b>{devices.length}</b><span>Equipos en Campo</span></div>
-      <div className="stat"><b>{counters.Activo || 0}</b><span>Transmitiendo</span></div>
-      <div className="stat"><b>{(counters.Reciente || 0) + (counters.Atrasado || 0)}</b><span>Con retraso</span></div>
-      <div className="stat"><b>{(counters.Inactivo || 0) + (counters["GPS débil"] || 0)}</b><span>Requieren atención</span></div>
+      <div className="stat"><b>{transmitting}</b><span>Transmitiendo</span></div>
+      <div className="stat"><b>{delayed}</b><span>Con retraso</span></div>
+      <div className="stat"><b>{attention}</b><span>Requieren atención</span></div>
     </section>
 
     <section className="card live-toolbar">
@@ -153,12 +157,13 @@ export default function LiveDevicesPanel({ devices }) {
         </label>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="ALL">Ver todos</option>
-          <option value="ACTIVO">Activo</option>
+          <option value="TRANSMITIENDO">Transmitiendo</option>
           <option value="RECIENTE">Reciente</option>
-          <option value="ATRASADO">Demorado</option>
+          <option value="DEMORADO">Demorado</option>
           <option value="INACTIVO">Inactivo</option>
           <option value="GPS DÉBIL">GPS débil</option>
-          <option value="FINALIZADO">Completado</option>
+          <option value="COMPLETADO">Completado</option>
+          <option value="SIN REPORTE">Sin reporte</option>
         </select>
       </div>
     </section>
