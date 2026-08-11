@@ -32,13 +32,13 @@ function fmt(v) {
 }
 
 function healthState(device) {
-  const lastSeen = device.lastSeenClient || device.lastSeen;
+  const lastSeen = device.lastSeenClient || device.lastHeartbeatAt || device.lastSeenAt || device.lastSeen;
   const minutes = minutesSince(lastSeen);
   const battery = Number(device.battery?.level ?? device.battery ?? 0);
-  const licenseStatus = String(device.license?.licenseStatus || "").toUpperCase();
+  const licenseStatus = String(device.license?.licenseStatus || device.status || "").toUpperCase();
   const installationStatus = String(device.license?.installationStatus || device.status || "").toUpperCase();
 
-  if (installationStatus === "BLOCKED" || licenseStatus === "BLOCKED" || licenseStatus === "SUSPENDED") {
+  if (["BLOCKED", "REVOKED", "SUSPENDED"].includes(installationStatus) || ["BLOCKED", "REVOKED", "SUSPENDED"].includes(licenseStatus)) {
     return { label: "Bloqueado", cls: "fleet-danger" };
   }
   if (minutes === null) return { label: "Sin reporte", cls: "fleet-muted" };
@@ -53,7 +53,16 @@ function getBattery(device) {
 }
 
 function getDeviceName(device) {
-  return [device.device?.manufacturer, device.device?.model].filter(Boolean).join(" ") || device.id;
+  const manufacturer = device.device?.manufacturer ?? device.manufacturer;
+  const model = device.device?.model ?? device.model;
+  return [manufacturer, model].filter(Boolean).join(" ") || device.id;
+}
+
+function licenseLabel(device) {
+  const status = String(device.status || device.license?.licenseStatus || "PENDING").toUpperCase();
+  if (status === "ACTIVE") return "ACTIVA";
+  if (status === "REVOKED" || status === "BLOCKED" || status === "SUSPENDED") return "REVOCADA";
+  return "PENDIENTE";
 }
 
 export default function FleetHealthPanel({ installations }) {
@@ -69,7 +78,7 @@ export default function FleetHealthPanel({ installations }) {
     <section className="grid stats fleet-stats">
       <div className="stat"><b>{installations.length}</b><span>Equipos</span></div>
       <div className="stat"><b>{counters["En línea"] || 0}</b><span>Activos</span></div>
-      <div className="stat"><b>{(counters.Inactivo || 0) + (counters.Desconectado || 0)}</b><span>Sin reporte</span></div>
+      <div className="stat"><b>{(counters.Inactivo || 0) + (counters.Desconectado || 0) + (counters["Sin reporte"] || 0)}</b><span>Sin reporte</span></div>
       <div className="stat"><b>{(counters.Bloqueado || 0) + (counters["Batería baja"] || 0)}</b><span>Requieren atención</span></div>
     </section>
 
@@ -95,29 +104,30 @@ export default function FleetHealthPanel({ installations }) {
         <tbody>{installations.map((device) => {
           const st = healthState(device);
           const b = getBattery(device);
+          const lastSeen = device.lastSeenClient || device.lastHeartbeatAt || device.lastSeenAt || device.lastSeen;
           return <tr key={device.id}>
             <td><span className={`fleet-badge ${st.cls}`}>{st.label}</span></td>
             <td>
               <b><Smartphone size={13} /> {val(getDeviceName(device))}</b>
               <span>{val(device.id.substring(0, 8))}</span>
-              <small>v{val(device.device?.appVersionName)}</small>
+              <small>v{val(device.device?.appVersionName ?? device.appVersionName)}</small>
             </td>
             <td>
               <b>{val(device.projectId)}</b>
               <span>{val(device.workspaceId)}</span>
             </td>
             <td>
-              <b><ShieldCheck size={13} /> {val(device.license?.licenseStatus === 'ACTIVE' ? 'ACTIVA' : 'VERIFICAR')}</b>
-              <small>{val(device.license?.plan)}</small>
+              <b><ShieldCheck size={13} /> {licenseLabel(device)}</b>
+              <small>{val(device.licenseId ?? device.license?.plan)}</small>
             </td>
             <td>
-              <b><Cpu size={13} /> {val(device.config?.gpsProfile)}</b>
-              <span>Auto-envío {val(device.config?.heartbeatIntervalSeconds)}s</span>
+              <b><Cpu size={13} /> {val(device.gpsStatus ?? device.config?.gpsProfile)}</b>
+              <span>Heartbeat {val(device.config?.heartbeatIntervalSeconds)}s</span>
             </td>
             <td><Battery size={13} /> {val(b)}{b !== undefined && b !== null ? "%" : ""}</td>
             <td>
-              <b><Clock size={13} /> {age(device.lastSeenClient || device.lastSeen)}</b>
-              <span>{fmt(device.lastSeenClient || device.lastSeen)}</span>
+              <b><Clock size={13} /> {age(lastSeen)}</b>
+              <span>{fmt(lastSeen)}</span>
             </td>
             <td>{val(device.activeTripId)}</td>
           </tr>;
