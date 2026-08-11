@@ -39,6 +39,8 @@ import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 import com.oropeza.urbanapp.asd.importer.AsdCatalogXlsxImporter
 import com.oropeza.urbanapp.asd.sync.AsdCatalogFirestoreSync
 import com.oropeza.urbanapp.asd.location.LocationProvider
+import com.oropeza.urbanapp.ui.theme.LocalAforaColors
+import com.oropeza.urbanapp.ui.theme.LocalAforaTypography
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -162,11 +164,16 @@ class AsdNewTripVM : ViewModel() {
             observerSex = observerSex,
             continueWaypoints = continueWaypoints
         )
-        
+
         if (id > 0) {
-            UrbanRuntime.publishEvent(UrbanEventFactory.asd(UrbanEventTypes.ASD_TRIP_CREATED, mapOf("tripId" to id, "routeName" to routeName)))
+            UrbanRuntime.publishEvent(
+                UrbanEventFactory.asd(
+                    UrbanEventTypes.ASD_TRIP_CREATED,
+                    mapOf("tripId" to id, "routeName" to routeName)
+                )
+            )
         }
-        
+
         return id
     }
 }
@@ -182,6 +189,8 @@ fun AsdNewTripScreen(
     val scrollState = rememberScrollState()
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+    val colors = LocalAforaColors.current
+    val typography = LocalAforaTypography.current
     val gps = remember { LocationProvider(context) }
     val syncState by vm.syncState.collectAsState(initial = null)
 
@@ -189,7 +198,7 @@ fun AsdNewTripScreen(
     var planningRouteId by remember { mutableStateOf("") }
     var catalogStatus by remember { mutableStateOf<String?>(null) }
 
-    // 2. DATOS AUTOLLENADOS (Simulados)
+    // 2. DATOS AUTOLLENADOS
     var routeName by remember { mutableStateOf("") }
     var company by remember { mutableStateOf("") }
     var baseStart by remember { mutableStateOf("") }
@@ -199,15 +208,14 @@ fun AsdNewTripScreen(
     var routeNumberTxt by remember { mutableStateOf("") }
     var direction by remember { mutableStateOf("IDA") }
     var esFs by remember { mutableStateOf("ES") }
-    var startWpAtOne by remember { mutableStateOf(false) } // Default: false (Continuar)
+    var startWpAtOne by remember { mutableStateOf(false) }
     var customRouteNumber by remember { mutableStateOf(false) }
-    
+
     var debugLastWp by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(Unit) {
         debugLastWp = vm.getLastTripNextWaypoint()
     }
 
-    // Determinar ES/FS inicial
     LaunchedEffect(Unit) {
         val calendar = Calendar.getInstance()
         val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
@@ -241,18 +249,19 @@ fun AsdNewTripScreen(
     var pendingCreate by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val bgApp = Color(0xFF07110F)
-    val cardBg = Color(0xFF0D1716)
-    val borderCol = Color(0xFF223A36)
-    val greenAcc = Color(0xFF35D36B)
+    val bgApp = colors.Background
+    val cardBg = colors.Surface
+    val borderCol = colors.Outline
+    val primaryAcc = colors.Primary
+    val textPrimary = colors.Secondary
+    val textSecondary = colors.Secondary.copy(alpha = 0.62f)
 
     val vehicleTypesFallback = listOf(
-        "COMBI", "VAN", "SPRINTER", "MICROBUS", "MIDIBUS", "BUS URBANO", 
-        "BUS FORANEO", "ARTICULADO", "TROLEBUS", "METROBUS", 
+        "COMBI", "VAN", "SPRINTER", "MICROBUS", "MIDIBUS", "BUS URBANO",
+        "BUS FORANEO", "ARTICULADO", "TROLEBUS", "METROBUS",
         "TAXI COLECTIVO", "CAMIONETA", "OTRO"
     )
 
-    // Lógica de búsqueda en catálogo
     LaunchedEffect(planningRouteId, direction) {
         if (planningRouteId.length >= 3) {
             val route = vm.getRoute(planningRouteId, direction)
@@ -286,12 +295,11 @@ fun AsdNewTripScreen(
         }
     }
 
-    // Permisos
     val permLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         val granted = (result[Manifest.permission.ACCESS_FINE_LOCATION] == true) ||
-                (result[Manifest.permission.ACCESS_COARSE_LOCATION] == true)
+            (result[Manifest.permission.ACCESS_COARSE_LOCATION] == true)
 
         if (!granted) {
             pendingCreate = false
@@ -301,26 +309,35 @@ fun AsdNewTripScreen(
 
         if (pendingCreate) {
             pendingCreate = false
-            scope.launch { createTripFlow(vm, gps,
-                planningRouteId, routeName, company, vehicleEco, direction, notes,
-                aforador, supervisor, deviceNumber, observerSex ?: "",
-                routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
-                !startWpAtOne,
-                onCreated = onCreated,
-                setLoading = { loading = it },
-                setGpsMsg = { gpsMsg = it },
-                setError = { error = it }
-            ) }
+            scope.launch {
+                createTripFlow(
+                    vm, gps,
+                    planningRouteId, routeName, company, vehicleEco, direction, notes,
+                    aforador, supervisor, deviceNumber, observerSex ?: "",
+                    routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
+                    !startWpAtOne,
+                    onCreated = onCreated,
+                    setLoading = { loading = it },
+                    setGpsMsg = { gpsMsg = it },
+                    setError = { error = it }
+                )
+            }
         }
     }
 
     fun requestPermsIfNeededAndCreateOrWait() {
         if (!gps.hasPermission()) {
             pendingCreate = true
-            permLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            permLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
         } else {
             scope.launch {
-                createTripFlow(vm, gps,
+                createTripFlow(
+                    vm, gps,
                     planningRouteId, routeName, company, vehicleEco, direction, notes,
                     aforador, supervisor, deviceNumber, observerSex ?: "",
                     routeNumberTxt, esFs, baseStart, baseEnd, plateNumber, vehicleType, seatCapacityTxt,
@@ -343,11 +360,20 @@ fun AsdNewTripScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = bgApp, titleContentColor = Color.White),
-                title = { Text("NUEVO RECORRIDO ASD", fontWeight = FontWeight.ExtraBold) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = colors.Surface,
+                    titleContentColor = colors.Secondary
+                ),
+                title = {
+                    Text(
+                        "NUEVO RECORRIDO ASD",
+                        style = typography.Headline,
+                        fontWeight = FontWeight.Black
+                    )
+                },
                 navigationIcon = {
-                    TextButton(onClick = { focusManager.clearFocus(); onBack() }) { 
-                        Text("ATRÁS", color = Color.White) 
+                    TextButton(onClick = { focusManager.clearFocus(); onBack() }) {
+                        Text("ATRÁS", color = colors.Primary, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -365,49 +391,63 @@ fun AsdNewTripScreen(
             if (!isLicenseActive) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    colors = CardDefaults.cardColors(containerColor = colors.Danger.copy(alpha = 0.08f)),
+                    border = BorderStroke(1.dp, colors.Danger.copy(alpha = 0.35f)),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
                         text = "Acción bloqueada: Licencia no válida (${licenseStatus.name}). Por favor contacte a soporte para activar su dispositivo.",
                         modifier = Modifier.padding(12.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.Danger,
+                        style = typography.BodySmall,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            // 1. CATÁLOGO
             NewTripSection("CATÁLOGO") {
                 syncState?.let { state ->
-                    val statusColor = when(state.status) {
-                        "READY" -> greenAcc
-                        "ERROR" -> Color.Red
-                        else -> Color.Gray
+                    val statusColor = when (state.status) {
+                        "READY" -> colors.Success
+                        "ERROR" -> colors.Danger
+                        else -> colors.Offline
                     }
-                    val statusText = when(state.status) {
+                    val statusText = when (state.status) {
                         "READY" -> "Catálogo listo ✅"
                         "ERROR" -> "Error en catálogo ❌"
                         else -> "Sin catálogo local ⚠️"
                     }
-                    
+
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(statusText, style = MaterialTheme.typography.labelLarge, color = statusColor, fontWeight = FontWeight.Bold)
+                        Text(
+                            statusText,
+                            style = typography.BodySmall,
+                            color = statusColor,
+                            fontWeight = FontWeight.Bold
+                        )
                         if (state.lastSyncAt != null) {
                             val syncFmt = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
-                            Text("Última actualización: ${syncFmt.format(Date(state.lastSyncAt))}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
+                            Text(
+                                "Última actualización: ${syncFmt.format(Date(state.lastSyncAt))}",
+                                style = typography.BodySmall,
+                                color = textSecondary
+                            )
                         }
-                        Text("Rutas: ${state.routesCount} · Personas: ${state.peopleCount} · Unidades: ${state.vehicleTypesCount}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f))
+                        Text(
+                            "Rutas: ${state.routesCount} · Personas: ${state.peopleCount} · Unidades: ${state.vehicleTypesCount}",
+                            style = typography.BodySmall,
+                            color = textSecondary
+                        )
                     }
-                    
-                    HorizontalDivider(color = borderCol.copy(alpha = 0.5f))
+
+                    HorizontalDivider(color = borderCol.copy(alpha = 0.6f))
                 }
 
                 if (syncState == null || syncState?.status != "READY") {
                     Text(
                         "No hay catálogo local disponible. Conecta el dispositivo a internet y sincroniza al menos una vez antes de iniciar operación.",
-                        color = Color.Yellow,
-                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.Warning,
+                        style = typography.BodySmall,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
@@ -425,28 +465,40 @@ fun AsdNewTripScreen(
 
                 Button(
                     enabled = !loading,
-                    onClick = { 
+                    onClick = {
                         scope.launch {
                             loading = true
                             val result = AsdCatalogFirestoreSync.syncFromFirestore()
                             loading = false
                             result.onSuccess {
-                                snackbarHostState.showSnackbar("Catálogo web sincronizado: ${it.routesCount} rutas, ${it.peopleCount} personas.")
+                                snackbarHostState.showSnackbar(
+                                    "Catálogo web sincronizado: ${it.routesCount} rutas, ${it.peopleCount} personas, ${it.vehicleTypesCount} unidades."
+                                )
                             }.onFailure {
                                 snackbarHostState.showSnackbar("Error: ${it.message}")
                             }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = greenAcc.copy(alpha = 0.1f)),
-                    border = BorderStroke(1.dp, greenAcc.copy(alpha = 0.5f)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = primaryAcc,
+                        contentColor = colors.OnPrimary
+                    ),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("SINCRONIZAR WEB", color = greenAcc, style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        "SINCRONIZAR WEB",
+                        style = typography.Label,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 catalogStatus?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = if (it.contains("encontrado ✅")) greenAcc else Color.Yellow)
+                    Text(
+                        it,
+                        style = typography.Label,
+                        color = if (it.contains("encontrado ✅")) colors.Success else colors.Warning
+                    )
                 }
 
                 var advancedExpanded by remember { mutableStateOf(false) }
@@ -457,30 +509,38 @@ fun AsdNewTripScreen(
                     ) {
                         Text(
                             if (advancedExpanded) "OCULTAR OPCIONES AVANZADAS" else "MOSTRAR OPCIONES AVANZADAS",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.3f)
+                            style = typography.Label,
+                            color = textSecondary
                         )
                         Icon(
                             imageVector = if (advancedExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                             contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.3f),
+                            tint = textSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
                     if (advancedExpanded) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(
-                                onClick = { catalogLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) },
+                                onClick = {
+                                    catalogLauncher.launch(
+                                        arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                                    )
+                                },
                                 modifier = Modifier.fillMaxWidth(),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                                border = BorderStroke(1.dp, borderCol),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("IMPORTAR CATÁLOGO LOCAL (XLSX)", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    "IMPORTAR CATÁLOGO LOCAL (XLSX)",
+                                    color = textPrimary,
+                                    style = typography.Label
+                                )
                             }
                             Text(
                                 "Nota: Usar solo como respaldo cuando no sea posible sincronizar desde el servidor.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.3f),
+                                style = typography.Label,
+                                color = textSecondary,
                                 modifier = Modifier.padding(horizontal = 4.dp)
                             )
                         }
@@ -488,13 +548,12 @@ fun AsdNewTripScreen(
                 }
             }
 
-            // 2. DATOS AUTOLLENADOS
             NewTripSection("DATOS DE RUTA") {
                 if (routeName.isBlank()) {
                     Text(
                         "Ingresa ID y sentido para cargar datos de ruta.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.5f),
+                        style = typography.BodyLarge,
+                        color = textSecondary,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
                 } else {
@@ -506,13 +565,20 @@ fun AsdNewTripScreen(
                 }
             }
 
-            // 3. OPERACIÓN
             NewTripSection("OPERACIÓN") {
-                Text("NO. RECORRIDO", style = MaterialTheme.typography.labelLarge, color = Color.White)
-                
+                Text(
+                    "NO. RECORRIDO",
+                    style = typography.BodySmall,
+                    color = textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+
                 if (!customRouteNumber) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             (1..5).forEach { n ->
                                 val selected = routeNumberTxt == n.toString()
                                 OutlinedButton(
@@ -520,15 +586,23 @@ fun AsdNewTripScreen(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = if (selected) greenAcc.copy(alpha = 0.2f) else Color.Transparent,
-                                        contentColor = if (selected) greenAcc else Color.White.copy(alpha = 0.6f)
+                                        containerColor = if (selected) primaryAcc.copy(alpha = 0.10f) else cardBg,
+                                        contentColor = if (selected) primaryAcc else textSecondary
                                     ),
-                                    border = BorderStroke(1.dp, if (selected) greenAcc else borderCol),
+                                    border = BorderStroke(1.dp, if (selected) primaryAcc else borderCol),
                                     contentPadding = PaddingValues(0.dp)
-                                ) { Text(n.toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
+                                ) {
+                                    Text(
+                                        n.toString(),
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
                             }
                         }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             (6..10).forEach { n ->
                                 val selected = routeNumberTxt == n.toString()
                                 OutlinedButton(
@@ -536,12 +610,17 @@ fun AsdNewTripScreen(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = if (selected) greenAcc.copy(alpha = 0.2f) else Color.Transparent,
-                                        contentColor = if (selected) greenAcc else Color.White.copy(alpha = 0.6f)
+                                        containerColor = if (selected) primaryAcc.copy(alpha = 0.10f) else cardBg,
+                                        contentColor = if (selected) primaryAcc else textSecondary
                                     ),
-                                    border = BorderStroke(1.dp, if (selected) greenAcc else borderCol),
+                                    border = BorderStroke(1.dp, if (selected) primaryAcc else borderCol),
                                     contentPadding = PaddingValues(0.dp)
-                                ) { Text(n.toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
+                                ) {
+                                    Text(
+                                        n.toString(),
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
                             }
                         }
                     }
@@ -550,19 +629,37 @@ fun AsdNewTripScreen(
                         value = routeNumberTxt,
                         onValueChange = { routeNumberTxt = it.filter { ch -> ch.isDigit() }.take(6) },
                         label = { Text("INGRESA NÚMERO") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
-                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                         colors = asdTextFieldColors()
                     )
                 }
 
-                TextButton(onClick = { customRouteNumber = !customRouteNumber }, modifier = Modifier.align(Alignment.End)) {
-                    Text(if (customRouteNumber) "Volver a rápidos" else "Ingresar personalizado", color = greenAcc, style = MaterialTheme.typography.labelSmall)
+                TextButton(
+                    onClick = { customRouteNumber = !customRouteNumber },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(
+                        if (customRouteNumber) "Volver a rápidos" else "Ingresar personalizado",
+                        color = primaryAcc,
+                        style = typography.Label
+                    )
                 }
-                
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("SENTIDO", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    Text(
+                        "SENTIDO",
+                        modifier = Modifier.weight(1f),
+                        style = typography.BodySmall,
+                        color = textPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
                     FilterChip(
                         selected = direction == "IDA",
                         onClick = { direction = "IDA" },
@@ -579,7 +676,13 @@ fun AsdNewTripScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("ES / FS", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    Text(
+                        "ES / FS",
+                        modifier = Modifier.weight(1f),
+                        style = typography.BodySmall,
+                        color = textPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
                     FilterChip(
                         selected = esFs == "ES",
                         onClick = { esFs = "ES" },
@@ -598,20 +701,28 @@ fun AsdNewTripScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = if (startWpAtOne) "REINICIAR WP EN 1" else "CONTINUAR WP ANTERIOR", 
-                            style = MaterialTheme.typography.labelLarge, 
-                            color = Color.White
+                            text = if (startWpAtOne) "REINICIAR WP EN 1" else "CONTINUAR WP ANTERIOR",
+                            style = typography.BodySmall,
+                            color = textPrimary,
+                            fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (startWpAtOne) "El recorrido iniciará en WP 1." else "El recorrido continuará la secuencia global (Siguiente: ${debugLastWp ?: 1}).",
-                            style = MaterialTheme.typography.bodySmall, 
-                            color = Color.White.copy(alpha = 0.5f)
+                            text = if (startWpAtOne) {
+                                "El recorrido iniciará en WP 1."
+                            } else {
+                                "El recorrido continuará la secuencia global (Siguiente: ${debugLastWp ?: 1})."
+                            },
+                            style = typography.BodySmall,
+                            color = textSecondary
                         )
                     }
                     Switch(
                         checked = startWpAtOne,
                         onCheckedChange = { startWpAtOne = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = greenAcc)
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = colors.OnPrimary,
+                            checkedTrackColor = primaryAcc
+                        )
                     )
                 }
 
@@ -619,13 +730,12 @@ fun AsdNewTripScreen(
                     val wpBase = if (startWpAtOne) 1 else (debugLastWp ?: 1)
                     Text(
                         text = "DIAGNÓSTICO WP: Modo ${if (startWpAtOne) "REINICIAR" else "CONTINUAR"} | Inicio: $wpBase",
-                        color = Color.Cyan,
-                        style = MaterialTheme.typography.labelSmall
+                        color = colors.Information,
+                        style = typography.Label
                     )
                 }
             }
 
-            // 4. UNIDAD
             NewTripSection("UNIDAD") {
                 var expanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
@@ -676,8 +786,13 @@ fun AsdNewTripScreen(
                     value = seatCapacityTxt,
                     onValueChange = { seatCapacityTxt = it.filter { ch -> ch.isDigit() }.take(4) },
                     label = { Text("CAPACIDAD DE ASIENTOS") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
-                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                     colors = asdTextFieldColors()
                 )
@@ -687,8 +802,13 @@ fun AsdNewTripScreen(
                         value = vehicleEco,
                         onValueChange = { vehicleEco = it.filter { ch -> ch.isDigit() }.take(6) },
                         label = { Text("NO. ECONÓMICO") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
-                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Right) }),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusManager.moveFocus(FocusDirection.Right) }
+                        ),
                         modifier = Modifier.weight(1f),
                         colors = asdTextFieldColors()
                     )
@@ -697,16 +817,16 @@ fun AsdNewTripScreen(
                         onValueChange = { plateNumber = it.uppercase() },
                         label = { Text("NO. PLACA") },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                        ),
                         modifier = Modifier.weight(1f),
                         colors = asdTextFieldColors()
                     )
                 }
             }
 
-            // 5. PERSONAL
             NewTripSection("PERSONAL") {
-                // Dropdown Aforador / Observador
                 var obsExpanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
                     expanded = obsExpanded,
@@ -721,7 +841,9 @@ fun AsdNewTripScreen(
                         modifier = Modifier.menuAnchor().fillMaxWidth(),
                         colors = asdTextFieldColors(),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                        )
                     )
                     if (observers.isNotEmpty()) {
                         ExposedDropdownMenu(
@@ -742,25 +864,33 @@ fun AsdNewTripScreen(
                     }
                 }
 
-                Text("SEXO DEL OBSERVADOR *", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                Text(
+                    "SEXO DEL OBSERVADOR *",
+                    style = typography.BodySmall,
+                    color = textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     FilterChip(
                         selected = observerSex == "H",
                         onClick = { observerSex = "H" },
                         label = { Text("HOMBRE") },
                         colors = asdChipColors(),
-                        leadingIcon = if (observerSex == "H") { { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) } } else null
+                        leadingIcon = if (observerSex == "H") {
+                            { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) }
+                        } else null
                     )
                     FilterChip(
                         selected = observerSex == "M",
                         onClick = { observerSex = "M" },
                         label = { Text("MUJER") },
                         colors = asdChipColors(),
-                        leadingIcon = if (observerSex == "M") { { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) } } else null
+                        leadingIcon = if (observerSex == "M") {
+                            { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) }
+                        } else null
                     )
                 }
 
-                // Dropdown Supervisor
                 var supExpanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
                     expanded = supExpanded,
@@ -775,7 +905,9 @@ fun AsdNewTripScreen(
                         modifier = Modifier.menuAnchor().fillMaxWidth(),
                         colors = asdTextFieldColors(),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                        )
                     )
                     if (supervisors.isNotEmpty()) {
                         ExposedDropdownMenu(
@@ -802,11 +934,12 @@ fun AsdNewTripScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = asdTextFieldColors(),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    )
                 )
             }
 
-            // 6. NOTAS
             NewTripSection("NOTAS") {
                 OutlinedTextField(
                     value = notes,
@@ -820,8 +953,15 @@ fun AsdNewTripScreen(
                 )
             }
 
-            gpsMsg?.let { Text(it, color = greenAcc, style = MaterialTheme.typography.bodySmall) }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            importMsg?.let {
+                Text(it, color = colors.Information, style = typography.BodySmall)
+            }
+            gpsMsg?.let {
+                Text(it, color = colors.Success, style = typography.BodySmall)
+            }
+            error?.let {
+                Text(it, color = colors.Danger, style = typography.BodySmall)
+            }
 
             Spacer(Modifier.height(8.dp))
 
@@ -832,21 +972,47 @@ fun AsdNewTripScreen(
                     error = null
                     gpsMsg = null
 
-                    if (planningRouteId.isBlank()) { error = "El ID de Planeación es obligatorio."; return@Button }
-                    if (routeName.isBlank()) { error = "La ruta/derrotero es obligatoria."; return@Button }
-                    if (aforador.isBlank()) { error = "El nombre del observador es obligatorio."; return@Button }
-                    if (observerSex == null) { error = "Selecciona el sexo del observador."; return@Button }
+                    if (planningRouteId.isBlank()) {
+                        error = "El ID de Planeación es obligatorio."
+                        return@Button
+                    }
+                    if (routeName.isBlank()) {
+                        error = "La ruta/derrotero es obligatoria."
+                        return@Button
+                    }
+                    if (aforador.isBlank()) {
+                        error = "El nombre del observador es obligatorio."
+                        return@Button
+                    }
+                    if (observerSex == null) {
+                        error = "Selecciona el sexo del observador."
+                        return@Button
+                    }
 
                     requestPermsIfNeededAndCreateOrWait()
                 },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = greenAcc),
-                shape = RoundedCornerShape(14.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = primaryAcc,
+                    contentColor = colors.OnPrimary,
+                    disabledContainerColor = colors.Disabled,
+                    disabledContentColor = colors.Offline
+                ),
+                shape = RoundedCornerShape(12.dp)
             ) {
                 if (loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = colors.OnPrimary
+                    )
                 } else {
-                    Text("CREAR RECORRIDO", fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                    Text(
+                        "CREAR RECORRIDO",
+                        fontWeight = FontWeight.ExtraBold,
+                        color = colors.OnPrimary
+                    )
                 }
             }
 
@@ -857,57 +1023,80 @@ fun AsdNewTripScreen(
 
 @Composable
 private fun RouteDataItem(label: String, value: String) {
+    val colors = LocalAforaColors.current
+    val typography = LocalAforaTypography.current
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF35D36B),
+            style = typography.Label,
+            color = colors.Primary,
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(2.dp))
         Text(
             text = value.ifBlank { "—" },
-            style = MaterialTheme.typography.bodyLarge,
-            color = Color.White,
+            style = typography.BodyLarge,
+            color = colors.Secondary,
             fontWeight = FontWeight.SemiBold
         )
     }
 }
 
 @Composable
-private fun NewTripSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+private fun NewTripSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val colors = LocalAforaColors.current
+    val typography = LocalAforaTypography.current
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1716)),
-        border = BorderStroke(1.dp, Color(0xFF223A36)),
-        shape = RoundedCornerShape(16.dp)
+        colors = CardDefaults.cardColors(containerColor = colors.Surface),
+        border = BorderStroke(1.dp, colors.Outline.copy(alpha = 0.65f)),
+        shape = RoundedCornerShape(14.dp)
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFF35D36B))
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                title,
+                style = typography.Label,
+                fontWeight = FontWeight.ExtraBold,
+                color = colors.Primary
+            )
             content()
         }
     }
 }
 
 @Composable
-private fun asdTextFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = Color(0xFF35D36B),
-    unfocusedBorderColor = Color(0xFF223A36),
-    focusedLabelColor = Color(0xFF35D36B),
-    unfocusedLabelColor = Color.White.copy(alpha = 0.4f),
-    focusedTextColor = Color.White,
-    unfocusedTextColor = Color.White,
-    cursorColor = Color(0xFF35D36B)
-)
+private fun asdTextFieldColors() = LocalAforaColors.current.let { colors ->
+    OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = colors.Primary,
+        unfocusedBorderColor = colors.Outline,
+        focusedLabelColor = colors.Primary,
+        unfocusedLabelColor = colors.Secondary.copy(alpha = 0.60f),
+        focusedTextColor = colors.Secondary,
+        unfocusedTextColor = colors.Secondary,
+        cursorColor = colors.Primary,
+        focusedSupportingTextColor = colors.Secondary.copy(alpha = 0.62f),
+        unfocusedSupportingTextColor = colors.Secondary.copy(alpha = 0.62f),
+        focusedContainerColor = colors.Surface,
+        unfocusedContainerColor = colors.Surface
+    )
+}
 
 @Composable
-private fun asdChipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = Color(0xFF35D36B).copy(alpha = 0.2f),
-    selectedLabelColor = Color(0xFF35D36B),
-    selectedLeadingIconColor = Color(0xFF35D36B),
-    labelColor = Color.White.copy(alpha = 0.6f),
-    containerColor = Color.Transparent
-)
+private fun asdChipColors() = LocalAforaColors.current.let { colors ->
+    FilterChipDefaults.filterChipColors(
+        selectedContainerColor = colors.Primary.copy(alpha = 0.10f),
+        selectedLabelColor = colors.Primary,
+        selectedLeadingIconColor = colors.Primary,
+        labelColor = colors.Secondary.copy(alpha = 0.72f),
+        containerColor = colors.Surface
+    )
+}
 
 private suspend fun createTripFlow(
     vm: AsdNewTripVM,
