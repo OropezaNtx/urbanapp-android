@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ import com.oropeza.urbanapp.asd.domain.trip.TripDomain
 import com.oropeza.urbanapp.asd.location.*
 import com.oropeza.urbanapp.asd.presentation.trip.TripActions
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
+import com.oropeza.urbanapp.core.security.FieldOperatorAccess
 import com.oropeza.urbanapp.ui.components.*
 import com.oropeza.urbanapp.ui.theme.LocalAforaColors
 import com.oropeza.urbanapp.ui.theme.LocalAforaTypography
@@ -67,7 +69,7 @@ class AsdTripDetailVM : ViewModel() {
     val lastSyncTime = AsdGraph.repo.lastSyncTimeFlow()
     fun tripSyncStatusFlow(tripId: Long): Flow<AsdTripSyncStatus> = AsdGraph.repo.getTripSyncStatusFlow(tripId)
     fun tripSyncDiagnosticsFlow(tripId: Long) = AsdGraph.repo.getTripSyncDiagnosticsFlow(tripId)
-    
+
     suspend fun getTripOnce(tripId: Long) = AsdGraph.repo.getTripOnce(tripId)
     suspend fun getTrackPointsOnce(tripId: Long) = AsdGraph.repo.getTrackPointsOnce(tripId)
     suspend fun getTrackPointsBetweenOnce(tripId: Long, fromMs: Long, toMs: Long) = AsdGraph.repo.getTrackPointsBetweenOnce(tripId, fromMs, toMs)
@@ -170,6 +172,9 @@ fun AsdTripDetailContent(tripId: Long, trip: Trip?, stops: List<StopEvent>, last
     var showEditHeader by remember { mutableStateOf(false) }
     var distanceKm by remember { mutableStateOf<Double?>(null) }
     var distanceLoading by remember { mutableStateOf(false) }
+    var showExportPinDialog by remember { mutableStateOf(false) }
+    var exportPin by remember { mutableStateOf("") }
+    var exportPinError by remember { mutableStateOf(false) }
 
     val isDelayActive = activeDelayStartMs > 0L
     LaunchedEffect(trip?.endTime) {
@@ -254,15 +259,15 @@ fun AsdTripDetailContent(tripId: Long, trip: Trip?, stops: List<StopEvent>, last
         }
     }
 
-    val exportCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let { scope.launch { onExport("CSV", it) } } }
-    val exportXlsx = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) { it?.let { scope.launch { onExport("CLIENT", it) } } }
-    val exportTrackCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let { scope.launch { onExport("TRACK", it) } } }
-    val exportGpsAuditCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let { scope.launch { onExport("GPS_AUDIT", it) } } }
-    val exportGpx = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { it?.let { scope.launch { onExport("GPX", it) } } }
-    val exportKml = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.google-earth.kml+xml")) { it?.let { scope.launch { onExport("KML", it) } } }
-    val exportGarminT = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { it?.let { scope.launch { onExport("GARMIN_T", it) } } }
-    val exportGarminW = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) { it?.let { scope.launch { onExport("GARMIN_W", it) } } }
-    
+    val exportPackage = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        uri?.let {
+            scope.launch {
+                val ok = onExport("ZIP", it)
+                snackbarHostState.showSnackbar(if (ok) "Paquete exportado ✅" else "No se pudo generar el paquete")
+            }
+        }
+    }
+
     val vehicleTypesCatalog by vm.vehicleTypesFlow.collectAsState(initial = emptyList())
     val capacityApplies = if (vehicleTypesCatalog.isNotEmpty()) vehicleTypesCatalog.any { it.name.equals(trip?.vehicleType, ignoreCase = true) && it.capacityApplies } else trip?.vehicleType?.uppercase()?.trim() in listOf("COMBI", "VAN", "SPRINTER")
     val captureOnBoard = (summary.onBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0)
@@ -357,24 +362,80 @@ fun AsdTripDetailContent(tripId: Long, trip: Trip?, stops: List<StopEvent>, last
                 })
             }
             item {
-                ExportActionsCard(
-                    onExportClientXlsx = { exportXlsx.launch("ASD_${tripId}.xlsx") },
-                    onExportCsv = { exportCsv.launch("ASD_${tripId}.csv") },
-                    onExportTrack = { exportTrackCsv.launch("TRACK_${tripId}.csv") },
-                    onExportGpsAudit = { exportGpsAuditCsv.launch("GPS_AUDIT_${tripId}.csv") },
-                    onExportGpx = { exportGpx.launch("TRIP_${tripId}.gpx") },
-                    onExportKml = { exportKml.launch("TRIP_${tripId}.kml") },
-                    onExportGarminTrack = { exportGarminT.launch("GARMIN_TRACK_${tripId}.gpx") },
-                    onExportGarminWaypoints = { exportGarminW.launch("GARMIN_WAYPOINTS_${tripId}.gpx") }
+                ProtectedExportActionsCard(
+                    enabled = isEnded,
+                    onRequestExport = {
+                        exportPin = ""
+                        exportPinError = false
+                        showExportPinDialog = true
+                    }
                 )
             }
         }
     }
+
     if (showCloseTripConfirm) {
         AlertDialog(onDismissRequest = { showCloseTripConfirm = false }, title = { Text("¿CERRAR LEVANTAMIENTO?", style = typography.Title, fontWeight = FontWeight.Black) }, text = { Text("Se generará el reporte final con ${summary.onBoard} pasajeros a bordo.") }, confirmButton = { Button(onClick = { scope.launch { if (onEndTrip(currentFix(System.currentTimeMillis()))) { showCloseTripConfirm = false; snackbarHostState.showSnackbar("Recorrido finalizado ✅"); onBack() } } }, colors = ButtonDefaults.buttonColors(containerColor = colors.Danger)) { Text("CERRAR") } }, dismissButton = { TextButton(onClick = { showCloseTripConfirm = false }) { Text("CANCELAR") } })
     }
+
     if (showEditHeader && trip != null) {
         EditTripHeaderDialog(trip, { showEditHeader = false }, vm, { r, c, e, d, num, ef, bs, be, p, v, ca, nts, af, s, dev, sex -> scope.launch { onUpdateHeader(r, c, e, d, num, ef, bs, be, p, v, ca, nts, af, s, dev, sex); showEditHeader = false } })
+    }
+
+    if (showExportPinDialog && trip != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showExportPinDialog = false
+                exportPin = ""
+                exportPinError = false
+            },
+            title = { Text("ACCESO DE EXPORTACIÓN", style = typography.Title, fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Ingrese el PIN autorizado para generar el paquete del levantamiento.", style = typography.BodySmall)
+                    OutlinedTextField(
+                        value = exportPin,
+                        onValueChange = {
+                            exportPin = it.filter(Char::isDigit).take(6)
+                            exportPinError = false
+                        },
+                        label = { Text("PIN") },
+                        singleLine = true,
+                        isError = exportPinError,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (exportPinError) {
+                        Text("PIN incorrecto", color = colors.Danger, style = typography.Label)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (FieldOperatorAccess.verifyExportPin(exportPin)) {
+                        showExportPinDialog = false
+                        exportPin = ""
+                        exportPinError = false
+                        val safeId = trip.planningRouteId
+                            .uppercase(Locale.US)
+                            .replace(Regex("[^A-Z0-9_-]+"), "_")
+                            .trim('_')
+                            .ifBlank { "RECORRIDO" }
+                        exportPackage.launch("AFORA_ASD_${safeId}_T${tripId}.zip")
+                    } else {
+                        exportPinError = true
+                    }
+                }) { Text("CONTINUAR") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showExportPinDialog = false
+                    exportPin = ""
+                    exportPinError = false
+                }) { Text("CANCELAR") }
+            }
+        )
     }
 }
 
@@ -428,8 +489,28 @@ private fun InlineAsdCaptureCard(isEnded: Boolean, isDelayActive: Boolean, activ
 @Composable private fun DemoSummaryCard(summary: AsdDemoSummary) { val colors = LocalAforaColors.current; AforaOperationalCard(modifier = Modifier.padding(horizontal = 16.dp)) { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { AforaSectionHeader("RESUMEN OPERATIVO"); Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetricBox("EVENTOS", summary.events.toString(), Modifier.weight(1f)); SummaryMetricBox("SUBEN", summary.boardings.toString(), Modifier.weight(1f), colors.Success); SummaryMetricBox("BAJAN", summary.alightings.toString(), Modifier.weight(1f), colors.Danger) } ; Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { SummaryMetricBox("A BORDO", summary.onBoard.toString(), Modifier.weight(1f)); SummaryMetricBox("H / M", "${summary.menOnBoard}/${summary.womenOnBoard}", Modifier.weight(1f)); SummaryMetricBox("PUNTOS", summary.trackPoints.toString(), Modifier.weight(1f)) } } } }
 @Composable private fun SummaryMetricBox(label: String, value: String, modifier: Modifier = Modifier, valColor: Color? = null) { val colors = LocalAforaColors.current; val typography = LocalAforaTypography.current; Surface(modifier = modifier, color = colors.Surface, shape = MaterialTheme.shapes.extraSmall, border = BorderStroke(1.dp, colors.Outline.copy(alpha = 0.2f))) { Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value, style = typography.Title, fontWeight = FontWeight.Black, color = valColor ?: colors.Secondary); Text(label, style = typography.Label, color = (valColor ?: colors.Secondary).copy(alpha = 0.5f), fontWeight = FontWeight.Bold) } } }
 @Composable private fun DistanceCard(distanceKm: Double?, distanceLoading: Boolean, onCalculateAll: () -> Unit, onCalculateRecent: () -> Unit) { val colors = LocalAforaColors.current; val typography = LocalAforaTypography.current; AforaOperationalCard(modifier = Modifier.padding(horizontal = 16.dp)) { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { AforaSectionHeader("DISTANCIA TOTAL"); Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { if (distanceLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = colors.Primary) else Text(distanceKm?.let { "%.2f KM".format(it) } ?: "—", style = typography.Headline, fontWeight = FontWeight.Black, color = colors.Primary) } ; Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedButton(enabled = !distanceLoading, onClick = onCalculateRecent, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.extraSmall) { Text("15 MIN") } ; OutlinedButton(enabled = !distanceLoading, onClick = onCalculateAll, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.extraSmall) { Text("TODO") } } } } }
-@Composable private fun ExportActionsCard(onExportClientXlsx: () -> Unit, onExportCsv: () -> Unit, onExportTrack: () -> Unit, onExportGpsAudit: () -> Unit, onExportGpx: () -> Unit, onExportKml: () -> Unit, onExportGarminTrack: () -> Unit, onExportGarminWaypoints: () -> Unit) { val typography = LocalAforaTypography.current; AforaOperationalCard(modifier = Modifier.padding(horizontal = 16.dp)) { Column(verticalArrangement = Arrangement.spacedBy(16.dp)) { AforaSectionHeader("EXPORTACIONES"); ExportGroup("REPORTES OFICIALES") { AforaPrimaryButton(text = "EXCEL CLIENTE", onClick = onExportClientXlsx) } ; ExportGroup("AUDITORÍA") { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { AforaSecondaryButton("GPS CSV", onExportGpsAudit, Modifier.weight(1f)); AforaSecondaryButton("TRACK CSV", onExportTrack, Modifier.weight(1f)) } } ; ExportGroup("GEO") { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { AforaSecondaryButton("KML", onExportKml, Modifier.weight(1f)); AforaSecondaryButton("GPX", onExportGpx, Modifier.weight(1f)) } } ; ExportGroup("GARMIN") { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { AforaSecondaryButton("TRACK", onExportGarminTrack, Modifier.weight(1f)); AforaSecondaryButton("WAYPOINTS", onExportGarminWaypoints, Modifier.weight(1f)) } } } } }
-@Composable private fun ExportGroup(title: String, content: @Composable ColumnScope.() -> Unit) { val colors = LocalAforaColors.current; val typography = LocalAforaTypography.current; Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(title, style = typography.Label, fontWeight = FontWeight.Bold, color = colors.Secondary.copy(alpha = 0.4f)); content() } }
+
+@Composable
+private fun ProtectedExportActionsCard(enabled: Boolean, onRequestExport: () -> Unit) {
+    val colors = LocalAforaColors.current
+    val typography = LocalAforaTypography.current
+    AforaOperationalCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            AforaSectionHeader("ENTREGA")
+            AforaPrimaryButton(
+                text = if (enabled) "EXPORTAR PAQUETE" else "EXPORTACIÓN DISPONIBLE AL FINALIZAR",
+                onClick = onRequestExport,
+                enabled = enabled
+            )
+            Text(
+                "Acceso restringido a personal autorizado.",
+                style = typography.Label,
+                color = colors.Secondary.copy(alpha = 0.4f)
+            )
+        }
+    }
+}
+
 @Composable private fun EventCard(event: StopEvent, fmt: SimpleDateFormat) { val colors = LocalAforaColors.current; val typography = LocalAforaTypography.current; AforaOperationalCard(modifier = Modifier.padding(horizontal = 16.dp), borderAlpha = 0.1f) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("WP ${event.waypointStartId} -> WP ${event.waypointStopId}", style = typography.Data, fontWeight = FontWeight.Bold, color = colors.Secondary); Text(fmt.format(Date(event.timestamp)), style = typography.Label, color = colors.Secondary.copy(alpha = 0.4f)) } ; if (!event.stopName.isNullOrBlank()) Text(event.stopName.uppercase(), style = typography.BodySmall, fontWeight = FontWeight.Black) ; Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) { Column { Text("SUBEN: ${event.paxMenUp + event.paxWomenUp}", style = typography.Label, fontWeight = FontWeight.Bold, color = colors.Success); Text("H:${event.paxMenUp} M:${event.paxWomenUp}", style = typography.Label, color = colors.Secondary.copy(alpha = 0.4f)) } ; Column { Text("BAJAN: ${event.paxMenDown + event.paxWomenDown}", style = typography.Label, fontWeight = FontWeight.Bold, color = colors.Danger); Text("H:${event.paxMenDown} M:${event.paxWomenDown}", style = typography.Label, color = colors.Secondary.copy(alpha = 0.4f)) } } ; if (!event.delayCodes.isNullOrBlank()) AforaStatusChip(event.delayCodes, colors.Warning) } } }
 @Preview(showBackground = true) @Composable fun AsdTripDetailPreview() { UrbanAppTheme { Box(Modifier.fillMaxSize()) { Text("Preview placeholder") } } }
 
