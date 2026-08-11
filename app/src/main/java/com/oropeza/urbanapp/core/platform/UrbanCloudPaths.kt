@@ -16,8 +16,12 @@ object UrbanCloudPaths {
     fun installationPath(workspace: UrbanWorkspace, installationId: String) =
         "${projectPath(workspace)}/installations/$installationId"
         
+    /**
+     * Live presence is an overwrite-only operational document consumed by the
+     * Operations Center. Keep it separate from the durable installation record.
+     */
     fun heartbeatPath(workspace: UrbanWorkspace, installationId: String) =
-        "${projectPath(workspace)}/heartbeats/$installationId"
+        "${projectPath(workspace)}/live_status/$installationId"
         
     fun tripPath(workspace: UrbanWorkspace, cloudTripId: String) =
         "${projectPath(workspace)}/trips/$cloudTripId"
@@ -56,7 +60,7 @@ object UrbanCloudPaths {
         "${projectPath(workspaceId, projectId)}/installations/$installationId"
         
     fun heartbeatPath(workspaceId: String, projectId: String, installationId: String) =
-        "${projectPath(workspaceId, projectId)}/heartbeats/$installationId"
+        "${projectPath(workspaceId, projectId)}/live_status/$installationId"
         
     fun tripPath(workspaceId: String, projectId: String, cloudTripId: String) =
         "${projectPath(workspaceId, projectId)}/trips/$cloudTripId"
