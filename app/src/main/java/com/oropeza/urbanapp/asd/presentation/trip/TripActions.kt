@@ -29,6 +29,7 @@ class TripActions(
             "KML" -> exports.exportTripKml(context, tripId, uri)
             "GARMIN_T" -> exports.exportGarminTrack(context, tripId, uri)
             "GARMIN_W" -> exports.exportGarminWaypoints(context, tripId, uri)
+            "ZIP" -> exports.exportAllZip(context, tripId, uri)
             else -> false
         }
     }
