@@ -35,6 +35,22 @@ object UrbanCloudPaths {
     fun tripTelemetryPath(workspace: UrbanWorkspace, cloudTripId: String) =
         "${tripPath(workspace, cloudTripId)}/telemetry/summary"
 
+    /**
+     * Project-scoped ASD catalog. Catalog data belongs to the same operational
+     * project as trips/installations and is read-only for field devices.
+     *
+     * Document shape:
+     *   catalog_versions/current
+     *     /routes
+     *     /people
+     *     /vehicle_types
+     */
+    fun catalogVersionPath(workspaceId: String, projectId: String) =
+        "${projectPath(workspaceId, projectId)}/catalog_versions/current"
+
+    fun catalogVersionPath(workspace: UrbanWorkspace) =
+        catalogVersionPath(workspace.organization.workspaceId, workspace.project.projectId)
+
     fun configurationPath(workspaceId: String, projectId: String) =
         "asd_organizations/$workspaceId/projects/$projectId/configuration/current"
 
