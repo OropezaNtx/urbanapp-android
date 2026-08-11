@@ -30,6 +30,19 @@ service cloud.firestore {
             allow read, create, update: if signedIn() && isAforaOperations(orgId, projectId);
             allow delete: if false;
           }
+
+          match /telemetry/{documentId} {
+            allow read, create, update: if signedIn() && isAforaOperations(orgId, projectId);
+            allow delete: if false;
+          }
+        }
+
+        // Field devices consume the catalog but never author it.
+        // Web/admin tooling can migrate the current legacy catalog into this
+        // project-scoped location without changing the Android contract.
+        match /catalog_versions/{document=**} {
+          allow read: if signedIn() && isAforaOperations(orgId, projectId);
+          allow write: if false;
         }
 
         match /installations/{installationId} {
@@ -47,6 +60,14 @@ service cloud.firestore {
           allow delete: if false;
         }
       }
+    }
+
+    // Temporary read-only compatibility window for the pre-RC2 catalog.
+    // Remove after asd_catalog_versions/current has been migrated to the
+    // project-scoped catalog_versions/current document.
+    match /asd_catalog_versions/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
     }
 
     match /{document=**} {
