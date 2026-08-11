@@ -33,8 +33,8 @@ android {
         applicationId = "com.oropeza.urbanapp"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.9.0-field-rc2"
+        versionCode = 3
+        versionName = "0.9.0-field-rc2-operator"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -91,35 +91,28 @@ android {
     }
 }
 
-// Keep Room migration history auditable. KSP writes one JSON schema per DB version
-// under app/schemas so migrations such as 23 -> 24 can be version-controlled.
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
-    // Core
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("androidx.activity:activity-compose:1.8.2")
 
-    // Compose
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
 
-    // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.3")
 
-    // Firebase
     implementation(platform("com.google.firebase:firebase-bom:32.7.2"))
     implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
 
-    // Tests
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
@@ -129,21 +122,17 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    // Room
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     ksp("androidx.room:room-compiler:2.8.4")
 
-    // GPS
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
-    // Maps reusable core
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.maps.android:maps-compose:4.3.3")
 
-    // FOV
     implementation("org.apache.poi:poi-ooxml:5.2.5")
     implementation("com.google.code.gson:gson:2.10.1")
 }
