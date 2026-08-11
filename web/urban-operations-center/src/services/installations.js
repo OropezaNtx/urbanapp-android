@@ -19,8 +19,8 @@ function toMillis(value) {
 }
 
 function sortByLastSeenDesc(a, b) {
-  const aMs = toMillis(a.lastSeenAt || a.lastSeenClient || a.lastSeen);
-  const bMs = toMillis(b.lastSeenAt || b.lastSeenClient || b.lastSeen);
+  const aMs = toMillis(a.lastHeartbeatAt || a.lastSeenAt || a.lastSeenClient || a.lastSeen || a.updatedAt);
+  const bMs = toMillis(b.lastHeartbeatAt || b.lastSeenAt || b.lastSeenClient || b.lastSeen || b.updatedAt);
   return bMs - aMs;
 }
 
@@ -100,10 +100,13 @@ export function subscribeInstallationsHealth(onInstallations, onError) {
   };
 }
 
-export async function updateInstallationStatus(installationId, status, extraFields = {}, ownerUid = null) {
+export async function updateInstallationStatus(installationId, status, extraFields = {}) {
   await authReady;
   const batch = writeBatch(db);
 
+  // One source of truth: the project-scoped installation document consumed by
+  // Android bootstrap, Licenses and Fleet Health. Avoid legacy top-level access
+  // mirrors that are outside the current Firestore security contract.
   const instRef = doc(
     db,
     "asd_organizations",
@@ -116,16 +119,7 @@ export async function updateInstallationStatus(installationId, status, extraFiel
   batch.update(instRef, {
     status,
     ...extraFields,
-    updatedAt: Date.now()
-  });
-
-  const accessRef = doc(db, "installation_access", ownerUid);
-  batch.set(accessRef, {
-    installationId,
-    ownerUid,
-    status,
-    workspaceId: extraFields.workspaceId || null,
-    licenseId: extraFields.licenseId || null,
+    projectId: extraFields.projectId || PROJECT_ID,
     updatedAt: Date.now()
   });
 
