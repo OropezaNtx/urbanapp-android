@@ -4,19 +4,52 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TrackDao {
 
+    /**
+     * Hard persistence boundary: a finalized trip must never accept new GPS rows.
+     *
+     * TrackingService already checks Trip.endTime before sampling, but that check and
+     * the actual insert are separate operations. Keeping the invariant here protects
+     * Room from late coroutines, delayed service callbacks or future callers that may
+     * attempt to persist after the trip has been closed.
+     *
+     * -1 mirrors Room's IGNORE sentinel so existing callers already treat the write as
+     * rejected instead of counting it as a persisted sample.
+     */
+    @Transaction
+    suspend fun insert(p: TrackPoint): Long {
+        if (isTripOpenForTracking(p.tripId) <= 0) return -1L
+        return insertRaw(p)
+    }
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insert(p: TrackPoint): Long
+    suspend fun insertRaw(p: TrackPoint): Long
+
+    @Query("SELECT COUNT(*) FROM Trip WHERE tripId = :tripId AND endTime IS NULL")
+    suspend fun isTripOpenForTracking(tripId: Long): Int
 
     @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs ASC")
     fun getByTrip(tripId: Long): Flow<List<TrackPoint>>
 
     @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs ASC")
     suspend fun getByTripOnce(tripId: Long): List<TrackPoint>
+
+    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId AND timeMs <= :toMs ORDER BY timeMs ASC")
+    suspend fun getThroughOnce(tripId: Long, toMs: Long): List<TrackPoint>
+
+    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId AND timeMs <= :toMs ORDER BY timeMs ASC LIMIT :limit OFFSET :offset")
+    suspend fun getPageThroughOnce(tripId: Long, toMs: Long, limit: Int, offset: Int): List<TrackPoint>
+
+    @Query("SELECT COUNT(*) FROM TrackPoint WHERE tripId = :tripId")
+    suspend fun countOnce(tripId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM TrackPoint WHERE tripId = :tripId AND timeMs <= :toMs")
+    suspend fun countThroughOnce(tripId: Long, toMs: Long): Int
 
     @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs DESC LIMIT 1")
     suspend fun getLatest(tripId: Long): TrackPoint?
