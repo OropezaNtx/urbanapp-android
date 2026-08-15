@@ -158,13 +158,13 @@ class TrackingRecoveryWorker(
                     TAG,
                     "WATCHDOG_OWNER_MISMATCH expectedTrip=$markedTripId runningTrip=${runningTripId ?: -1L} generation=$generation"
                 )
-                // Do not call this healthy and do not keep two logical owners alive.
-                // ACTION_START is idempotent and TrackingService switches ownership after
-                // validating that the expected trip is still the unique open trip.
+                // identityValid above proves markedTripId is the unique open trip. Use a
+                // normal ACTION_START here: the service will atomically switch ownership
+                // from the stale/closed trip to the unique active trip. Supervisor recovery
+                // intentionally refuses to run while a service is already alive.
                 val intent = Intent(applicationContext, TrackingService::class.java).apply {
                     action = TrackingService.ACTION_START
                     putExtra(TrackingService.EXTRA_TRIP_ID, markedTripId)
-                    putExtra(EXTRA_RECOVERY_SUPERVISOR, true)
                 }
                 try {
                     ContextCompat.startForegroundService(applicationContext, intent)
