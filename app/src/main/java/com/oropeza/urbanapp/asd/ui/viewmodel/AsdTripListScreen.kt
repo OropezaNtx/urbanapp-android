@@ -50,6 +50,9 @@ class AsdTripListVM : ViewModel() {
     private val _activeTripToRecover = MutableStateFlow<Trip?>(null)
     val activeTripToRecover: StateFlow<Trip?> = _activeTripToRecover.asStateFlow()
 
+    private val _currentActiveTrip = MutableStateFlow<Trip?>(null)
+    val currentActiveTrip: StateFlow<Trip?> = _currentActiveTrip.asStateFlow()
+
     init {
         checkForRecovery()
         viewModelScope.launch { AsdGraph.repo.reconcileHistoricalTrips() }
@@ -59,13 +62,20 @@ class AsdTripListVM : ViewModel() {
     fun checkForRecovery() {
         viewModelScope.launch {
             val active = AsdGraph.repo.getActiveTripOnce()
-            if (active != null && !TrackingService.isRunning) {
+            _currentActiveTrip.value = active
+            val runningTripId = TrackingService.trackingMetrics.value.tripId
+            val serviceOwnsActiveTrip = TrackingService.isRunning && runningTripId == active?.tripId
+
+            if (active != null && !serviceOwnsActiveTrip) {
                 _activeTripToRecover.value = active
                 UrbanRuntime.publishEvent(
                     UrbanEventFactory.platform(
                         UrbanEventTypes.RECOVERY_REQUIRED,
                         null,
-                        mapOf("tripId" to active.tripId)
+                        mapOf(
+                            "tripId" to active.tripId,
+                            "runningTripId" to (runningTripId ?: -1L)
+                        )
                     )
                 )
             } else {
@@ -75,7 +85,8 @@ class AsdTripListVM : ViewModel() {
     }
 
     fun resumeTracking(context: android.content.Context, tripId: Long) {
-        if (TrackingService.isRunning) {
+        val runningTripId = TrackingService.trackingMetrics.value.tripId
+        if (TrackingService.isRunning && runningTripId == tripId) {
             _activeTripToRecover.value = null
             return
         }
@@ -98,7 +109,11 @@ class AsdTripListVM : ViewModel() {
                 UrbanEventFactory.platform(
                     UrbanEventTypes.RECOVERY_RESUMED,
                     null,
-                    mapOf("tripId" to tripId, "mode" to "SILENT_FIELD_RECOVERY")
+                    mapOf(
+                        "tripId" to tripId,
+                        "previousRunningTripId" to (runningTripId ?: -1L),
+                        "mode" to "SILENT_FIELD_RECOVERY"
+                    )
                 )
             )
         }
@@ -119,7 +134,12 @@ fun AsdTripListScreen(
     val pendingCount by vm.pendingSyncCount.collectAsState(initial = 0)
     val failedCount by vm.failedSyncCount.collectAsState(initial = 0)
     val activeTripToRecover by vm.activeTripToRecover.collectAsState()
+    val currentActiveTrip by vm.currentActiveTrip.collectAsState()
     val context = LocalContext.current
+
+    LaunchedEffect(trips) {
+        vm.checkForRecovery()
+    }
 
     // Field build: recovery remains fully active, but it is automatic and silent.
     // The operator does not need to understand watchdog/service internals.
@@ -132,7 +152,9 @@ fun AsdTripListScreen(
         pendingSyncCount = pendingCount,
         failedSyncCount = failedCount,
         activeTripToRecover = activeTripToRecover,
-        onNewTrip = onNewTrip,
+        onNewTrip = {
+            currentActiveTrip?.let { onOpenTrip(it.tripId) } ?: onNewTrip()
+        },
         onOpenTrip = onOpenTrip,
         onOpenMap = onOpenMap,
         onBackHome = onBackHome,
