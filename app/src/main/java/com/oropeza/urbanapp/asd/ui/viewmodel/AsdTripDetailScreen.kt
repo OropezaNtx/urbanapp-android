@@ -65,10 +65,9 @@ class AsdTripDetailVM : ViewModel() {
     fun trackCountFlow(tripId: Long): Flow<Int> = AsdGraph.repo.trackCountFlow(tripId)
     fun observersFlow(role: String) = AsdGraph.repo.activeAsdPeopleByRoleFlow(role)
     val vehicleTypesFlow = AsdGraph.repo.activeAsdVehicleTypesFlow()
-    val syncPendingCount = AsdGraph.repo.syncQueuePendingCountFlow()
-    val lastSyncTime = AsdGraph.repo.lastSyncTimeFlow()
     fun tripSyncStatusFlow(tripId: Long): Flow<AsdTripSyncStatus> = AsdGraph.repo.getTripSyncStatusFlow(tripId)
     fun tripSyncDiagnosticsFlow(tripId: Long) = AsdGraph.repo.getTripSyncDiagnosticsFlow(tripId)
+    fun tripLastSyncTimeFlow(tripId: Long): Flow<Long?> = AsdGraph.repo.lastTripSyncTimeFlow(tripId)
 
     suspend fun getTripOnce(tripId: Long) = AsdGraph.repo.getTripOnce(tripId)
     suspend fun getTrackPointsOnce(tripId: Long) = AsdGraph.repo.getTrackPointsOnce(tripId)
@@ -107,8 +106,8 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val pointCount by vm.trackCountFlow(tripId).collectAsState(initial = 0)
     val syncStatus by vm.tripSyncStatusFlow(tripId).collectAsState(initial = AsdTripSyncStatus.NOT_QUEUED)
     val syncDiagnostics by vm.tripSyncDiagnosticsFlow(tripId).collectAsState(initial = AsdTripSyncDiagnostics(0,0,0,0,0,0,null,null,null))
-    val pendingSyncCount by vm.syncPendingCount.collectAsState(initial = 0)
-    val lastSyncTimeMs by vm.lastSyncTime.collectAsState(initial = null)
+    val pendingSyncCount = syncDiagnostics.pendingCount + syncDiagnostics.inProgressCount + syncDiagnostics.failedCount + syncDiagnostics.deadLetterCount
+    val lastSyncTimeMs by vm.tripLastSyncTimeFlow(tripId).collectAsState(initial = null)
     val runtimeGps by TrackingService.runtimeGpsState.collectAsState()
 
     fun sTS() {
@@ -127,8 +126,12 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     }
 
     fun stopTS() {
-        if (!TrackingService.isRunning) return
-        context.startService(Intent(context, TrackingService::class.java).apply { action = TrackingService.ACTION_STOP })
+        val runningTripId = TrackingService.trackingMetrics.value.tripId
+        if (!TrackingService.isRunning || runningTripId != tripId) return
+        context.startService(Intent(context, TrackingService::class.java).apply {
+            action = TrackingService.ACTION_STOP
+            putExtra(TrackingService.EXTRA_TRIP_ID, tripId)
+        })
     }
 
     AsdTripDetailContent(tripId, trip, stops, lastPoint, pointCount, syncStatus, syncDiagnostics, pendingSyncCount, lastSyncTimeMs, runtimeGps, onBack, onOpenMap, { t, st, stt, n, nt, mu, wu, md, wd, l, c, d, sf, stf -> scope.launch { vm.addStopDetailed(tripId, t, st, stt, n, nt, mu, wu, md, wd, l, c, d, sf, stf) } }, { f -> vm.endTripWithFix(tripId, f) }, { r, c, e, d, num, ef, bs, be, p, v, ca, nts, af, s, dev, sex -> vm.updateTripHeader(tripId, r, c, e, d, num, ef, bs, be, p, v, ca, nts, af, s, dev, sex) }, { type, uri -> vm.export(context, tripId, type, uri) }, gps, vm, { sTS() }, { stopTS() })
@@ -189,7 +192,8 @@ fun AsdTripDetailContent(tripId: Long, trip: Trip?, stops: List<StopEvent>, last
     }
 
     LaunchedEffect(tripId, trip?.endTime) {
-        if (trip?.endTime == null) startTS() else stopTS()
+        val loadedTrip = trip ?: return@LaunchedEffect
+        if (loadedTrip.endTime == null) startTS() else stopTS()
     }
 
     fun currentFix(now: Long): LocationFix {
@@ -274,6 +278,9 @@ fun AsdTripDetailContent(tripId: Long, trip: Trip?, stops: List<StopEvent>, last
     val capacityApplies = if (vehicleTypesCatalog.isNotEmpty()) vehicleTypesCatalog.any { it.name.equals(trip?.vehicleType, ignoreCase = true) && it.capacityApplies } else trip?.vehicleType?.uppercase()?.trim() in listOf("COMBI", "VAN", "SPRINTER")
     val captureOnBoard = (summary.onBoard + menUp + womenUp - menDown - womenDown).coerceAtLeast(0)
     val exceedsCapacity = capacityApplies && trip?.seatCapacity != null && captureOnBoard > trip.seatCapacity
+    val trackingOwnsThisTrip = trackingMetrics.active && trackingMetrics.tripId == tripId
+    val runtimeGpsForThisTrip = if (trackingOwnsThisTrip) runtimeGps else TrackingService.Companion.RuntimeGpsState()
+    val persistedSamplesForThisTrip = if (trackingMetrics.tripId == tripId) trackingMetrics.persistedSampleCount else 0L
 
     Scaffold(
         containerColor = colors.Background,
@@ -319,10 +326,10 @@ fun AsdTripDetailContent(tripId: Long, trip: Trip?, stops: List<StopEvent>, last
             }
             item {
                 val lastAgeMs = lastPoint?.let { tickMs - it.timeMs } ?: Long.MAX_VALUE
-                TrackingStatusCard(lastPoint != null && lastAgeMs < 12000L, lastAgeMs, lastPoint, pointCount, runtimeGps, tickMs)
+                TrackingStatusCard(trackingOwnsThisTrip && lastPoint != null && lastAgeMs < 12000L, lastAgeMs, lastPoint, pointCount, runtimeGpsForThisTrip, tickMs)
             }
             item {
-                Text("MUESTRAS PERSISTIDAS: ${trackingMetrics.persistedSampleCount}", modifier = Modifier.padding(horizontal = 16.dp), style = typography.BodySmall, color = colors.Secondary)
+                Text("MUESTRAS PERSISTIDAS: $persistedSamplesForThisTrip", modifier = Modifier.padding(horizontal = 16.dp), style = typography.BodySmall, color = colors.Secondary)
             }
             item {
                 CloudSyncStatusCard(syncStatus, pendingSyncCount, lastSyncTimeMs, {
