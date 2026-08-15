@@ -1,8 +1,10 @@
 package com.oropeza.urbanapp.asd.operations
 
+import android.content.Intent
 import android.util.Log
 import com.oropeza.urbanapp.asd.AsdGraph
 import com.oropeza.urbanapp.asd.location.LocationFix
+import com.oropeza.urbanapp.asd.location.TrackingService
 import com.oropeza.urbanapp.asd.sync.AsdCloudSyncWorker
 import com.oropeza.urbanapp.core.events.UrbanEventFactory
 import com.oropeza.urbanapp.core.events.UrbanEventTypes
@@ -70,6 +72,24 @@ object TripOperationManager {
                             mapOf("tripId" to tripId)
                         )
                     )
+
+                    // The database endTime is the authoritative close boundary. If the
+                    // foreground service still owns this same trip, stop it immediately
+                    // instead of waiting for the next 2-second saver tick. Never stop a
+                    // service that already belongs to another trip.
+                    val metrics = TrackingService.trackingMetrics.value
+                    if (TrackingService.isRunning && metrics.tripId == tripId) {
+                        runCatching {
+                            AsdGraph.appContext.startService(
+                                Intent(AsdGraph.appContext, TrackingService::class.java).apply {
+                                    action = TrackingService.ACTION_STOP
+                                    putExtra(TrackingService.EXTRA_TRIP_ID, tripId)
+                                }
+                            )
+                        }.onFailure { e ->
+                            Log.w("TripOperationManager", "TRACK_STOP_REQUEST_FAILED trip=$tripId", e)
+                        }
+                    }
 
                     // Closing a trip is a durability boundary. Always request the cloud
                     // worker explicitly so the final Room track is reconciled even when
