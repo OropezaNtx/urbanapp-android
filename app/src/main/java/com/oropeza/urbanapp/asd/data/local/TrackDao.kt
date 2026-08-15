@@ -33,16 +33,16 @@ interface TrackDao {
     @Query("SELECT COUNT(*) FROM Trip WHERE tripId = :tripId AND endTime IS NULL")
     suspend fun isTripOpenForTracking(tripId: Long): Int
 
-    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs ASC")
+    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs ASC, id ASC")
     fun getByTrip(tripId: Long): Flow<List<TrackPoint>>
 
-    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs ASC")
+    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs ASC, id ASC")
     suspend fun getByTripOnce(tripId: Long): List<TrackPoint>
 
-    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId AND timeMs <= :toMs ORDER BY timeMs ASC")
+    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId AND timeMs <= :toMs ORDER BY timeMs ASC, id ASC")
     suspend fun getThroughOnce(tripId: Long, toMs: Long): List<TrackPoint>
 
-    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId AND timeMs <= :toMs ORDER BY timeMs ASC LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId AND timeMs <= :toMs ORDER BY timeMs ASC, id ASC LIMIT :limit OFFSET :offset")
     suspend fun getPageThroughOnce(tripId: Long, toMs: Long, limit: Int, offset: Int): List<TrackPoint>
 
     @Query("SELECT COUNT(*) FROM TrackPoint WHERE tripId = :tripId")
@@ -51,7 +51,7 @@ interface TrackDao {
     @Query("SELECT COUNT(*) FROM TrackPoint WHERE tripId = :tripId AND timeMs <= :toMs")
     suspend fun countThroughOnce(tripId: Long, toMs: Long): Int
 
-    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs DESC LIMIT 1")
+    @Query("SELECT * FROM TrackPoint WHERE tripId = :tripId ORDER BY timeMs DESC, id DESC LIMIT 1")
     suspend fun getLatest(tripId: Long): TrackPoint?
 
     // The event-capture UI must not consume a point already classified by the GPS
@@ -69,7 +69,7 @@ interface TrackDao {
           AND lat BETWEEN -90.0 AND 90.0
           AND lon BETWEEN -180.0 AND 180.0
           AND NOT (lat = 0.0 AND lon = 0.0)
-        ORDER BY timeMs DESC
+        ORDER BY timeMs DESC, id DESC
         LIMIT 1
     """)
     fun getLatestFlow(tripId: Long): Flow<TrackPoint?>
@@ -80,7 +80,7 @@ interface TrackDao {
     @Query("""
         SELECT * FROM TrackPoint
         WHERE tripId = :tripId AND timeMs BETWEEN :fromMs AND :toMs
-        ORDER BY timeMs ASC
+        ORDER BY timeMs ASC, id ASC
     """)
     suspend fun getBetweenOnce(tripId: Long, fromMs: Long, toMs: Long): List<TrackPoint>
 
