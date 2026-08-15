@@ -112,7 +112,9 @@ fun AsdTripDetailScreen(tripId: Long, onBack: () -> Unit, onOpenMap: (Long) -> U
     val runtimeGps by TrackingService.runtimeGpsState.collectAsState()
 
     fun sTS() {
-        if (TrackingService.isRunning || !gps.hasPermission()) return
+        if (!gps.hasPermission()) return
+        val runningTripId = TrackingService.trackingMetrics.value.tripId
+        if (TrackingService.isRunning && runningTripId == tripId) return
         val intent = Intent(context, TrackingService::class.java).apply {
             action = TrackingService.ACTION_START
             putExtra(TrackingService.EXTRA_TRIP_ID, tripId)
