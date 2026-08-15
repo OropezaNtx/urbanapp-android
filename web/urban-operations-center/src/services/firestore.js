@@ -101,6 +101,65 @@ function mapDocs(snapshot) {
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
+function toMillis(value) {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (Number.isFinite(Number(value?.seconds))) return Number(value.seconds) * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Operational consumers must never interpret GPS outside the authoritative trip
+ * window as part of the route. Raw chunks remain available separately for cloud
+ * completeness/audit so this normalization is lossless and explainable.
+ */
+function trackWithinTripWindow(trackChunks = [], trip = null, tripDocId = null) {
+  const startMs = toMillis(trip?.startTime);
+  const endMs = toMillis(trip?.endTime);
+  if (!startMs && !endMs) return trackChunks;
+
+  let rawPoints = 0;
+  let acceptedPoints = 0;
+  const bounded = trackChunks
+    .map((chunk) => {
+      const points = Array.isArray(chunk?.points) ? chunk.points : [];
+      rawPoints += points.length;
+      const filtered = points.filter((point) => {
+        const pointMs = toMillis(point?.time ?? point?.timeMs ?? point?.timestamp);
+        if (!pointMs) return false;
+        if (startMs && pointMs < startMs) return false;
+        if (endMs && pointMs > endMs) return false;
+        return true;
+      });
+      acceptedPoints += filtered.length;
+      if (!filtered.length) return null;
+      return {
+        ...chunk,
+        points: filtered,
+        pointCount: filtered.length,
+        operationalPointCount: filtered.length,
+      };
+    })
+    .filter(Boolean);
+
+  const excludedPoints = rawPoints - acceptedPoints;
+  if (excludedPoints > 0) {
+    webIntegrity("WEB_TRACK_WINDOW_NORMALIZED", {
+      tripDocId,
+      startMs,
+      endMs: endMs || null,
+      rawPoints,
+      acceptedPoints,
+      excludedPoints,
+      rawChunks: trackChunks.length,
+      operationalChunks: bounded.length,
+    });
+  }
+  return bounded;
+}
+
 export async function fetchTrips(maxRows = 200) {
   const path = tripsPath();
   const snap = await tracedRead(
@@ -211,30 +270,35 @@ export async function fetchTripDetail(tripDocId, tripId) {
   ]);
 
   const resolvedEvents = events.length ? events : backupEvents;
-  const resolvedTrack = trackChunks.length ? trackChunks : trackSummary;
+  const rawResolvedTrack = trackChunks.length ? trackChunks : trackSummary;
+  const operationalTrack = trackWithinTripWindow(rawResolvedTrack, trip, tripDocId);
+
+  // Cloud completeness keeps the raw payload universe so post-close contamination is
+  // still visible as an integrity fact instead of silently disappearing.
   const completeness = logCloudCompleteness({
     tripDocId,
     trip,
     events: resolvedEvents,
-    trackChunks: resolvedTrack,
+    trackChunks: rawResolvedTrack,
   });
+  // Every consumer-facing calculation uses only the authoritative trip time window.
   const webCompleteness = logWebCompleteness({
     tripDocId,
     trip,
     events: resolvedEvents,
-    trackChunks: resolvedTrack,
+    trackChunks: operationalTrack,
   });
   const quality = logTripQuality({
     tripDocId,
     trip,
     events: resolvedEvents,
-    trackChunks: resolvedTrack,
+    trackChunks: operationalTrack,
   });
   const baseOperationalAnalytics = logOperationalAnalytics({
     tripDocId,
     trip,
     events: resolvedEvents,
-    trackChunks: resolvedTrack,
+    trackChunks: operationalTrack,
   });
   const operationalAnalytics = enrichOperationalAnalyticsWithTelemetry(baseOperationalAnalytics, telemetry);
 
@@ -252,8 +316,9 @@ export async function fetchTripDetail(tripDocId, tripId) {
     trip,
     events: resolvedEvents,
     backupEvents,
-    trackSummary: resolvedTrack,
-    trackChunks,
+    trackSummary: operationalTrack,
+    trackChunks: operationalTrack,
+    rawTrackChunks: rawResolvedTrack,
     telemetry,
     completeness,
     webCompleteness,
