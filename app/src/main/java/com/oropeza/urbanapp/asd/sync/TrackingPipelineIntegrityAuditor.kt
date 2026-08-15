@@ -37,9 +37,14 @@ object TrackingPipelineIntegrityAuditor {
 
     suspend fun snapshot(tripId: Long): Snapshot = withContext(Dispatchers.IO) {
         val context = AsdGraph.appContext
-        val points = AsdGraph.db.trackDao().getByTripOnce(tripId)
+        val trip = AsdGraph.db.tripDao().getByIdOnce(tripId)
+        val roomPointCount = if (trip?.endTime != null) {
+            AsdGraph.db.trackDao().countThroughOnce(tripId, trip.endTime!!)
+        } else {
+            AsdGraph.db.trackDao().countOnce(tripId)
+        }
         val chunkSize = UrbanRuntime.configuration(context).trackChunkSize.coerceAtLeast(10)
-        val expectedChunks = if (points.isEmpty()) 0 else (points.size + chunkSize - 1) / chunkSize
+        val expectedChunks = if (roomPointCount == 0) 0 else (roomPointCount + chunkSize - 1) / chunkSize
         val rows = readTrackChunkQueueRows(tripId)
         val groups = rows.groupBy { it.cloudPath ?: "__queue_id_${it.id}" }
         val logicalRows = groups.values.map { it.maxBy { row -> row.id } }
@@ -66,16 +71,16 @@ object TrackingPipelineIntegrityAuditor {
         val failed = logicalRows.count { it.status == "FAILED" }
         val dead = logicalRows.count { it.status == "DEAD_LETTER" }
         val state = when {
-            points.isEmpty() -> "ROOM_EMPTY"
+            roomPointCount == 0 -> "ROOM_EMPTY"
             invalidPayloads > 0 -> "INVALID_CHUNK_PAYLOAD"
-            groups.size != expectedChunks || queuedPoints != points.size -> "ROOM_QUEUE_MISMATCH"
+            groups.size != expectedChunks || queuedPoints != roomPointCount -> "ROOM_QUEUE_MISMATCH"
             duplicateRows > 0 -> "QUEUE_DUPLICATES"
             failed > 0 || dead > 0 -> "SYNC_ERROR"
-            syncedLogicalChunks == expectedChunks && confirmedPoints == points.size -> "COMPLETE"
+            syncedLogicalChunks == expectedChunks && confirmedPoints == roomPointCount -> "COMPLETE"
             else -> "SYNC_PENDING"
         }
 
-        Snapshot(tripId, points.size, chunkSize, expectedChunks, rows.size, groups.size,
+        Snapshot(tripId, roomPointCount, chunkSize, expectedChunks, rows.size, groups.size,
             duplicateRows, queuedPoints, syncedLogicalChunks, confirmedPoints, pending,
             inProgress, failed, dead, invalidPayloads, state)
     }
