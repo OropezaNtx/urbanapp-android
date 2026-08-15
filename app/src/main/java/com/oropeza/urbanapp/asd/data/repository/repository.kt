@@ -647,6 +647,7 @@ class AsdRepository(private val db: AppDatabase) {
         return reactivated
     }
     fun lastSyncTimeFlow() = syncQueueDao.lastSyncTimeFlow()
+    fun lastTripSyncTimeFlow(tripId: Long) = syncQueueDao.lastTripSyncTimeFlow(tripId)
     suspend fun recoverStaleSyncItems(staleAfterMs: Long = 10 * 60 * 1000L): Int {
         val now = System.currentTimeMillis()
         return syncQueueDao.recoverStaleInProgress(cutoff = now - staleAfterMs, now = now)
