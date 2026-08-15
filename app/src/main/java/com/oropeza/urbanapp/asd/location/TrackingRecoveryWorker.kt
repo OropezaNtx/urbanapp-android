@@ -139,8 +139,10 @@ class TrackingRecoveryWorker(
             TripTelemetrySystemSampler.sample(applicationContext, markedTripId)
             val now = System.currentTimeMillis()
             val heartbeatAgeMs = if (lastHeartbeatMs > 0L) (now - lastHeartbeatMs).coerceAtLeast(0L) else Long.MAX_VALUE
+            val runningTripId = TrackingService.trackingMetrics.value.tripId
+            val serviceOwnsExpectedTrip = TrackingService.isRunning && runningTripId == markedTripId
 
-            if (TrackingService.isRunning) {
+            if (serviceOwnsExpectedTrip) {
                 Log.i(TAG, "WATCHDOG_HEALTHY trip=$markedTripId generation=$generation ageMs=$heartbeatAgeMs")
                 TripTelemetryRecorder.recordWatchdogHealthy(markedTripId)
                 if (assistedPending && assistedTripId == markedTripId) {
@@ -149,6 +151,34 @@ class TrackingRecoveryWorker(
                 }
                 scheduleNext(applicationContext, markedTripId, generation, HEALTHY_CHECK_DELAY_MS, "HEALTHY")
                 return ListenableWorker.Result.success()
+            }
+
+            if (TrackingService.isRunning && runningTripId != markedTripId) {
+                Log.e(
+                    TAG,
+                    "WATCHDOG_OWNER_MISMATCH expectedTrip=$markedTripId runningTrip=${runningTripId ?: -1L} generation=$generation"
+                )
+                // Do not call this healthy and do not keep two logical owners alive.
+                // ACTION_START is idempotent and TrackingService switches ownership after
+                // validating that the expected trip is still the unique open trip.
+                val intent = Intent(applicationContext, TrackingService::class.java).apply {
+                    action = TrackingService.ACTION_START
+                    putExtra(TrackingService.EXTRA_TRIP_ID, markedTripId)
+                    putExtra(EXTRA_RECOVERY_SUPERVISOR, true)
+                }
+                try {
+                    ContextCompat.startForegroundService(applicationContext, intent)
+                    Log.w(TAG, "WATCHDOG_OWNER_REPAIR_REQUESTED expectedTrip=$markedTripId previousTrip=${runningTripId ?: -1L}")
+                    scheduleNext(applicationContext, markedTripId, generation, EARLY_RECHECK_DELAY_MS, "OWNER_REPAIR")
+                    return ListenableWorker.Result.success()
+                } catch (e: Exception) {
+                    Log.e(TAG, "WATCHDOG_OWNER_REPAIR_FAILED trip=$markedTripId", e)
+                    TripTelemetryRecorder.recordFgsBlocked(markedTripId, heartbeatAgeMs)
+                    markAssistedPending(applicationContext, markedTripId)
+                    TrackingRecoveryNotification.show(applicationContext, markedTripId, heartbeatAgeMs)
+                    scheduleNext(applicationContext, markedTripId, generation, ASSISTED_RECHECK_DELAY_MS, "OWNER_REPAIR_BLOCKED")
+                    return ListenableWorker.Result.success()
+                }
             }
 
             if (heartbeatAgeMs < STALE_HEARTBEAT_MS) {
@@ -173,9 +203,6 @@ class TrackingRecoveryWorker(
 
             try {
                 ContextCompat.startForegroundService(applicationContext, intent)
-                // Do not count this as recovered yet. TrackingService will publish
-                // recoveredAfterProcessDeath=true only after it validates the trip and
-                // actually restores tracking; TripTelemetryWorker persists that signal.
                 Log.w(TAG, "WATCHDOG_FGS_STARTED trip=$markedTripId generation=$generation awaitingTrackingConfirmation=true")
                 ListenableWorker.Result.success()
             } catch (e: Exception) {
