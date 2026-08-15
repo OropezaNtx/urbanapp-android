@@ -12,13 +12,10 @@ import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 /**
  * Reconciles the final Room track of recently closed trips with the durable sync queue.
  *
- * The regular close flow already enqueues track chunks. This pass is intentionally
- * additive and idempotent: it only creates a fresh logical queue row when a chunk is
- * missing locally or when the final Room snapshot contains a different point count
- * than the latest queued payload for that same cloud path.
- *
- * This protects the close boundary where TrackingService may persist its last sample
- * at nearly the same time the trip is being closed. Room remains the source of truth.
+ * Closed-trip truth is frozen at Trip.endTime. Any row that somehow exists after that
+ * boundary is preserved in Room for audit, but is never allowed to expand or mutate the
+ * final cloud geometry. Processing is paged so long field sessions do not require a full
+ * track plus all derived chunks to be materialized in memory at the same time.
  */
 object TrackChunkQueueReconciler {
     private const val TAG = "CloudSyncIntegrity"
@@ -44,6 +41,7 @@ object TrackChunkQueueReconciler {
         val workspace = UrbanRuntime.workspace(context)
         val identity = UrbanRuntime.identity(context)
         val chunkSize = UrbanRuntime.configuration(context).trackChunkSize.coerceAtLeast(10)
+        val trackDao = AsdGraph.db.trackDao()
 
         val trips = AsdGraph.db.tripDao()
             .getAllOnce()
@@ -58,15 +56,35 @@ object TrackChunkQueueReconciler {
         var changed = 0
 
         for (trip in trips) {
-            val points = AsdGraph.repo.getTrackPointsOnce(trip.tripId).sortedBy { it.timeMs }
-            if (points.isEmpty()) continue
+            val endTime = trip.endTime ?: continue
+            val pointCount = trackDao.countThroughOnce(trip.tripId, endTime)
+            if (pointCount <= 0) continue
+
+            val allRoomCount = trackDao.countOnce(trip.tripId)
+            val postCloseRows = (allRoomCount - pointCount).coerceAtLeast(0)
+            if (postCloseRows > 0) {
+                Log.w(
+                    TAG,
+                    "SYNC_TRACK_POST_CLOSE_ROWS_IGNORED trip=${trip.tripId} endTime=$endTime " +
+                        "finalPoints=$pointCount ignoredRows=$postCloseRows"
+                )
+            }
 
             val cloudTripId = "${identity.installationId}_${trip.tripId}"
             val latestRows = latestRowsByPath(trip.tripId)
-            val chunks = points.chunked(chunkSize)
-            expectedChunks += chunks.size
+            val chunkCount = (pointCount + chunkSize - 1) / chunkSize
+            expectedChunks += chunkCount
 
-            chunks.forEachIndexed { index, chunk ->
+            for (index in 0 until chunkCount) {
+                val offset = index * chunkSize
+                val chunk = trackDao.getPageThroughOnce(
+                    tripId = trip.tripId,
+                    toMs = endTime,
+                    limit = chunkSize,
+                    offset = offset
+                )
+                if (chunk.isEmpty()) continue
+
                 val chunkId = "${cloudTripId}_chunk_$index"
                 val cloudPath = UrbanCloudPaths.trackChunkPath(workspace, cloudTripId, chunkId)
                 val current = latestRows[cloudPath]
