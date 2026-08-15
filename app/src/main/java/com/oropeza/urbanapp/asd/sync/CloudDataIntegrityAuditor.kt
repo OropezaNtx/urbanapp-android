@@ -79,7 +79,7 @@ object CloudDataIntegrityAuditor {
             }
 
             try {
-                val result = auditTrip(tripId, tripPath, logicalRows)
+                val result = auditTrip(tripId, tripPath, logicalRows, trip.endTime!!)
                 logResult(result, stage, runId)
                 if (result.state == "COMPLETE") success++ else mismatch++
             } catch (e: Exception) {
@@ -100,10 +100,11 @@ object CloudDataIntegrityAuditor {
     private suspend fun auditTrip(
         tripId: Long,
         tripPath: String,
-        logicalRows: List<QueueRow>
+        logicalRows: List<QueueRow>,
+        endTime: Long
     ): AuditResult {
         val db = FirebaseFirestore.getInstance()
-        val roomPointCount = AsdGraph.db.trackDao().getByTripOnce(tripId).size
+        val roomPointCount = AsdGraph.db.trackDao().countThroughOnce(tripId, endTime)
         val expectedEvents = logicalRows.count { it.entityType == "EVENT" }
         val expectedChunks = logicalRows.count { it.entityType == "TRACK_CHUNK" }
 
@@ -167,10 +168,6 @@ object CloudDataIntegrityAuditor {
         if (auth.currentUser == null) auth.signInAnonymously().await()
     }
 
-    /**
-     * Última fila por cloudPath = estado lógico actual. Esto evita que reintentos
-     * históricos/duplicados antiguos produzcan falsos positivos.
-     */
     private fun latestLogicalRows(tripId: Long): List<QueueRow> {
         val sql = """
             SELECT id, entityType, cloudPath, status
