@@ -158,10 +158,10 @@ class TrackingService : Service() {
         if (intent == null) {
             Log.w(TAG, "Servicio recreado por Android sin Intent; iniciando reconciliación local")
             recoverAfterProcessRecreation(expectedTripId = null, source = "NULL_INTENT")
-            return START_REDELIVER_INTENT
+            return START_NOT_STICKY
         }
 
-        when (intent.action) {
+        return when (intent.action) {
             ACTION_START -> {
                 val tripId = intent.getLongExtra(EXTRA_TRIP_ID, -1L)
                 val isSupervisorRecovery = intent.getBooleanExtra(EXTRA_RECOVERY_SUPERVISOR, false)
@@ -190,19 +190,37 @@ class TrackingService : Service() {
                         }
                     }
                 } else {
-                    Log.w(TAG, "ACTION_START sin tripId válido")
-                    stopTracking(clearRecoveryMarker = true)
+                    Log.w(TAG, "ACTION_START sin tripId válido; se ignora sin afectar al owner actual")
                 }
+                START_REDELIVER_INTENT
             }
 
-            ACTION_STOP -> stopTracking(clearRecoveryMarker = true)
+            ACTION_STOP -> {
+                val requestedTripId = intent.getLongExtra(EXTRA_TRIP_ID, -1L)
+                val ownerTripId = currentTripId
+                when {
+                    requestedTripId > 0L && ownerTripId == requestedTripId -> {
+                        Log.i(TAG, "TRACK_STOP aceptado trip=$requestedTripId")
+                        stopTracking(clearRecoveryMarker = true)
+                    }
+                    requestedTripId > 0L && ownerTripId != requestedTripId -> {
+                        Log.w(TAG, "TRACK_STOP_IGNORED_OWNER_MISMATCH requested=$requestedTripId owner=${ownerTripId ?: -1L}")
+                    }
+                    requestedTripId <= 0L && (ownerTripId == null || !isRunning) -> {
+                        stopTracking(clearRecoveryMarker = true)
+                    }
+                    else -> {
+                        Log.w(TAG, "TRACK_STOP_IGNORED_UNSCOPED owner=${ownerTripId ?: -1L}")
+                    }
+                }
+                START_NOT_STICKY
+            }
+
             else -> {
-                Log.w(TAG, "Acción desconocida; se detiene el servicio")
-                stopTracking(clearRecoveryMarker = true)
+                Log.w(TAG, "Acción desconocida; se ignora sin afectar al tracking actual action=${intent.action}")
+                START_NOT_STICKY
             }
         }
-
-        return START_REDELIVER_INTENT
     }
 
     private fun recoverAfterProcessRecreation(expectedTripId: Long?, source: String) {
@@ -445,6 +463,13 @@ class TrackingService : Service() {
                 val tripId = currentTripId ?: break
                 if (!isRunning) break
 
+                val trip = AsdGraph.repo.getTripOnce(tripId)
+                if (trip == null || trip.endTime != null) {
+                    Log.i(TAG, "Watchdog detectó recorrido inactivo trip=$tripId; deteniendo tracking")
+                    stopTracking(clearRecoveryMarker = true)
+                    break
+                }
+
                 writeSessionHeartbeat(tripId)
 
                 val listenerInactive = gpsUpdatesJob?.isActive != true
@@ -468,6 +493,20 @@ class TrackingService : Service() {
         tripId: Long,
         sample: AforaGpsEngine.CaptureSample
     ) {
+        if (!isRunning || shuttingDown || currentTripId != tripId) {
+            Log.w(TAG, "TRACK_PERSIST_SKIPPED_OWNER trip=$tripId owner=${currentTripId ?: -1L} running=$isRunning shuttingDown=$shuttingDown")
+            return
+        }
+
+        // Revalidate immediately before persistence. The saver loop already checks this,
+        // but closure may race between sampling and the Room insert.
+        val trip = AsdGraph.repo.getTripOnce(tripId)
+        if (trip == null || trip.endTime != null) {
+            Log.i(TAG, "TRACK_PERSIST_SKIPPED_CLOSED trip=$tripId")
+            stopTracking(clearRecoveryMarker = true)
+            return
+        }
+
         if (!insertTrackPointWithRetry(sample)) return
 
         persistedSampleCount++
@@ -506,6 +545,11 @@ class TrackingService : Service() {
             try {
                 val rowId = AsdGraph.db.trackDao().insert(sample.point)
                 if (rowId == -1L) {
+                    val stillOpen = AsdGraph.db.trackDao().isTripOpenForTracking(sample.point.tripId) > 0
+                    if (!stillOpen) {
+                        Log.i(TAG, "TRACK_INSERT_REJECTED_CLOSED trip=${sample.point.tripId}")
+                        return false
+                    }
                     throw IllegalStateException("Room ignoró TrackPoint sin insertarlo")
                 }
 
@@ -708,7 +752,7 @@ class TrackingService : Service() {
     private fun buildNotification(text: String): android.app.Notification {
         return NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentTitle("UrbanApp ASD")
+            .setContentTitle("AFORA ASD")
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
