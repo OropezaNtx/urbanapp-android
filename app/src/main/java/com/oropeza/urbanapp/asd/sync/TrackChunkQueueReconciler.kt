@@ -65,8 +65,8 @@ object TrackChunkQueueReconciler {
                 endTime != null && endTime in oldestEligibleClose..now
             }
             .sortedBy { it.endTime }
-            .takeLast(MAX_RECENT_CLOSED_TRIPS)
             .toList()
+            .takeLast(MAX_RECENT_CLOSED_TRIPS)
 
         if (trips.isEmpty()) {
             Log.i(
