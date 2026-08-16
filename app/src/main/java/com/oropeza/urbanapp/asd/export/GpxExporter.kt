@@ -28,6 +28,13 @@ object GpxExporter {
             .replace("\"", "&quot;")
             .replace("'", "&apos;")
 
+    private fun isValidCoordinatePair(lat: Double, lon: Double): Boolean {
+        return lat.isFinite() && lon.isFinite() &&
+            lat in -90.0..90.0 && lon in -180.0..180.0 &&
+            !(lat == 0.0 && lon == 0.0) &&
+            lat != 0.0 && lon != 0.0
+    }
+
     private fun StopEvent.hasBoarding(): Boolean = paxMenUp + paxWomenUp > 0
     private fun StopEvent.hasAlighting(): Boolean = paxMenDown + paxWomenDown > 0
     private fun StopEvent.hasDelay(): Boolean {
@@ -90,7 +97,8 @@ object GpxExporter {
             for (s in orderedStops) {
                 val type = s.displayType()
 
-                val hasIn = (s.stopLat != 0.0 || s.stopLon != 0.0) && s.waypointStopId > 0 && s.stopTime > 0L
+                val hasIn = isValidCoordinatePair(s.stopLat, s.stopLon) &&
+                    s.waypointStopId > 0 && s.stopTime > 0L
                 if (hasIn) {
                     val name = "WP%03d_OUT_%s".format(Locale.US, s.waypointStopId, type.replace("/", "_"))
                     val desc = buildString {
@@ -124,7 +132,8 @@ object GpxExporter {
                     out.appendLine("</wpt>")
                 }
 
-                val hasOut = (s.startLat != 0.0 || s.startLon != 0.0) && s.waypointStartId > 0 && s.startTime > 0L
+                val hasOut = isValidCoordinatePair(s.startLat, s.startLon) &&
+                    s.waypointStartId > 0 && s.startTime > 0L
                 if (hasOut) {
                     val name = "WP%03d_IN_%s".format(Locale.US, s.waypointStartId, type.replace("/", "_"))
                     val desc = buildString {
@@ -163,9 +172,6 @@ object GpxExporter {
                     }
 
                     val p = orderedPts[i]
-                    // filteredLat/filteredLon already contain AforaGpsEngine's canonical
-                    // analytical point. Avoid a second moving average that can move the
-                    // route off the actual road, especially through curves/intersections.
                     out.appendLine("""<trkpt lat="${p.filteredLat}" lon="${p.filteredLon}">""")
                     if (p.altM > 0.0) out.appendLine("<ele>${p.altM}</ele>")
                     out.appendLine("<time>${esc(fmtIso(p.timeMs))}</time>")
