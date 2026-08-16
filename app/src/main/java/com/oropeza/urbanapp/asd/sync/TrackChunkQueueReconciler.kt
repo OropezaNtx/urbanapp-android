@@ -3,23 +3,29 @@ package com.oropeza.urbanapp.asd.sync
 import android.util.Log
 import com.google.gson.JsonParser
 import com.oropeza.urbanapp.asd.AsdGraph
-import com.oropeza.urbanapp.asd.data.local.*
+import com.oropeza.urbanapp.asd.data.local.TrackPoint
 import com.oropeza.urbanapp.asd.location.engine.TrackPointQuality
-import com.oropeza.urbanapp.asd.sync.cloud.*
+import com.oropeza.urbanapp.asd.sync.cloud.AsdCloudMapper
+import com.oropeza.urbanapp.asd.sync.cloud.AsdTrackChunkCloudDto
 import com.oropeza.urbanapp.core.platform.UrbanCloudPaths
 import com.oropeza.urbanapp.core.runtime.UrbanRuntime
 
 /**
- * Reconciles the final Room track of recently closed trips with the durable sync queue.
+ * Reconciles the final Room track of very recently closed trips with the durable sync queue.
  *
- * Closed-trip truth is frozen at Trip.endTime. Any row that somehow exists after that
- * boundary is preserved in Room for audit, but is never allowed to expand or mutate the
- * final cloud geometry. Processing is paged so long field sessions do not require a full
- * track plus all derived chunks to be materialized in memory at the same time.
+ * The automatic repair window is intentionally short. Once a trip has been closed long
+ * enough to leave this window, its cloud geometry is considered immutable for background
+ * synchronization. Historical repair must be an explicit operator/admin action, never a
+ * side effect of an unrelated heartbeat, installation refresh or retry worker.
+ *
+ * Queue identity is the deterministic cloudPath. Legacy builds could persist an unreliable
+ * or null parentTripId, so parentTripId must not be used to decide whether a historical
+ * TRACK_CHUNK already exists.
  */
 object TrackChunkQueueReconciler {
     private const val TAG = "CloudSyncIntegrity"
     private const val MAX_RECENT_CLOSED_TRIPS = 10
+    private const val RECONCILE_CLOSED_WITHIN_MS = 15 * 60_000L
 
     data class Result(
         val scannedTrips: Int,
@@ -36,19 +42,38 @@ object TrackChunkQueueReconciler {
         val payloadJson: String
     )
 
+    private data class PayloadSignature(
+        val pointCount: Int?,
+        val startTime: Long?,
+        val endTime: Long?
+    )
+
     suspend fun reconcileRecentClosedTrips(): Result {
         val context = AsdGraph.appContext
         val workspace = UrbanRuntime.workspace(context)
         val identity = UrbanRuntime.identity(context)
         val chunkSize = UrbanRuntime.configuration(context).trackChunkSize.coerceAtLeast(10)
         val trackDao = AsdGraph.db.trackDao()
+        val now = System.currentTimeMillis()
+        val oldestEligibleClose = now - RECONCILE_CLOSED_WITHIN_MS
 
         val trips = AsdGraph.db.tripDao()
             .getAllOnce()
             .asSequence()
-            .filter { it.endTime != null }
-            .toList()
+            .filter { trip ->
+                val endTime = trip.endTime
+                endTime != null && endTime in oldestEligibleClose..now
+            }
+            .sortedBy { it.endTime }
             .takeLast(MAX_RECENT_CLOSED_TRIPS)
+            .toList()
+
+        if (trips.isEmpty()) {
+            Log.i(
+                TAG,
+                "SYNC_TRACK_RECONCILIATION_IDLE eligibleClosedTrips=0 historicalRegenerationBlocked=true"
+            )
+        }
 
         var expectedChunks = 0
         var requeued = 0
@@ -71,7 +96,8 @@ object TrackChunkQueueReconciler {
             }
 
             val cloudTripId = "${identity.installationId}_${trip.tripId}"
-            val latestRows = latestRowsByPath(trip.tripId)
+            val trackChunkPrefix = "${UrbanCloudPaths.tripPath(workspace, cloudTripId)}/track_chunks/"
+            val latestRows = latestRowsByCloudPathPrefix(trackChunkPrefix)
             val chunkCount = (pointCount + chunkSize - 1) / chunkSize
             expectedChunks += chunkCount
 
@@ -88,11 +114,16 @@ object TrackChunkQueueReconciler {
                 val chunkId = "${cloudTripId}_chunk_$index"
                 val cloudPath = UrbanCloudPaths.trackChunkPath(workspace, cloudTripId, chunkId)
                 val current = latestRows[cloudPath]
-                val queuedPointCount = current?.let { payloadPointCount(it.payloadJson) }
+                val queuedSignature = current?.let { payloadSignature(it.payloadJson) }
+                val expectedSignature = PayloadSignature(
+                    pointCount = chunk.size,
+                    startTime = chunk.first().timeMs,
+                    endTime = chunk.last().timeMs
+                )
 
                 val reason = when {
                     current == null -> "MISSING_QUEUE_ROW"
-                    queuedPointCount != chunk.size -> "POINT_COUNT_CHANGED"
+                    queuedSignature != expectedSignature -> "PAYLOAD_BOUNDARY_CHANGED"
                     else -> null
                 }
 
@@ -111,7 +142,8 @@ object TrackChunkQueueReconciler {
                     Log.w(
                         TAG,
                         "SYNC_TRACK_CHUNK_RECONCILED trip=${trip.tripId} index=$index reason=$reason " +
-                            "roomPoints=${chunk.size} queuedPoints=${queuedPointCount ?: -1} previousStatus=${current?.status ?: "NONE"} path=$cloudPath"
+                            "expectedSignature=$expectedSignature queuedSignature=$queuedSignature " +
+                            "previousStatus=${current?.status ?: "NONE"} path=$cloudPath"
                     )
                 }
             }
@@ -152,23 +184,28 @@ object TrackChunkQueueReconciler {
         )
     }
 
-    private fun payloadPointCount(payloadJson: String): Int? = try {
-        JsonParser.parseString(payloadJson).asJsonObject.get("pointCount")?.asInt
+    private fun payloadSignature(payloadJson: String): PayloadSignature? = try {
+        val json = JsonParser.parseString(payloadJson).asJsonObject
+        PayloadSignature(
+            pointCount = json.get("pointCount")?.asInt,
+            startTime = json.get("startTime")?.asLong,
+            endTime = json.get("endTime")?.asLong
+        )
     } catch (_: Exception) {
         null
     }
 
-    private fun latestRowsByPath(tripId: Long): Map<String, QueueRow> {
+    private fun latestRowsByCloudPathPrefix(prefix: String): Map<String, QueueRow> {
         val sql = """
             SELECT id, cloudPath, status, payloadJson
             FROM sync_queue
-            WHERE parentTripId = ?
-              AND entityType = 'TRACK_CHUNK'
+            WHERE entityType = 'TRACK_CHUNK'
               AND cloudPath IS NOT NULL
+              AND cloudPath LIKE ?
             ORDER BY id ASC
         """.trimIndent()
 
-        val cursor = AsdGraph.db.openHelper.readableDatabase.query(sql, arrayOf(tripId.toString()))
+        val cursor = AsdGraph.db.openHelper.readableDatabase.query(sql, arrayOf("$prefix%"))
         val rows = cursor.use {
             val idIndex = it.getColumnIndexOrThrow("id")
             val pathIndex = it.getColumnIndexOrThrow("cloudPath")
