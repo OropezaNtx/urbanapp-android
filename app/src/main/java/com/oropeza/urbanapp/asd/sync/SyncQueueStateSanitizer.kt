@@ -8,10 +8,10 @@ import com.oropeza.urbanapp.asd.AsdGraph
  * Repairs internally contradictory or redundant sync queue metadata without touching
  * source-of-truth trip/track rows in Room.
  *
- * TRACK_CHUNK identity is its deterministic cloudPath. Duplicate queued copies are safe to
- * suppress only when they represent the same finalized payload signature. A newer payload
- * with a different point/boundary signature is intentionally preserved so the short
- * post-close reconciliation window can still publish the legitimate final geometry.
+ * sync_queue is derived transport state. Proven redundant TRACK_CHUNK rows can therefore
+ * be removed safely: the canonical track remains in Room and the deterministic cloudPath
+ * identifies the cloud document. We only remove PENDING/FAILED duplicates; IN_PROGRESS,
+ * unique unsent payloads and legitimate post-close corrections are preserved.
  */
 object SyncQueueStateSanitizer {
     private const val TAG = "CloudSyncIntegrity"
@@ -48,14 +48,9 @@ object SyncQueueStateSanitizer {
         }
 
         val rows = loadTrackRows()
-        val now = System.currentTimeMillis()
-        val suppressStatement = db.compileStatement(
+        val deleteStatement = db.compileStatement(
             """
-                UPDATE sync_queue
-                SET status = 'DEAD_LETTER',
-                    lastError = ?,
-                    nextAttemptAt = 0,
-                    updatedAt = ?
+                DELETE FROM sync_queue
                 WHERE id = ?
                   AND status IN ('PENDING', 'FAILED')
             """.trimIndent()
@@ -68,25 +63,22 @@ object SyncQueueStateSanitizer {
             val newestQueued = queued.maxBy { it.id }
 
             // Older unsent rows for the same deterministic document are superseded by the
-            // newest queued payload. This prevents backlog amplification while preserving
-            // one legitimate write if the final payload changed during trip close.
+            // newest queued payload. Keeping just one prevents backlog amplification.
             queued.filter { it.id != newestQueued.id }.forEach { row ->
-                if (suppressRow(
-                        statement = suppressStatement,
-                        rowId = row.id,
-                        now = now,
-                        reason = "Suppressed duplicate TRACK_CHUNK: newer queue row exists"
-                    )
-                ) {
+                if (deleteRow(deleteStatement, row.id)) {
                     changed++
                     Log.w(
                         TAG,
-                        "SYNC_QUEUE_DUPLICATE_TRACK_SUPPRESSED queueId=${row.id} " +
+                        "SYNC_QUEUE_DUPLICATE_TRACK_REMOVED queueId=${row.id} " +
                             "rule=KEEP_NEWEST_UNSENT path=$cloudPath"
                     )
                 }
             }
 
+            // A matching signature means the exact finalized chunk boundary has already
+            // been confirmed in cloud. Do not delete a newer payload whose signature is
+            // different: that may be the legitimate final correction produced immediately
+            // after trip close.
             val newestSignature = payloadSignature(newestQueued.payloadJson)
             val alreadyConfirmedSamePayload = group
                 .asSequence()
@@ -95,17 +87,11 @@ object SyncQueueStateSanitizer {
                 .any { it == newestSignature }
 
             if (newestSignature != null && alreadyConfirmedSamePayload) {
-                if (suppressRow(
-                        statement = suppressStatement,
-                        rowId = newestQueued.id,
-                        now = now,
-                        reason = "Suppressed duplicate TRACK_CHUNK: same payload already SYNCED"
-                    )
-                ) {
+                if (deleteRow(deleteStatement, newestQueued.id)) {
                     changed++
                     Log.w(
                         TAG,
-                        "SYNC_QUEUE_DUPLICATE_TRACK_SUPPRESSED queueId=${newestQueued.id} " +
+                        "SYNC_QUEUE_DUPLICATE_TRACK_REMOVED queueId=${newestQueued.id} " +
                             "rule=SAME_PAYLOAD_ALREADY_SYNCED signature=$newestSignature path=$cloudPath"
                     )
                 }
@@ -146,16 +132,12 @@ object SyncQueueStateSanitizer {
         }
     }
 
-    private fun suppressRow(
+    private fun deleteRow(
         statement: androidx.sqlite.db.SupportSQLiteStatement,
-        rowId: Long,
-        now: Long,
-        reason: String
+        rowId: Long
     ): Boolean {
         statement.clearBindings()
-        statement.bindString(1, reason)
-        statement.bindLong(2, now)
-        statement.bindLong(3, rowId)
+        statement.bindLong(1, rowId)
         return statement.executeUpdateDelete() > 0
     }
 
