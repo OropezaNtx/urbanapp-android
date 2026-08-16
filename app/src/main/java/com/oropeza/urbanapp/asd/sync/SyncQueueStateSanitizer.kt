@@ -12,6 +12,9 @@ import com.oropeza.urbanapp.asd.AsdGraph
  * be removed safely: the canonical track remains in Room and the deterministic cloudPath
  * identifies the cloud document. We only remove PENDING/FAILED duplicates; IN_PROGRESS,
  * unique unsent payloads and legitimate post-close corrections are preserved.
+ *
+ * INSTALLATION and HEARTBEAT are latest-state presence documents rather than business
+ * history. Once confirmed, only the newest row per deterministic cloudPath is useful.
  */
 object SyncQueueStateSanitizer {
     private const val TAG = "CloudSyncIntegrity"
@@ -47,6 +50,29 @@ object SyncQueueStateSanitizer {
             Log.i(TAG, "SYNC_QUEUE_STATE_SANITIZED rows=$syncedStateRepair rule=SYNCED_HAS_NO_ERROR")
         }
 
+        // Presence documents are overwritten in cloud and have no audit value as an
+        // append-only local queue history. Preserve the newest confirmed row only.
+        val compactedPresence = db.compileStatement(
+            """
+                DELETE FROM sync_queue
+                WHERE status = 'SYNCED'
+                  AND entityType IN ('INSTALLATION', 'HEARTBEAT')
+                  AND cloudPath IS NOT NULL
+                  AND id NOT IN (
+                      SELECT MAX(id)
+                      FROM sync_queue
+                      WHERE status = 'SYNCED'
+                        AND entityType IN ('INSTALLATION', 'HEARTBEAT')
+                        AND cloudPath IS NOT NULL
+                      GROUP BY entityType, cloudPath
+                  )
+            """.trimIndent()
+        ).executeUpdateDelete()
+        changed += compactedPresence
+        if (compactedPresence > 0) {
+            Log.i(TAG, "SYNC_QUEUE_PRESENCE_COMPACTED rows=$compactedPresence rule=KEEP_LATEST_SYNCED")
+        }
+
         val rows = loadTrackRows()
         val deleteStatement = db.compileStatement(
             """
@@ -62,8 +88,6 @@ object SyncQueueStateSanitizer {
 
             val newestQueued = queued.maxBy { it.id }
 
-            // Older unsent rows for the same deterministic document are superseded by the
-            // newest queued payload. Keeping just one prevents backlog amplification.
             queued.filter { it.id != newestQueued.id }.forEach { row ->
                 if (deleteRow(deleteStatement, row.id)) {
                     changed++
@@ -75,10 +99,6 @@ object SyncQueueStateSanitizer {
                 }
             }
 
-            // A matching signature means the exact finalized chunk boundary has already
-            // been confirmed in cloud. Do not delete a newer payload whose signature is
-            // different: that may be the legitimate final correction produced immediately
-            // after trip close.
             val newestSignature = payloadSignature(newestQueued.payloadJson)
             val alreadyConfirmedSamePayload = group
                 .asSequence()
