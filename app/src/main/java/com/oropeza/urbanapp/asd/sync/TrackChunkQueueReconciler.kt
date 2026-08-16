@@ -21,10 +21,16 @@ import com.oropeza.urbanapp.core.runtime.UrbanRuntime
  * could enqueue TRACK_CHUNK rows without a reliable parentTripId; looking them up only by
  * parentTripId made already-synced historical chunks appear missing and caused needless
  * re-enqueue/re-upload cycles while the device was idle.
+ *
+ * Reconciliation is intentionally bounded to a short post-close window. Once that window
+ * expires a closed trip is immutable for this automatic repair path. Existing queued rows
+ * may still retry normally, but an idle device must never keep regenerating historical
+ * track payloads just because background sync runs again.
  */
 object TrackChunkQueueReconciler {
     private const val TAG = "CloudSyncIntegrity"
     private const val MAX_RECENT_CLOSED_TRIPS = 10
+    private const val RECONCILE_CLOSED_WITHIN_MS = 15 * 60_000L
 
     data class Result(
         val scannedTrips: Int,
@@ -47,13 +53,23 @@ object TrackChunkQueueReconciler {
         val identity = UrbanRuntime.identity(context)
         val chunkSize = UrbanRuntime.configuration(context).trackChunkSize.coerceAtLeast(10)
         val trackDao = AsdGraph.db.trackDao()
+        val now = System.currentTimeMillis()
+        val oldestEligibleClose = now - RECONCILE_CLOSED_WITHIN_MS
 
         val trips = AsdGraph.db.tripDao()
             .getAllOnce()
             .asSequence()
-            .filter { it.endTime != null }
-            .toList()
+            .filter { trip ->
+                val endTime = trip.endTime
+                endTime != null && endTime >= oldestEligibleClose
+            }
+            .sortedBy { it.endTime }
             .takeLast(MAX_RECENT_CLOSED_TRIPS)
+            .toList()
+
+        if (trips.isEmpty()) {
+            Log.i(TAG, "SYNC_TRACK_RECONCILIATION_IDLE eligibleClosedTrips=0 historicalRegenerationBlocked=true")
+        }
 
         var expectedChunks = 0
         var requeued = 0
