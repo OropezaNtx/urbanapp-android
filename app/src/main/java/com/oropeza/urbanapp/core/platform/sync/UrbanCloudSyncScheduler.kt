@@ -136,17 +136,20 @@ object UrbanCloudSyncScheduler {
         }
     }
 
+    /**
+     * enqueueInstallationRegister/enqueueHeartbeat already schedule sync when the
+     * queue row is persisted. Requesting sync again here only amplifies WorkManager
+     * wakeups and can produce duplicate presence writes during bootstrap races.
+     */
     fun enqueueAndSyncInstallation(context: Context) {
         scope.launch {
             AsdGraph.syncQueue.enqueueInstallationRegister(context)
-            syncNow(context)
         }
     }
 
     fun enqueueAndSyncHeartbeat(context: Context, activeTripId: Long? = null) {
         scope.launch {
             AsdGraph.syncQueue.enqueueHeartbeat(context, activeTripId)
-            syncNow(context)
         }
     }
 }
