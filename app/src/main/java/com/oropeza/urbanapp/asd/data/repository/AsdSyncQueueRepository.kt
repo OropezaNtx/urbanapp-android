@@ -30,9 +30,6 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
 
     suspend fun enqueueInstallationRegister(context: android.content.Context) {
         val installation = UrbanPlatformService.buildCurrentInstallation(context).copy(
-            // Registration refreshes device metadata but must never grant itself
-            // authorization. The administrative state is synchronized separately
-            // from the project-scoped installation document.
             status = UrbanRuntime.installationStatus(context).name
         )
         val path = UrbanCloudPaths.installationPath(
@@ -120,6 +117,36 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
         enqueueTripUpsert(context, "CLOSE", trip)
     }
 
+    /**
+     * Presence is latest-state data, not an append-only business event. If bootstrap or
+     * lifecycle races request INSTALLATION/HEARTBEAT repeatedly before the worker drains,
+     * keep only the newest unsent state for that deterministic cloud document.
+     *
+     * TRIP/EVENT/TRACK_CHUNK are intentionally excluded from this coalescing path.
+     */
+    private fun dropSupersededPendingPresence(type: String, cloudPath: String?) {
+        if (cloudPath.isNullOrBlank() || type !in setOf("INSTALLATION", "HEARTBEAT")) return
+
+        val db = AsdGraph.db.openHelper.writableDatabase
+        val statement = db.compileStatement(
+            """
+                DELETE FROM sync_queue
+                WHERE entityType = ?
+                  AND cloudPath = ?
+                  AND status IN ('PENDING', 'FAILED')
+            """.trimIndent()
+        )
+        statement.bindString(1, type)
+        statement.bindString(2, cloudPath)
+        val removed = statement.executeUpdateDelete()
+        if (removed > 0) {
+            android.util.Log.i(
+                "CloudSyncIntegrity",
+                "SYNC_PRESENCE_COALESCED type=$type removed=$removed path=$cloudPath"
+            )
+        }
+    }
+
     private suspend fun enqueue(
         type: String,
         operation: String,
@@ -129,6 +156,8 @@ class AsdSyncQueueRepository(private val dao: AsdSyncQueueDao) {
         priority: Int = 1
     ) {
         try {
+            dropSupersededPendingPresence(type, cloudPath)
+
             val item = AsdSyncQueueItem(
                 entityType = type,
                 operation = operation,
