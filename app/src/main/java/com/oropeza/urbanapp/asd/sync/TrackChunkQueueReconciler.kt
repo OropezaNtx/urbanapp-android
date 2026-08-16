@@ -16,6 +16,11 @@ import com.oropeza.urbanapp.core.runtime.UrbanRuntime
  * boundary is preserved in Room for audit, but is never allowed to expand or mutate the
  * final cloud geometry. Processing is paged so long field sessions do not require a full
  * track plus all derived chunks to be materialized in memory at the same time.
+ *
+ * IMPORTANT: queue identity is the deterministic cloudPath, not parentTripId. Older builds
+ * could enqueue TRACK_CHUNK rows without a reliable parentTripId; looking them up only by
+ * parentTripId made already-synced historical chunks appear missing and caused needless
+ * re-enqueue/re-upload cycles while the device was idle.
  */
 object TrackChunkQueueReconciler {
     private const val TAG = "CloudSyncIntegrity"
@@ -71,7 +76,8 @@ object TrackChunkQueueReconciler {
             }
 
             val cloudTripId = "${identity.installationId}_${trip.tripId}"
-            val latestRows = latestRowsByPath(trip.tripId)
+            val trackChunkPrefix = "${UrbanCloudPaths.tripPath(workspace, cloudTripId)}/track_chunks/"
+            val latestRows = latestRowsByCloudPathPrefix(trackChunkPrefix)
             val chunkCount = (pointCount + chunkSize - 1) / chunkSize
             expectedChunks += chunkCount
 
@@ -158,17 +164,25 @@ object TrackChunkQueueReconciler {
         null
     }
 
-    private fun latestRowsByPath(tripId: Long): Map<String, QueueRow> {
+    /**
+     * Finds the newest queue row for each deterministic cloudPath.
+     *
+     * We intentionally do NOT depend on parentTripId here. Legacy rows may have null or
+     * incorrectly inferred ownership, but their cloudPath is still the canonical identity
+     * of the Firestore document. Recognizing those rows makes reconciliation idempotent
+     * across upgrades and prevents idle historical re-upload loops.
+     */
+    private fun latestRowsByCloudPathPrefix(prefix: String): Map<String, QueueRow> {
         val sql = """
             SELECT id, cloudPath, status, payloadJson
             FROM sync_queue
-            WHERE parentTripId = ?
-              AND entityType = 'TRACK_CHUNK'
+            WHERE entityType = 'TRACK_CHUNK'
               AND cloudPath IS NOT NULL
+              AND cloudPath LIKE ?
             ORDER BY id ASC
         """.trimIndent()
 
-        val cursor = AsdGraph.db.openHelper.readableDatabase.query(sql, arrayOf(tripId.toString()))
+        val cursor = AsdGraph.db.openHelper.readableDatabase.query(sql, arrayOf("$prefix%"))
         val rows = cursor.use {
             val idIndex = it.getColumnIndexOrThrow("id")
             val pathIndex = it.getColumnIndexOrThrow("cloudPath")
