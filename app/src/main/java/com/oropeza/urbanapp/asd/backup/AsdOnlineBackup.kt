@@ -1,55 +1,31 @@
 package com.oropeza.urbanapp.asd.backup
 
 import android.util.Log
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import com.oropeza.urbanapp.asd.data.local.StopEvent
+import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Legacy compatibility hook.
+ *
+ * Event durability is now owned by Room + sync_queue + the project-scoped cloud path.
+ * The former implementation wrote directly to the top-level `urbanapp_asd_backups`
+ * collection, bypassing the durable queue and current Firestore security model. Those
+ * writes were rejected with PERMISSION_DENIED and added unnecessary network traffic.
+ *
+ * Keep this hook as a no-op for now so older repository call sites remain binary/source
+ * compatible while field RC validation continues. It must never be treated as a source
+ * of truth or as part of the delivery contract.
+ */
 object AsdOnlineBackup {
     private const val TAG = "AsdOnlineBackup"
+    private val noticeLogged = AtomicBoolean(false)
 
     fun backupStopEvent(event: StopEvent) {
-        runCatching {
-            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: "anonymous"
-            val payload = mapOf(
-                "uid" to uid,
-                "tripId" to event.tripId,
-                "eventId" to event.eventId,
-                "timestamp" to event.timestamp,
-                "stopType" to event.stopType,
-                "stopName" to event.stopName,
-                "notes" to event.notes,
-                "waypointStopId" to event.waypointStopId,
-                "waypointStartId" to event.waypointStartId,
-                "stopTime" to event.stopTime,
-                "startTime" to event.startTime,
-                "stopLat" to event.stopLat,
-                "stopLon" to event.stopLon,
-                "startLat" to event.startLat,
-                "startLon" to event.startLon,
-                "stopAccM" to event.stopAccM,
-                "startAccM" to event.startAccM,
-                "stopProvider" to event.stopProvider,
-                "startProvider" to event.startProvider,
-                "locationStatus" to event.locationStatus,
-                "paxMenUp" to event.paxMenUp,
-                "paxWomenUp" to event.paxWomenUp,
-                "paxMenDown" to event.paxMenDown,
-                "paxWomenDown" to event.paxWomenDown,
-                "hasLuggage" to event.hasLuggage,
-                "delayCodes" to event.delayCodes,
-                "otherDelayDesc" to event.otherDelayDesc,
-                "backupCreatedAt" to System.currentTimeMillis(),
-                "backupSource" to "urbanapp_asd_demo"
+        if (noticeLogged.compareAndSet(false, true)) {
+            Log.i(
+                TAG,
+                "LEGACY_DIRECT_BACKUP_DISABLED source=Room+sync_queue trip=${event.tripId}"
             )
-
-            FirebaseFirestore.getInstance()
-                .collection("urbanapp_asd_backups")
-                .document("trip_${event.tripId}_event_${event.eventId}")
-                .set(payload)
-                .addOnFailureListener { e -> Log.w(TAG, "Backup Firestore fallido", e) }
-        }.onFailure { e ->
-            Log.w(TAG, "No se pudo iniciar backup Firestore", e)
         }
     }
 }
