@@ -71,6 +71,9 @@ object TrackingPipelineIntegrityAuditor {
         val failed = logicalRows.count { it.status == "FAILED" }
         val dead = logicalRows.count { it.status == "DEAD_LETTER" }
         val state = when {
+            trip == null -> "TRIP_MISSING"
+            trip.endTime == null && roomPointCount == 0 -> "TRACKING_STARTING"
+            trip.endTime == null -> "TRACKING_ACTIVE"
             roomPointCount == 0 -> "ROOM_EMPTY"
             invalidPayloads > 0 -> "INVALID_CHUNK_PAYLOAD"
             groups.size != expectedChunks || queuedPoints != roomPointCount -> "ROOM_QUEUE_MISMATCH"
